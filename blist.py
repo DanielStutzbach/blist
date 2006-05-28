@@ -2,7 +2,203 @@
 
 """
 
-Definitions:
+Motivation and Design Goals
+---------------------------
+
+I frequently find myself working with large lists and running into
+efficiency problems when I want to insert or delete elements in the
+middle of the list.  In some cases, if I know exactly what operations
+I'll be using, I can use another kind of container (such as
+collections.deque), but this frequently limits the ability to use
+other operations (such as accessing elements in the middle of the
+list).  As my needs for the list may change with time, I don't like
+being locked-in to a particular data structure's syntax.  I'd prefer a
+class that looks and quacks like a Python list while offering good
+asymptotic performance for all common operations.
+
+I also don't want to have to worry about using the right type for
+small lists versus large lists.  Most data structures that offer good
+asymptotic performance can't compete with a simple array (i.e., Python
+lists) when the list is small.  Often I may not know in advance which
+lists will become big, and it seems un-Pythonic to have to worry about
+it and frequently be changing code from one type to the other
+depending on the circumstances.  I want something that I could use
+everywhere without needing to worry about it.  I want it to look and
+quack like a Python list, have similar performance to a Python list
+for small lists, and have good asymptotic performance for big lists.
+
+(Yes, I want everything.)
+
+After spending some time searching for the right data structure and
+even more time trying to figure out how to implement it cleanly and
+neatly, I've settled on what I call the B-List, which is a variation of a
+B+Tree.
+
+The BList internally uses a balanced tree representation where each
+node may have between "limit" and "limit/2" children (except the root
+which may have between 0 and "limit" children).  When the list has
+fewer than "limit/2" elements, they will all be contained in a single
+node.  Since a node is little more than array, the performance for
+lists smaller than "limit/2" should be almost identical to using a
+regular Python list (one extra if() statement will be needed per
+method call).
+
+B+Trees are an associative-array datastructure where each element is a
+(key, value) pair and the keys are kept in sorted order.  In BLists,
+the "key" is implicit: it's the in-order location of the value.
+Instead of keys, each BList node maintains a count of the total number
+of elements beneath it in the tree.  This allows walking the tree
+efficiently by keeping track of how far we've moved when passing by a
+child node.
+
+Adding elements
+---------------
+
+When we add an element to a BList node, the node may overflow (i.e.,
+have more than "limit" elements).  Instead of overflowing, it creates
+a new BList node and gives half of its elements to the new node.  When
+the inserting function returns, it informs its parent about its new
+sibling.  This causes the parent to add the sibling as a child, which
+may also cause the parent to overflow, and so on.
+
+When the root of the tree overflows, it must increase the depth of the
+tree.  The root creates two new children and splits all of its former
+pointers between these two children (i.e., all former children are now
+grandchildren).
+
+Removing elements
+-----------------
+
+Removing an element may cause an underflow (i.e., fewer than "limit/2"
+elements).  It's the parents job to check if a child has underflowed
+after any operation that might cause an underflow.  The parent must
+then repair the child, either by borrowing elements from one of the
+child's sibling or merging the child with one of its sibling.  It it
+performs a merge, this may also cause the parent to underflow.
+
+If node has only one element, the tree collapses.  The node replaces
+its one child with its grandchildren.  When removing a single element,
+this can only happen at the root.
+
+Removing a range
+----------------
+
+The __delslice__ method to remove a range of elements is the most
+complex operation for a BList to perform.  The first step is to locate
+the common parent of all the elements to be removed.  The parent
+deletes any children who will be completely deleted (i.e., they are
+entirely within the range to be deleted).  The parent also has to deal
+with two children who may be partially deleted (i.e., they contain the
+boundaries of the deletion range).
+
+The parent calls the deletion operation recursively on these two
+children.  When the call returns, the children must return a valid
+BList, but they may be in an underflow state, and, worse, they may
+have needed to collapse the tree.  To make life a little easier, the
+children return an integer indicating how many levels of the tree
+collapsed (if any).  The parent now has two adjacent subtrees of
+different heights that need to be put back into the main tree (to keep
+it balanced).
+
+To accomplish this goal, we'll use a merge-tree operation, defined
+below.  The parent merges the two adjacent subtrees into a single
+subtree, then merges the subtree with one of its other children.  If
+it has no other children, then the parent collapses to become the
+subtree and indicates to its parent the total level of collapse.
+
+Merging subtrees
+----------------
+
+The __delslice__ method needs a way to merge two adjacent subtrees of
+potentially different heights.  Because we only need to merge *adjacent*
+subtrees, we don't have to handle inserting a subtree into the middle of
+another.  There are only two cases: the far-left and the far-right.  If
+the two subtrees are the same height, this is a pretty simple operation where
+we join their roots together.  If the trees are different heights, we
+merge the smaller into the larger as follows.  Let H be the difference
+in their heights.  Then, recurse through the larger tree by H levels
+and insert the smaller subtree there.
+
+Retrieving a range and copy-on-write
+------------------------------------
+
+One of the most powerful features of BLists is the ability to support
+copy-on-write.  Thus far we have described a BLists as a tree
+structure where parents contain pointers to their children.  None of
+the basic tree operations require the children to maintain pointers to
+their parents or siblings.  Therefore, it is possible for a child to
+have *multiple parents*.  The parents can happily share the child as
+long as they perform read-only operations on it.  If a parent wants to
+modify a child in any way, it first checks the child's reference
+pointer.  If it is 1, the parent has the only reference and can
+proceed.  Otherwise, the parent must create a copy of the child, and
+relinquish its reference pointer to the child.
+
+Creating a copy of a child doesn't imply copy the child's subtree.  It
+just creates a new node that shares the child's pointers.  In other words,
+the child and the copy are now joint parents of their children.
+
+This assumes that no other code will gain references to internal BList
+nodes.  The internal nodes are never exposed to the user, so this is a
+safe assumption.  In the worst case, if the user manages to gain a
+reference to an internal BList node (such as through the gc module),
+it will just prevent the BList code from modifying that node.  It will
+create a copy instead.  User-visible nodes (i.e., the root of a tree)
+have no parents and are never shared children.
+
+Why is this copy-on-write operation so useful?
+
+Consider the common idiom of performing an operation on a slice of a
+list.  Normally, this requires making a copy of that region of the
+list, which is expensive if the region is large.  With copy-on-write,
+__getslice__ takes logarithmic time and logarithmic memory.
+
+As a cool but slightly less practical example, ever wanted to make
+REALLY big lists?  Copy-on-write also allows for a logarithmic time
+and logarithmic memory implementation of __mul__.
+
+>>> little_list = BList([0])
+>>> big_list = little_list * 2**512           <-- 220 milliseconds
+>>> print big_list.__len__()
+13407807929942597099574024998205846127479365820592393377723561443721764030073546976801874298166903427690031858186486050853753882811946569946433649006084096
+
+(iterating over this list is not recommended)
+
+Comparision of cost of operations with list()
+---------------------------------------------
+
+n is the size of "self", k is the size of the argument.  For
+slice operations, k is the length of the slice.
+
+   Operation            list               BList
+---------------     ------------  -----------------------
+init from seq       O(k)          O(k)
+copy                O(k)          O(1)
+append              O(1)          O(log n)
+insert              O(n)          O(log n)
+__mul__             O(n*k)        O(log k)
+__delitem__         O(n)          O(log n)
+__len__             O(1)          O(1)
+iteration           O(n)          O(n)
+__getslice__        O(k)          O(log n)
+__delslice__        O(n)          O(log n + k)
+__setslice__        O(n+k)        O(log n + log k)        [1]
+extend              O(k)          O(log n + log k)        [1]
+__sort__            O(n*log n)    O(n*log n)
+index               O(k)          O(log n + k)
+remove              O(n)          O(n)
+count               O(n)          O(n)
+extended slicing    O(k)          O(k*log n)
+__cmp__             O(min(n,k))   O(min(n,k))
+
+[1]: Plus O(k) if the sequence being added are not also a BList
+
+For BLists smaller than "limit" elements, each operation essentially
+reduces to the equivalent list operation, so there is little-to-no
+overhead for the common case of small lists.
+
+Definitions
+-----------
 
 - Each node has no more than "limit" elements (also called children).
 - Every node is either a "leaf" or an "interior node".
@@ -24,9 +220,9 @@ Definitions:
   nodes.  The root of the subtree must have no more than limit
   elements, but may have as few as 0 elements.
 - Each BList object has a variable .refcount which is the number of
-  BList objects that refer to the object, plus 1 if the object is a user-node.
-- User-nodes may never be referred to by another BList object (ergo
-  user-nodes always have a .refcount of 1).
+  BList objects that refer to the object.
+- User-nodes may never be referred to by another BList object have a
+  .refcount of None.
 - A public function is a member function that may be called by either users
   or the object's parent.  They either do not begin with underscores, or
   they begin and end with __.
@@ -43,7 +239,8 @@ Definitions:
 - A node's children are numbered 0 to len(self.children)-1.  These are
   called "indexes" and should not be confused with positions.
 
-Invariants:
+Invariants
+----------
 
 - When a BList member function returns, the BList is the root of a valid
   subtree.  Exception: member functions that will only be called
@@ -73,7 +270,8 @@ Invariants:
   internal structure must not change.  This is important for
   supporting iterators.
 
-Observations:
+Observations
+------------
 
 - User-nodes always have a refcount of at least 1
 - User-callable methods may not cause the reference counter to decrement.
@@ -81,43 +279,12 @@ Observations:
   underflow, the parent must detect the underflow and merge the child
   before returning.
 
-Pieces not implemented here that will be needed in a C version:
+Pieces not implemented here that will be needed in a C version
+--------------------------------------------------------------
 
 - __deepcopy__
 - support for pickling
 - container-type support for the garbage collector
-
-Comparision of cost of operations with list():
-
-n is the size of "self", k is the size of the argument.  For
-slice operations, k is the length of the slice.
-
-   Operation            list               BList
----------------     ------------  -----------------------
-init from seq       O(k)          O(k)
-copy                O(k)          O(1)
-append              O(1)          O(log n)
-insert              O(n)          O(log n)
-__mul__             O(n*k)        O(log k)
-__delitem__         O(n)          O(log n)
-__len__             O(1)          O(1)
-iteration           O(n)          O(n)
-__getslice__        O(k)          O(log n)
-__delslice__        O(n)          O(log n + k)
-__setslice__        O(n+k)        O(log n + log k)        [1]
-extend              O(k)          O(log n + log k)        [1]
-__sort__            O(n*log n)    O(n*log n)
-index               O(k)          O(log n + k)
-remove              O(n)          O(n)
-count               O(n)          O(n)
-extended slicing    O(k)          O(k*log n)
-__cmp__             O(min(n,k))   O(min(n,k))
-
-[1]: Plus O(k) if the items being added are not in a BList
-
-For BLists smaller than "limit" elements, each operation essentially
-reduces to the equivalent list operation, so there is little-to-no
-overhead for the common case of small lists.
 
 Suspected Bugs:
  - None currently, but needs more testing
@@ -132,7 +299,7 @@ User-visible Differences from list:
 Miscellaneous:
  - All of the reference counter stuff is redundent with the reference
    counting done internally on Python objects.  In C we can just peak
-   at the reference counter.
+   at the reference counter stored in all Python objects.
 
 """
 
@@ -441,7 +608,18 @@ class BList(object):
                 self.children[k]._decref()
         del self.children[i:j]
 
-    @modifies_self
+     def __del__(self):
+         "In C, this would be a tp_clear function instead of a __del__"
+        try:
+            self.refcount = 1          # Make invariance-checker happy
+            self.__forget_children()
+            self.refcount = 0
+        except:
+            import traceback
+            traceback.print_exc()
+            raise
+
+   @modifies_self
     def __forget_child(self, i):
         "Removes links to one child"
         self.__forget_children(i, i+1)
@@ -488,7 +666,7 @@ class BList(object):
         return self
 
     ####################################################################
-    # Functions for dealing with underflows and overflows
+    # Functions for manipulating the tree
 
     @modifies_self
     def __borrow_right(self, k):
@@ -744,17 +922,6 @@ class BList(object):
             if overflow:
                 self.children.insert(k, overflow)
         self._adjust_n()
-
-    def __del__(self):
-        try:
-            #assert self.refcount is None or self.refcount == 0
-            self.refcount = 1
-            self.__forget_children()
-            self.refcount = 0
-        except:
-            import traceback
-            traceback.print_exc()
-            raise
 
     ####################################################################
     # The main insert and deletion operations
