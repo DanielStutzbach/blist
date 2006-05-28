@@ -81,6 +81,12 @@ Observations:
   underflow, the parent must detect the underflow and merge the child
   before returning.
 
+Pieces not implemented here that will be needed in a C version:
+
+- __deepcopy__
+- support for pickling
+- container-type support for the garbage collector
+
 Comparision of cost of operations with list():
 
 n is the size of "self", k is the size of the argument.  For
@@ -123,6 +129,11 @@ User-visible Differences from list:
    implemented the same way as in list, but then iteration would have
    O(n * log n) cost instead of O(N).  I'm okay with the way it is.
 
+Miscellaneous:
+ - All of the reference counter stuff is redundent with the reference
+   counting done internally on Python objects.  In C we can just peak
+   at the reference counter.
+
 """
 
 import copy, types
@@ -135,6 +146,12 @@ limit = 8               # Maximum size, currently low (for testing purposes)
 half = limit//2         # Minimum size
 assert limit % 2 == 0   # Must be divisible by 2
 assert limit >= 8       # The code assumes each block is at least this big
+
+PARANOIA = 2            # Checks reference counters
+DEBUG    = 1            # Checks correctness
+NO_DEBUG = 0            # No checking
+
+debugging_level = NO_DEBUG
 
 ########################################################################
 # Simulate utility functions from the Python C API.  These functions
@@ -154,15 +171,15 @@ def Py_ReprLeave(obj):
 
 ########################################################################
 # Decorators are for error-checking and code clarity.  They verify
-# (most of) the invariances given above.  They're useful for
-# debugging, but can be removed when the code is stable.
+# (most of) the invariances given above.  They're replaced with no_op()
+# if debugging_level == NO_DEBUG.
 
 def modifies_self(f):
     "Decorator for member functions which require write access to self"
     def g(self, *args, **kw):
-        assert self.refcount == 1
+        assert self.refcount == 1 or self.refcount is None
         rv = f(self, *args, **kw)
-        assert self.refcount == 1
+        assert self.refcount == 1 or self.refcount is None
         return rv
     return g
 
@@ -178,7 +195,7 @@ def parent_callable(f):
 def user_callable(f):
     "Indicates a user callable function"
     def g(self, *args, **kw):
-        assert self.refcount >= 1
+        assert self.refcount >= 1 or self.refcount is None
         refs = self.refcount
         self._check_invariants()
         rv = f(self, *args, **kw)
@@ -208,6 +225,16 @@ def may_collapse(f):
         self._check_invariants()
         return rv
     return g
+
+def no_op(f):
+    return f
+
+if debugging_level == 0:
+    modifies_self = no_op
+    parent_callable = no_op
+    user_callable = no_op
+    may_overflow = no_op
+    may_collapse = no_op
 
 ########################################################################
 # Utility functions and decorators for dealing for fixing up index
@@ -245,11 +272,23 @@ def allow_negative2(f):
     return g
 
 ########################################################################
-# The main class
+# An extra constructor and the main class
 
-class BList:
+def _BList(other=[]):
+    "Create a new BList for internal use"
+
+    self = BList(other)
+    self.refcount = 1
+    return self
+
+class BList(object):
+    __slots__ = ('leaf', 'children', 'n', 'refcount')
+
     def _check_invariants(self):
+        if debugging_level == NO_DEBUG: return
         try:
+            if debugging_level == PARANOIA:
+                self.__check_reference_count()
             if self.leaf:
                 assert self.n == len(self.children)
             else:
@@ -258,7 +297,7 @@ class BList:
                 for child in self.children:
                     assert isinstance(child, BList)
                     assert half <= len(child.children) <= limit
-            assert self.refcount >= 1
+            assert self.refcount >= 1 or self.refcount is None
         except:
             print self.debug()
             raise
@@ -272,9 +311,8 @@ class BList:
         # Number of leaf elements that are descendents of this node
         self.n = 0
 
-        # Number of BList objects that point to this one
-        # Or always 1 for user-visible nodes
-        self.refcount = 1
+        # User visible objects have a refcount of None
+        self.refcount = None
 
         # We can copy other BLists in O(1) time :-)
         if isinstance(seq, BList):
@@ -297,12 +335,14 @@ class BList:
         if not other.leaf:
             for child in other.children:
                 child._incref()
-        other._incref()  # Other may be one of our children
+        if other.refcount is not None:
+            other._incref()  # Other may be one of our children
         self.__forget_children()
         self.n = other.n
-        self.children = copy.copy(other.children)
+        self.children[:] = other.children
         self.leaf = other.leaf
-        other._decref()
+        if other.refcount is not None:
+            other._decref()
 
     @parent_callable
     @modifies_self
@@ -332,7 +372,33 @@ class BList:
         else:
             return self.children[-1], len(self.children)-1, so_far - p.n
 
+    def __check_reference_count(self):
+        # Check that we're counting references properly
+        if self.refcount == None: return  # User object
+        import gc
+
+        # Count the number of times we are pointed to by a .children
+        # list of a BList
+
+        gc.collect()
+        objs = gc.get_referrers(self)
+        total = 0
+        for obj in objs:
+            if isinstance(obj, list):
+                # Could be a .children
+                objs2 = gc.get_referrers(obj)
+                for obj2 in objs2:
+                    # Could be a BList
+                    if isinstance(obj2, BList):
+                        total += len([x for x in obj2.children if x is self])
+
+        # The caller may be about to increment the reference counter, so
+        # total == self.refcount or total+1 == self.refcount are OK
+        assert total == self.refcount or total+1 == self.refcount,\
+               (total, self.refcount)
+
     def _decref(self):
+        assert self.refcount is not None
         assert self.refcount > 0
         if self.refcount == 1:
             # We're going to be garbage collected.  Remove all references
@@ -348,6 +414,7 @@ class BList:
         self.refcount -= 1
 
     def _incref(self):
+        assert self.refcount is not None
         self.refcount += 1
 
     @parent_callable
@@ -375,6 +442,11 @@ class BList:
         del self.children[i:j]
 
     @modifies_self
+    def __forget_child(self, i):
+        "Removes links to one child"
+        self.__forget_children(i, i+1)
+
+    @modifies_self
     def __prepare_write(self, pt):
         """We are about to modify the child at index pt.  Prepare it.
 
@@ -396,7 +468,7 @@ class BList:
         if pt < 0:
             pt = len(self.children) + pt
         if not self.leaf and self.children[pt].refcount > 1:
-            new_copy = BList()
+            new_copy = _BList()
             new_copy.__become(self.children[pt])
             self.children[pt]._decref()
             self.children[pt] = new_copy
@@ -409,7 +481,7 @@ class BList:
         We steal the reference counters from the caller.
         """
 
-        self = BList()
+        self = _BList()
         self.children = children
         self.leaf = leaf
         self._adjust_n()
@@ -462,8 +534,7 @@ class BList:
             if not self.children[k+1].leaf:
                 p2._incref()
             p.children.append(p2)
-        self.children[k+1]._decref()
-        del self.children[k+1]
+        self.__forget_child(k+1)
         p._adjust_n()
 
     @modifies_self
@@ -474,8 +545,7 @@ class BList:
             for p2 in self.children[k-1].children:
                 p2._incref()
         p.children[:0] = self.children[k-1].children
-        self.children[k-1]._decref()
-        del self.children[k-1]
+        self.__forget_child(k-1)
         p._adjust_n()
 
     @staticmethod
@@ -491,7 +561,7 @@ class BList:
         assert right_subtree.refcount == 1
 
         if left_depth == right_depth:
-            root = BList()
+            root = _BList()
             root.children = [left_subtree, right_subtree]
             root.leaf = False
             collapse = root.__underflow(0)
@@ -576,9 +646,9 @@ class BList:
         "Handle the case where a user-visible node overflowed"
         self._check_invariants()
         if not overflow: return 0
-        child = BList(self)
+        child = _BList(self)
         self.__forget_children()
-        self.children = [child, overflow]
+        self.children[:] = [child, overflow]
         self.leaf = False
         self._adjust_n()
         self._check_invariants()
@@ -675,6 +745,17 @@ class BList:
                 self.children.insert(k, overflow)
         self._adjust_n()
 
+    def __del__(self):
+        try:
+            #assert self.refcount is None or self.refcount == 0
+            self.refcount = 1
+            self.__forget_children()
+            self.refcount = 0
+        except:
+            import traceback
+            traceback.print_exc()
+            raise
+
     ####################################################################
     # The main insert and deletion operations
 
@@ -690,9 +771,11 @@ class BList:
             return self.__insert_here(i, item)
 
         p, k, so_far = self._locate(i)
+        del p
         self.n += 1
         p = self.__prepare_write(k)
         overflow = p._insert(i - so_far, item)
+        del p
         if not overflow: return
         return self.__insert_here(k+1, overflow)
 
@@ -700,8 +783,8 @@ class BList:
     @modifies_self
     def __iadd__(self, other):
         # Make a not-user-visible roots for the subtrees
-        right = BList(other)
-        left = BList(self)
+        right = _BList(other)
+        left = _BList(self)
 
         left_height = left._get_height()
         right_height = right._get_height()
@@ -738,13 +821,15 @@ class BList:
 
         p, k, so_far = self._locate(i)
         p2, k2, so_far2 = self._locate(j-1)
+        del p
+        del p2
 
         if k == k2:
             # All of the deleted elements are contained under a single
             # child of this node.  Recurse and check for a short
             # subtree and/or underflow
 
-            assert p == p2 and so_far == so_far2
+            assert so_far == so_far2
             p = self.__prepare_write(k)
             depth = p._delslice(i - so_far, j - so_far)
             if not depth:
@@ -761,8 +846,10 @@ class BList:
         # Call _delslice recursively on the left and right
         p = self.__prepare_write(k)
         collapse_left = p._delslice(i - so_far, j - so_far)
+        del p
         p2 = self.__prepare_write(k2)
         collapse_right = p2._delslice(max(0, i - so_far2), j - so_far2)
+        del p2
 
         deleted_k = False
         deleted_k2 = False
@@ -795,6 +882,8 @@ class BList:
             right = self.children.pop(k)
             subtree, depth = BList.__merge_trees(left, collapse_left,
                                                  right, collapse_right)
+            del left
+            del right
             self.children.insert(k, subtree)
         elif deleted_k or (not deleted_k2 and not collapse_left):
             # Only the right potentially collapsed, point there.
@@ -831,7 +920,7 @@ class BList:
 
         # No such luck, build bottom-up instead.
         # The sequence data so far goes in a leaf node.
-        cur = BList()
+        cur = _BList()
         cur.__become(self)
         self.__forget_children()
         cur._check_invariants()
@@ -847,7 +936,7 @@ class BList:
                 cur.n = limit
                 cur._check_invariants()
                 lists.append(cur)
-                cur = BList()
+                cur = _BList()
             cur.children.append(x)
 
         if cur.children:
@@ -866,14 +955,14 @@ class BList:
                 left._adjust_n()
                 cur._adjust_n()
 
-            cur = BList()
+            cur = _BList()
             cur.leaf = False
             new_lists = []
             for i in range(len(lists)):
                 if i and not i % limit:
                     new_lists.append(cur)
                     cur._check_invariants()
-                    cur = BList()
+                    cur = _BList()
                     cur.leaf = False
                 cur.children.append(lists[i])
                 cur.n += lists[i].n
@@ -881,7 +970,7 @@ class BList:
                 new_lists.append(cur)
             lists = new_lists
 
-        self.children = lists
+        self.children[:] = lists
         self._adjust_n()
         self.leaf = False
         self.__collapse()
@@ -925,16 +1014,20 @@ class BList:
         return rv
 
     def debug(self, indent=''):
+        import gc
+        gc.collect()
         "Return a string that shows the internal structure of the BList"
         indent = indent + ' '
         if not self.leaf:
-            rv = 'BList(leaf=%s, n=%s, %s)' % (
-                str(self.leaf), str(self.n), '\n%s' % indent +
+            rv = 'BList(leaf=%s, n=%s, r=%s, %s)' % (
+                str(self.leaf), str(self.n), str(self.refcount),
+                '\n%s' % indent +
                 ('\n%s' % indent).join([x.debug(indent+'  ')
                                         for x in self.children]))
         else:
-            rv = 'BList(leaf=%s, n=%s, %s)' % (
-                str(self.leaf), str(self.n), str(self.children))
+            rv = 'BList(leaf=%s, n=%s, r=%s, %s)' % (
+                str(self.leaf), str(self.n), str(self.refcount),
+                str(self.children))
         return rv
 
     @user_callable
@@ -970,7 +1063,7 @@ class BList:
                 # More efficient
                 self[start:stop] = y
                 return
-            y = BList(y)
+            y = _BList(y)
             raw_length = (stop - start)
             length = raw_length//step
             if raw_length % step:
@@ -1004,10 +1097,12 @@ class BList:
     @user_callable
     def __iter__(self):
         "User-visible function"
-        return BListIterator(self)
+        return self._iter(0, None)
 
     def _iter(self, i, j):
         "Make an efficient iterator between elements i and j"
+        if self.leaf:
+            return ShortBListIterator(self, i, j)
         return BListIterator(self, i, j)
 
     @user_callable
@@ -1060,7 +1155,7 @@ class BList:
             j -= self.n
 
         # Make a not-user-visible root for the other subtree
-        other = BList(other)
+        other = _BList(other)
 
         # Efficiently handle the common case of small lists
         if self.leaf and other.leaf and self.n + other.n <= limit:
@@ -1069,7 +1164,7 @@ class BList:
             return
 
         left = self
-        right = BList(self)
+        right = _BList(self)
         del left[i:]
         del right[:j]
         left += other
@@ -1154,15 +1249,15 @@ class BList:
         # It would likely be more efficient to do a proper mergesort,
         # though that requires a lot more code.
         tmp = list(self)
-        saved = BList(self)
-        no_list = BList()
+        saved = _BList(self)
+        no_list = _BList()
         self.__become(no_list)
         try:
             tmp.sort(*args, **kw)
             if self.n:
                 raise ValueError('list modified during sort')
 
-            tmp2 = BList(tmp)
+            tmp2 = _BList(tmp)
             self.__become(tmp2)
         except:
             self.__become(saved)
@@ -1266,9 +1361,39 @@ class BList:
         return BList(self)
 
 ########################################################################
-# Iterator class.  Use a stack to do an in-order walk in O(log n + k) time.
+# Iterator classes.  BList._iter() choses which one to use.
+
+class ShortBListIterator:
+    "A low-overhead iterator for short lists"
+
+    def __init__(self, lst, start=0, stop=None):
+        if stop is None:
+            stop = len(lst)
+        self.cur = start
+        self.stop = stop
+        self.lst = lst
+
+    def next(self):
+        if self.cur >= self.stop or self.cur >= self.lst.n:
+            self.stop = 0  # Ensure the iterator cannot be restarted
+            raise StopIteration
+
+        rv = BList.__getitem__(self.lst, self.cur)
+        self.cur += 1
+        return rv
+
+    def __iter__(self):
+        return self
 
 class BListIterator:
+    """A high-overhead iterator that is more asymptotically efficient.
+
+    Maintain a stack to traverse the tree.  The first step is to copy
+    the list so we don't have to worry about user's modifying the list
+    and wreaking havoc with our pointers.  Copying the list is O(1),
+    but not worthwhile for lists that only contain a single leaf node.
+    """
+
     def __init__(self, lst, start=0, stop=None):
         self.stack = []
         lst = BList(lst)  # Protect against users modifying the list
