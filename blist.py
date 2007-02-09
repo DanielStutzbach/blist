@@ -2,81 +2,155 @@
 
 """
 
+Copyright 2006 Daniel Stutzbach (agthorr@barsoom.org)
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+   1. Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer. 
+   2. Redistributions in binary form must reproduce the above
+      copyright notice, this list of conditions and the following
+      disclaimer in the documentation and/or other materials provided
+      with the distribution. 
+   3. The name of the author may not be used to endorse or promote
+      products derived from this software without specific prior written
+      permission. 
+
+THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT,
+INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
+IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
+
 Motivation and Design Goals
 ---------------------------
 
-I frequently find myself working with large lists and running into
-efficiency problems when I want to insert or delete elements in the
-middle of the list.  In some cases, if I know exactly what operations
-I'll be using, I can use another kind of container (such as
-collections.deque), but this frequently limits the ability to use
-other operations (such as accessing elements in the middle of the
-list).  As my needs for the list may change with time, I don't like
-being locked-in to a particular data structure's syntax.  I'd prefer a
-class that looks and quacks like a Python list while offering good
-asymptotic performance for all common operations.
+The goal of this module is to provide a list-like type that has
+better asymptotic performance than Python lists, while maintaining
+similar performance for lists with few items.
 
-I also don't want to have to worry about using the right type for
-small lists versus large lists.  Most data structures that offer good
-asymptotic performance can't compete with a simple array (i.e., Python
-lists) when the list is small.  Often I may not know in advance which
-lists will become big, and it seems un-Pythonic to have to worry about
-it and frequently be changing code from one type to the other
-depending on the circumstances.  I want something that I could use
-everywhere without needing to worry about it.  I want it to look and
-quack like a Python list, have similar performance to a Python list
-for small lists, and have good asymptotic performance for big lists.
+I was driven to write this type by the work that I do.  I frequently
+need to work with large lists, and run into efficiency problems when I
+need to insert or delete elements in the middle of the list.  I'd like
+a type that looks, acts, and quacks like a Python list while offering
+good asymptotic performance for all common operations.
 
-(Yes, I want everything.)
+A could make a type that has good asymptotic performance, but poor
+relative performance on small lists.  That'd be pretty easy to achieve
+with, say, red-black trees.  While sometimes I do need good asymptotic
+performance, other times I need the speed of Python's array-based
+lists for operating on a small list in a tight loop.  I don't want to
+have to think about which one to use.  I want one type with good
+performance in both cases.
 
-After spending some time searching for the right data structure and
-even more time trying to figure out how to implement it cleanly and
-neatly, I've settled on what I call the B-List, which is a variation of a
-B+Tree.
+In other words, it should "just work".
 
-The BList internally uses a balanced tree representation where each
-node may have between "limit" and "limit/2" children (except the root
-which may have between 0 and "limit" children).  When the list has
-fewer than "limit/2" elements, they will all be contained in a single
-node.  Since a node is little more than array, the performance for
-lists smaller than "limit/2" should be almost identical to using a
-regular Python list (one extra if() statement will be needed per
-method call).
+I don't propose replacing the existing Python list implementation.  I
+am neither that ambitious, and I appreciate how tightly optimized and
+refined the existing list implementation is.  I would like to see this
+type someday included in Python's collections module, so users with
+similar needs can make use of it.  
 
-B+Trees are an associative-array datastructure where each element is a
-(key, value) pair and the keys are kept in sorted order.  In BLists,
-the "key" is implicit: it's the in-order location of the value.
+The data structure I've created to solve the problem is a variation of
+a B+Tree, hence I call it the "BList".  It has good asymptotic
+performance for all operations, even for some operations you'd expect
+to still be O(N).  For example:
+
+    >>> from blist import BList
+    >>> n = 10000000               # n = 10 million
+    >>> b = BList([0])             # O(1)
+    >>> bigb = b * n               # O(log n)
+    >>> bigb2 = bigb[1:-1]         # O(log n)
+    >>> del bigb2[5000000]         # O(log n)
+    
+With BLists, even taking a slice (line 4) takes O(log n) time.  This
+wonderful feature is because BLists can implement copy-on-write.  More
+on that later.
+
+Thus far, I have only implemented a Python version of BList, as a
+working prototype.  Obviously, the Python implementation isn't very
+efficient at all, but it serves to illustrate the important algorithms.
+Later, I plan to implement a C version, which should have comparable
+performance to ordinary Python lists when operating on small lists.
+The Python version of BLists only outperforms Python lists when the
+lists are VERY large.
+
+Basic Idea
+----------
+
+BLists are based on B+Trees are a dictionary data structure where each
+element is a (key, value) pair and the keys are kept in sorted order.
+B+Trees internally use a tree representation.  All data is stored in
+the leaf nodes of the tree, and all leaf nodes are at the same level.
+Unlike binary trees, each node has a large number of children, stored
+as an array of references within the node.  The B+Tree operations ensure
+that each node always has between "limit/2" and "limit" children
+(except the root which may have between 0 and "limit" children).  When
+a B+Tree has fewer than "limit/2" elements, they will all be contained
+in a single node (the root).
+
+Wikipedia has a diagram that may be helpful for understanding the
+basic structure of a B+Tree:
+    http://en.wikipedia.org/wiki/B+_tree
+
+Of course, we don't want a dictionary.  We want a list.  
+
+In BLists, the "key" is implicit: it's the in-order location of the value.
 Instead of keys, each BList node maintains a count of the total number
-of elements beneath it in the tree.  This allows walking the tree
+of data elements beneath it in the tree.  This allows walking the tree
 efficiently by keeping track of how far we've moved when passing by a
-child node.
+child node.  The tree structure gives us O(log n) for most operations,
+asymptotically.
+
+When the BList has fewer than "limit/2" data elements, they are all
+stored in the root node.  In other words, for small lists a BList
+essentially reduces to an array.  It should have almost identical
+performance to a regular Python list, as only one or two extra if()
+statements will be needed per method call.
 
 Adding elements
 ---------------
 
-When we add an element to a BList node, the node may overflow (i.e.,
-have more than "limit" elements).  Instead of overflowing, it creates
-a new BList node and gives half of its elements to the new node.  When
-the inserting function returns, it informs its parent about its new
-sibling.  This causes the parent to add the sibling as a child, which
-may also cause the parent to overflow, and so on.
+Elements are inserted recursively.  Each node determines which child
+node contains the insertion point, and calls the insertion routine of
+that child.
+
+When we add elements to a BList node, the node may overflow (i.e.,
+have more than "limit" elements).  Instead of overflowing, the node
+creates a new BList node and gives half of its elements to the new
+node.  When the inserting function returns, the function informs its
+parent about the new sibling.  This causes the parent to add the new
+node as a child.  If this causes the parent to overflow, it creates a
+sibling of its own, notifies its parent, and so on.
 
 When the root of the tree overflows, it must increase the depth of the
 tree.  The root creates two new children and splits all of its former
-pointers between these two children (i.e., all former children are now
+references between these two children (i.e., all former children are now
 grandchildren).
 
-Removing elements
------------------
+Removing an element
+-------------------
+
+Removing an element is also done recursively.  Each node determines
+which child node contains the element to be removed, and calls the
+removal routine of that child.
 
 Removing an element may cause an underflow (i.e., fewer than "limit/2"
-elements).  It's the parents job to check if a child has underflowed
+elements).  It's the parent's job to check if a child has underflowed
 after any operation that might cause an underflow.  The parent must
 then repair the child, either by borrowing elements from one of the
-child's sibling or merging the child with one of its sibling.  It it
-performs a merge, this may also cause the parent to underflow.
+child's sibling or merging the child with one of its sibling.  It the
+parent performs a merge, this may also cause its parent to underflow.
 
-If node has only one element, the tree collapses.  The node replaces
+If a node has only one element, the tree collapses.  The node replaces
 its one child with its grandchildren.  When removing a single element,
 this can only happen at the root.
 
@@ -88,8 +162,8 @@ complex operation for a BList to perform.  The first step is to locate
 the common parent of all the elements to be removed.  The parent
 deletes any children who will be completely deleted (i.e., they are
 entirely within the range to be deleted).  The parent also has to deal
-with two children who may be partially deleted (i.e., they contain the
-boundaries of the deletion range).
+with two children who may be partially deleted: they contain the left
+and right boundaries of the deletion range.
 
 The parent calls the deletion operation recursively on these two
 children.  When the call returns, the children must return a valid
@@ -100,11 +174,11 @@ collapsed (if any).  The parent now has two adjacent subtrees of
 different heights that need to be put back into the main tree (to keep
 it balanced).
 
-To accomplish this goal, we'll use a merge-tree operation, defined
-below.  The parent merges the two adjacent subtrees into a single
-subtree, then merges the subtree with one of its other children.  If
-it has no other children, then the parent collapses to become the
-subtree and indicates to its parent the total level of collapse.
+To accomplish this goal, we use a merge-tree operation, defined below.
+The parent merges the two adjacent subtrees into a single subtree,
+then merges the subtree with one of its other children.  If it has no
+other children, then the parent collapses to become the subtree and
+indicates to its parent the total level of collapse.
 
 Merging subtrees
 ----------------
@@ -124,19 +198,20 @@ Retrieving a range and copy-on-write
 
 One of the most powerful features of BLists is the ability to support
 copy-on-write.  Thus far we have described a BLists as a tree
-structure where parents contain pointers to their children.  None of
-the basic tree operations require the children to maintain pointers to
-their parents or siblings.  Therefore, it is possible for a child to
-have *multiple parents*.  The parents can happily share the child as
-long as they perform read-only operations on it.  If a parent wants to
-modify a child in any way, it first checks the child's reference
-pointer.  If it is 1, the parent has the only reference and can
-proceed.  Otherwise, the parent must create a copy of the child, and
-relinquish its reference pointer to the child.
+structure where parents contain references to their children.  None of
+the basic tree operations require the children to maintain references
+to their parents or siblings.  Therefore, it is possible for a child
+to have *multiple parents*.  The parents can happily share the child
+as long as they perform read-only operations on it.  If a parent wants
+to modify a child in any way, it first checks the child's reference
+count.  If it is 1, the parent has the only reference and can proceed.
+Otherwise, the parent must create a copy of the child, and relinquish
+its reference to the child.
 
-Creating a copy of a child doesn't imply copy the child's subtree.  It
-just creates a new node that shares the child's pointers.  In other words,
-the child and the copy are now joint parents of their children.
+Creating a copy of a child doesn't implicitly copy the child's
+subtree.  It just creates a new node with a new reference to the
+child.  In other words, the child and the copy are now joint parents
+of their children.
 
 This assumes that no other code will gain references to internal BList
 nodes.  The internal nodes are never exposed to the user, so this is a
@@ -153,7 +228,7 @@ list.  Normally, this requires making a copy of that region of the
 list, which is expensive if the region is large.  With copy-on-write,
 __getslice__ takes logarithmic time and logarithmic memory.
 
-As a cool but slightly less practical example, ever wanted to make
+As a fun but slightly less practical example, ever wanted to make
 REALLY big lists?  Copy-on-write also allows for a logarithmic time
 and logarithmic memory implementation of __mul__.
 
@@ -162,9 +237,9 @@ and logarithmic memory implementation of __mul__.
 >>> print big_list.__len__()
 13407807929942597099574024998205846127479365820592393377723561443721764030073546976801874298166903427690031858186486050853753882811946569946433649006084096
 
-(iterating over this list is not recommended)
+(iterating over big_list is not recommended)
 
-Comparision of cost of operations with list()
+Comparison of cost of operations with list()
 ---------------------------------------------
 
 n is the size of "self", k is the size of the argument.  For
@@ -191,76 +266,90 @@ count               O(n)          O(n)
 extended slicing    O(k)          O(k*log n)
 __cmp__             O(min(n,k))   O(min(n,k))
 
-[1]: Plus O(k) if the sequence being added are not also a BList
+[1]: Plus O(k) if the sequence being added is not also a BList
 
 For BLists smaller than "limit" elements, each operation essentially
 reduces to the equivalent list operation, so there is little-to-no
 overhead for the common case of small lists.
 
+
+Implementation Details
+======================
+
+Structure
+---------
+
+Each node has four member variables:
+
+leaf:     true if this node is a leaf node (has user data as children),
+          false if this node is an interior node (has other nodes as children)
+
+children: an array of references to the node's children
+
+n:        the total number of user data elements below the node.
+          equal to len(children) for leaf nodes
+
+refcount: None for a root node,
+          otherwise, the number of other nodes with references to this node
+                     (i.e., parents)
+          
+Global Constants
+----------------
+
+limit:    the maximum size of .children, must be even and >= 8
+half:     limit//2, the minimum size of .children for a valid node,
+          other than the root
+
 Definitions
 -----------
 
-- Each node has no more than "limit" elements (also called children).
-- Every node is either a "leaf" or an "interior node".
-- Elements of a leaf node are user-visible Python objects.  These are
-  called "leaf elements".
-- An interior node's leaf elements are the leaf elements of all its
-  descendants.
-- Elements of interior nodes are other BList objects that are not visible
-  to the user.
-- A "user-node" is a BList object that is visible to the user.
-- A "subtree" is a BList object and all of its descendents.  The object
-  is called the "root" of the subtree.
-- BList objects never maintain references to their parents or siblings,
-  only to their children.
+- The only user-visible node is the root node.
+- All leaf nodes are at the same height in the tree.
+- If the root node has exactly one child, the root node must be a leaf node.
+- Nodes never maintain references to their parents or siblings, only to
+  their children.
 - Users call methods of the user-node, which may call methods of its
   children, who may call their children recursively.
-- A "valid node" is one which has between limit/2 and limit elements.
-- A "valid subtree" is a balanced subtree whose descendents are all valid
-  nodes.  The root of the subtree must have no more than limit
-  elements, but may have as few as 0 elements.
-- Each BList object has a variable .refcount which is the number of
-  BList objects that refer to the object.
-- User-nodes may never be referred to by another BList object have a
-  .refcount of None.
-- A public function is a member function that may be called by either users
-  or the object's parent.  They either do not begin with underscores, or
-  they begin and end with __.
-- A internal function is one that may only be called by the object
-  itself.  Even other BList objects should not call the function, as it may
-  violate the BList invariants.  They begin with __ and do not end with
-  underscores.
-- A recursive function is a member function that may be called by an object's
-  parent.  They begin with a single underscore, and must maintain the BList
-  invariants.
-- A node's leaf elements are numbered from 0 to self.n-1.  These are
-  called"positions".  For interior nodes, this numbering covers the leaf
-  elements of all the node's descendents.
+- A node's user-visible elements are numbered from 0 to self.n-1.  These are
+  called "positions".  
 - A node's children are numbered 0 to len(self.children)-1.  These are
   called "indexes" and should not be confused with positions.
 
-Invariants
-----------
+- Completely private functions (called via self.) may temporarily
+  violate these invariants.
+- Functions exposed to the user must ensure these invariants are true
+  when they return.
+- Some functions are visible to the parent of a child node.  When
+  these functions return, the invariants must be true as if the child
+  were a root node.
 
-- When a BList member function returns, the BList is the root of a valid
-  subtree.  Exception: member functions that will only be called
-  via self do not need to adhere to this requirement.
-- When a BList member function returns, the .n member variable must
-  contain the total number of leaf elements of all its descendents.
+Conventions
+-----------
+
+- Function that may be called by either users or the object's parent
+  either do not begin with underscores, or they begin and end with __.
+- A function that may only be called by the object itself begins with
+  __ and do not end with underscores.
+- Functions that may be called by an object's parent, but not by the user,
+  begin with a single underscore.
+
+Other rules
+-----------
+
 - If a function may cause a BList to overflow, the function has the
   following return types:
   - None, if the BList did not overflow
-  - A valid BList subtree containing a new right-hand sibling for the
-    BList that was called.
+  - Otherwise, a valid BList subtree containing a new right-hand sibling
+    for the BList that was called.
 - BList objects may modify their children if the child's .refcount is
-  1.  If the .refcount is's greater than 1, the child is shared by another
+  1.  If the .refcount is greater than 1, the child is shared by another
   parent. The object must copy the child, decrement the child's reference
   counter, and modify the copy instead.
 - If an interior node has only one child, before returning it must
   collapse the tree so it takes on the properties of its child.  This
   may mean the interior node becomes a leaf.
 - An interior node may return with no children.  The parent must then
-  remove the interior node from its children.
+  remove the interior node from the parent's children.
 - If a function may cause an interior node to collapse, it must have
   the following return types:
   - 0, if the BList did not collapse, or if it is now empty (self.n == 0)
@@ -275,7 +364,7 @@ Observations
 
 - User-nodes always have a refcount of at least 1
 - User-callable methods may not cause the reference counter to decrement.
-- If a parent calls a child's method that may cause a BList to
+- If a parent calls a child's method that may cause the child to
   underflow, the parent must detect the underflow and merge the child
   before returning.
 
@@ -290,14 +379,14 @@ Suspected Bugs:
  - None currently, but needs more testing
  - Passes test_list.py :-)
 
-User-visible Differences from list:
+User-visible Differences from list():
  - If you modify the list in the middle of an iteration and continue
    to iterate, the behavior is different.  BList iteration could be
    implemented the same way as in list, but then iteration would have
-   O(n * log n) cost instead of O(N).  I'm okay with the way it is.
+   O(n * log n) cost instead of O(n).  I'm okay with the way it is.
 
 Miscellaneous:
- - All of the reference counter stuff is redundent with the reference
+ - All of the reference counter stuff is redundant with the reference
    counting done internally on Python objects.  In C we can just peak
    at the reference counter stored in all Python objects.
 
@@ -322,7 +411,7 @@ debugging_level = NO_DEBUG
 
 ########################################################################
 # Simulate utility functions from the Python C API.  These functions
-# help use detect the case where we have a self-referential list and a
+# help us detect the case where we have a self-referential list and a
 # user has asked us to print it...
 Py_Repr = []
 def Py_ReprEnter(obj):
@@ -404,8 +493,7 @@ if debugging_level == 0:
     may_collapse = no_op
 
 ########################################################################
-# Utility functions and decorators for dealing for fixing up index
-# parameters.
+# Utility functions and decorators for fixing up index parameters.
 
 def sanify_index(n, i):
     if isinstance(i, slice): return i
@@ -608,8 +696,14 @@ class BList(object):
                 self.children[k]._decref()
         del self.children[i:j]
 
-     def __del__(self):
-         "In C, this would be a tp_clear function instead of a __del__"
+    def __del__(self):
+        """In C, this would be a tp_clear function instead of a __del__.
+
+        Because of the way Python's garbage collector handles __del__
+        methods, we can end up with uncollectable BList objects if the
+        user creates circular references.  In C with a tp_clear
+        function, this wouldn't be a problem.
+        """
         try:
             self.refcount = 1          # Make invariance-checker happy
             self.__forget_children()
@@ -619,7 +713,7 @@ class BList(object):
             traceback.print_exc()
             raise
 
-   @modifies_self
+    @modifies_self
     def __forget_child(self, i):
         "Removes links to one child"
         self.__forget_children(i, i+1)
@@ -1092,7 +1186,7 @@ class BList(object):
         self.__forget_children()
         cur._check_invariants()
 
-        # Build the base of the tree
+        # Build the base of the tree (all the leaf nodes)
         lists = []
         while 1:
             try:
@@ -1557,7 +1651,7 @@ class BListIterator:
 
     Maintain a stack to traverse the tree.  The first step is to copy
     the list so we don't have to worry about user's modifying the list
-    and wreaking havoc with our pointers.  Copying the list is O(1),
+    and wreaking havoc with our references.  Copying the list is O(1),
     but not worthwhile for lists that only contain a single leaf node.
     """
 
