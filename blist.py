@@ -242,8 +242,9 @@ and logarithmic memory implementation of __mul__.
 Comparison of cost of operations with list()
 ---------------------------------------------
 
-n is the size of "self", k is the size of the argument.  For
-slice operations, k is the length of the slice.
+n is the size of "self", k is the size of the argument.  For slice
+operations, k is the length of the slice.  For __mul__, k is the value
+of the argument.
 
    Operation            list               BList
 ---------------     ------------  -----------------------
@@ -1043,7 +1044,7 @@ class BList(object):
     @user_callable
     @modifies_self
     def __iadd__(self, other):
-        # Make a not-user-visible roots for the subtrees
+        # Make not-user-visible roots for the subtrees
         right = _BList(other)
         left = _BList(self)
 
