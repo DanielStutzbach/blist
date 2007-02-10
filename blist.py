@@ -549,7 +549,7 @@ class BList(object):
                 assert self.n == len(self.children)
             else:
                 assert self.n == sum(child.n for child in self.children)
-                assert len(self.children) > 1 or len(self.children) == 0
+                assert len(self.children) > 1 or len(self.children) == 0, len(self.children)
                 for child in self.children:
                     assert isinstance(child, BList)
                     assert half <= len(child.children) <= limit
@@ -557,6 +557,13 @@ class BList(object):
         except:
             print self.debug()
             raise
+
+    def _check_invariants_r(self):
+        if debugging_level == NO_DEBUG: return
+        self._check_invariants()
+        if self.leaf: return
+        for c in self.children:
+            c._check_invariants_r()
 
     def __init__(self, seq=[]):
         self.leaf = True
@@ -874,7 +881,7 @@ class BList(object):
         If so, move things around until self is the root of a valid
         subtree again, possibly requiring collapsing the tree.
 
-        Always calls ._adjust_n() (possible via .__collapse).
+        Always calls self._adjust_n() (often via self.__collapse()).
 
         """
 
@@ -945,7 +952,8 @@ class BList(object):
         """
 
         if k < 0:
-            k = len(self.children) + k
+            k += len(self.children)
+
         if len(self.children) < limit:
             self.children.insert(k, item)
             collapse = self.__underflow(k)
@@ -1002,7 +1010,8 @@ class BList(object):
     @modifies_self
     def __reinsert_subtree(self, k, depth):
         'Child at position k is too short by "depth".  Fix it'
-        assert self.children[k].refcount == 1
+
+        assert self.children[k].refcount == 1, self.children[k].refcount
         subtree = self.children.pop(k)
         if len(self.children) > k:
             # Merge right
