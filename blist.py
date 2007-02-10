@@ -998,7 +998,7 @@ class BList(object):
             p = self.__prepare_write(side)
             overflow = p._insert_subtree(side, subtree, depth-1)
             if not overflow: return None
-            return self.__insert_here(side, overflow)
+            subtree = overflow
 
         if side < 0:
             side = len(self.children)
@@ -1025,7 +1025,7 @@ class BList(object):
             overflow = p._insert_subtree(-1, subtree, depth-1)
             if overflow:
                 self.children.insert(k, overflow)
-        self._adjust_n()
+        return self.__underflow(k)
 
     ####################################################################
     # The main insert and deletion operations
@@ -1105,8 +1105,7 @@ class BList(object):
             depth = p._delslice(i - so_far, j - so_far)
             if not depth:
                 return self.__underflow(k)
-            self.__reinsert_subtree(k, depth)
-            return 0
+            return self.__reinsert_subtree(k, depth)
 
         # Deleted elements are in a range of child elements.  There
         # will be:
@@ -1156,7 +1155,12 @@ class BList(object):
             del left
             del right
             self.children.insert(k, subtree)
-        elif deleted_k or (not deleted_k2 and not collapse_left):
+            
+        elif deleted_k:
+            # Only the right potentially collapsed, point there.
+            depth = collapse_right
+            # k already points to the old k2, since k was deleted
+        elif not deleted_k2 and not collapse_left:
             # Only the right potentially collapsed, point there.
             k = k + 1
             depth = collapse_right
@@ -1171,8 +1175,7 @@ class BList(object):
             return depth + self.__underflow(k)
 
         # We definitely have a short subtree at k, and we have other children
-        self.__reinsert_subtree(k, depth)
-        return self.__underflow(k)
+        return self.__reinsert_subtree(k, depth)
 
     def __init_from_seq(self, seq):
         # Try the common case of a sequence < limit in length
