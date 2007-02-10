@@ -426,6 +426,9 @@ def Py_ReprLeave(obj):
             del Py_Repr[i]
             break
 
+# Needed for sort
+builtin_cmp = cmp
+
 ########################################################################
 # Decorators are for error-checking and code clarity.  They verify
 # (most of) the invariances given above.  They're replaced with no_op()
@@ -693,7 +696,7 @@ class BList(object):
 
         if self.leaf:
             return 1
-        return 1 + self.children[0]._get_height()
+        return 1 + self.children[-1]._get_height()
 
     @modifies_self
     def __forget_children(self, i=0, j=None):
@@ -1217,6 +1220,14 @@ class BList(object):
             lists.append(cur)
             cur.n = len(cur.children)
 
+        self.__build_tree(lists)
+
+    def __build_tree(self, lists):
+        """Build up all the intermediate nodes of a BList.
+
+        self is an empty root node.  "lists" is a list of leaf nodes.
+        """
+        
         # Iteratively build the next higher layer of the tree, until we have
         # a single root
         while len(lists) > 1:
@@ -1516,27 +1527,220 @@ class BList(object):
         self.__become(self * n)
         return self
 
+    @parent_callable
+    @modifies_self
+    def _merge(self, other, cmp=None, key=None, reverse=False):
+        """Merge two sorted BLists, mostly in place
+
+        This function may modify both self and other.  It's a subroutine
+        for .sort().
+
+        This version isn't quite as in-place as we'd like.  It still
+        uses O(n) extra space, to store the leaf node pointers as an
+        array.  We could bring this down to O(log n) extra space by
+        building the output tree up as we go and recyling interior
+        nodes of the input trees (instead of just recycling leaf
+        nodes).  We could accomplish this by keeping a separate
+        recyling list for different types of nodes, grouped by their
+        distance from the bottom.
+        """
+
+        other._check_invariants()
+        if not cmp:
+            cmp = builtin_cmp
+
+        if do_cmp(self[-1], other[0]) <= 0:
+            self += other
+            return
+
+        lst1 = self
+        lst2 = other
+
+        # Basic approach: walk through the elements of both BLists,
+        # accumulating the output in a new BList (just like a regular
+        # merge-sort).  We build the output BList from the bottom up, in
+        # an array of leafs.
+
+        # To save memory, as we consume leafs from the two input BLists,
+        # we set them aside in a list of recyclable leaf nodes.  When the
+        # output BList needs a new leaf, we draw it from the recyclable list.
+        # At most, we will need to allocate two new leafs for the output.
+        # After that we will always be able to draw from the recyclable list.
+        # We don't change the .n for recycled leaf nodes because that would
+        # break the invariants for the input BLists, which we must still
+        # maintain.
+
+        # Use a stack for each input BList, so we can walk through them
+        # in O(n) time.
+        stack1 = []
+        stack2 = []
+        while not lst1.leaf:
+            stack1.append((lst1, 0))
+            lst1 = lst1.__prepare_write(0)
+        while not lst2.leaf:
+            stack2.append((lst2, 0))
+            lst2 = lst2.__prepare_write(0)
+
+        leafs = []          # leafs of the output BList
+        recyclable = []     # list of recyclable leaf nodes
+        out_leaf = None     # Current output leaf
+
+        def get_out_leaf():
+            "Get a new output leaf, either via recycling or allocation"
+
+            if recyclable:
+                leaf = recyclable.pop(-1)
+            else:
+                leaf = _BList()
+                leaf.n = limit
+                leaf.children = [None]*limit
+            leaf.leaf = True
+            leafs.append(leaf)
+            return leaf
+
+        def recycle(lst):
+            "Mark a consumed input leaf for recyling as an output leaf"
+            
+            assert lst.refcount == 1, lst.refcount
+            if lst.leaf and lst is not self:
+                lst._incref()
+                recyclable.append(lst)
+
+        def advance(stack):
+            "Return the next input leaf for one of the input BLists"
+            
+            while stack:
+                lst, i = stack.pop(-1)
+                i += 1
+                if i < len(lst.children):
+                    break
+                recycle(lst)
+            else:
+                return None  # end of this BList
+
+            stack.append((lst, i))
+            lst = lst.__prepare_write(i)
+            while not lst.leaf:
+                stack.append((lst, 0))
+                lst = lst.__prepare_write(0)
+            return lst
+
+        def do_cmp(a, b):
+            "Utility function for performing a comparison"
+            
+            # The user-supplied functions may through exceptions, so must
+            # have a valid state here in case the sort terminates abruptly
+            self._check_invariants()
+            other._check_invariants()
+
+            if key:
+                a = a[key]
+                b = b[key]
+            x = cmp(a, b)
+            if reverse:
+                x = -x
+            return x
+
+        def finish(remainder):
+            "One of the input lists finished; append the other and cleanup"
+
+            # Transform the list of leafs into a proper BList
+            root = BList()
+            root.__build_tree(leafs)
+
+            # Delete any extra elements from the last leaf
+            # We need to do this because it may have been a recycled leaf
+            # with more elements than we actually needed
+            del root[-(out_leaf.n - k):]
+
+            # Append the rest of the unfinished input BList
+            root += remainder
+            
+            assert len(root) == len(self) + len(other), \
+                   (len(root), len(self), len(other))
+
+            # Change self to be the base of the output BList
+            self.__become(root)
+
+            if debugging_level == PARANOIA and cmp is None:
+                good = sorted(self, cmp=cmp, key=key, reverse=reverse)
+                assert list(self) == good, (self, good)
+
+        out_leaf = get_out_leaf()
+        i = 0   # Index into current leaf from lst1
+        j = 0   # Index into current leaf from lst2
+        n = 0   # Absolute index into lst1
+        m = 0   # Absolute index into lst2
+        k = 0   # Index into the current leaf of output
+
+        while 1:
+            if i >= lst1.n:
+                recycle(lst1)
+                lst1 = advance(stack1)
+                i = 0
+                if lst1 is None:
+                    finish(other[m:])
+                    break
+
+            if j >= lst2.n:
+                recycle(lst2)
+                lst2 = advance(stack2)
+                j = 0
+                if lst2 is None:
+                    finish(self[n:])
+                    break
+            
+            if do_cmp(lst1.children[i], lst2.children[j]) <= 0:
+                out_leaf.children[k] = lst1.children[i]
+                k += 1
+                i += 1
+                n += 1
+            else:
+                out_leaf.children[k] = lst2.children[j]
+                k += 1
+                j += 1
+                m += 1
+            if k == out_leaf.n:
+                out_leaf = get_out_leaf()
+                k = 0
+
+        for c in recyclable:
+            c._decref()
+
+    @parent_callable
+    @modifies_self
+    def _sort(self, *args, **kw):
+        if self.leaf:
+            self.children.sort(*args, **kw)
+            return
+        for i in range(len(self.children)):
+            self.__prepare_write(i)
+            self.children[i].sort(*args, **kw)
+        while len(self.children) != 1:
+            children = []
+            for i in range(0, len(self.children)-1, 2):
+                self.children[i]._merge(self.children[i+1], *args, **kw)
+                self.children[i+1]._decref()
+                children.append(self.children[i])
+            self.children[:] = children
+        self.__become(self.children[0])
+
     @user_callable
     @modifies_self
     def sort(self, *args, **kw):
-        # This implementation uses 3*N memory.  Yuck.
-        # It would likely be more efficient to do a proper mergesort,
-        # though that requires a lot more code.
-        tmp = list(self)
-        saved = _BList(self)
-        no_list = _BList()
+        if self.leaf: # Special case to speed up common case
+            self.children.sort(*args, **kw)
+            return
+        no_list = BList()
+        real_self = BList(self)
         self.__become(no_list)
         try:
-            tmp.sort(*args, **kw)
+            real_self._sort(*args, **kw)
             if self.n:
                 raise ValueError('list modified during sort')
-
-            tmp2 = _BList(tmp)
-            self.__become(tmp2)
-        except:
-            self.__become(saved)
-            raise
-
+        finally:
+            self.__become(real_self)
+                    
     @user_callable
     def __add__(self, other):
         if not isinstance(other, BList) and not isinstance(other, list):
@@ -1721,8 +1925,17 @@ class BListIterator:
 # Test code
 
 def main():
-    lst = BList()
     n = 512
+
+    data = range(n)
+    import random
+    random.shuffle(data)
+    x = BList(data)
+    x.sort()
+
+    assert list(x) == sorted(data), x
+
+    lst = BList()
     t = tuple(range(n))
     for i in range(n):
         lst.append(i)
