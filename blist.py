@@ -410,6 +410,8 @@ NO_DEBUG = 0            # No checking
 
 debugging_level = NO_DEBUG
 
+leaked_reference = False
+
 ########################################################################
 # Simulate utility functions from the Python C API.  These functions
 # help us detect the case where we have a self-referential list and a
@@ -439,7 +441,7 @@ def modifies_self(f):
     def g(self, *args, **kw):
         assert self.refcount == 1 or self.refcount is None
         rv = f(self, *args, **kw)
-        assert self.refcount == 1 or self.refcount is None
+        assert self.refcount == 1 or not self.refcount, self.refcount
         return rv
     return g
 
@@ -556,7 +558,8 @@ class BList(object):
                 for child in self.children:
                     assert isinstance(child, BList)
                     assert half <= len(child.children) <= limit
-            assert self.refcount >= 1 or self.refcount is None
+            assert self.refcount >= 1 or self.refcount is None \
+                   or (self.refcount == 0 and not self.children)
         except:
             print self.debug()
             raise
@@ -638,9 +641,8 @@ class BList(object):
         else:
             return self.children[-1], len(self.children)-1, so_far - p.n
 
-    def __check_reference_count(self):
-        # Check that we're counting references properly
-        if self.refcount == None: return  # User object
+    def __get_reference_count(self):
+        "Figure out how many parents we have"
         import gc
 
         # Count the number of times we are pointed to by a .children
@@ -657,11 +659,23 @@ class BList(object):
                     # Could be a BList
                     if isinstance(obj2, BList):
                         total += len([x for x in obj2.children if x is self])
+        return total
 
-        # The caller may be about to increment the reference counter, so
-        # total == self.refcount or total+1 == self.refcount are OK
-        assert total == self.refcount or total+1 == self.refcount,\
-               (total, self.refcount)
+    def __check_reference_count(self):
+        "Validate that we're counting references properly"
+        total = self.__get_reference_count()
+
+        if self.refcount is not None:
+            # The caller may be about to increment the reference counter, so
+            # total == self.refcount or total+1 == self.refcount are OK
+            assert total == self.refcount or total+1 == self.refcount,\
+                   (total, self.refcount)
+
+        # Reset the flag to avoid repeatedly raising the assertion
+        global leaked_reference
+        x = leaked_reference
+        leaked_reference = False
+        assert not x, x
 
     def _decref(self):
         assert self.refcount is not None
@@ -669,13 +683,6 @@ class BList(object):
         if self.refcount == 1:
             # We're going to be garbage collected.  Remove all references
             # to other objects.
-
-            # This step is technically unnecessary.  The garbage
-            # collector will find the descendents either way.
-            # However, if we're sharing the children, this releases
-            # them so the other tree can write to them without having
-            # to make a copy.  On the other hand, if we're not
-            # sharing, then we're wasting our time here.
             self.__forget_children()
         self.refcount -= 1
 
@@ -715,6 +722,9 @@ class BList(object):
         user creates circular references.  In C with a tp_clear
         function, this wouldn't be a problem.
         """
+        if self.refcount:
+            global leaked_reference
+            leaked_reference = True
         try:
             self.refcount = 1          # Make invariance-checker happy
             self.__forget_children()
@@ -1065,6 +1075,7 @@ class BList(object):
 
         root = BList.__merge_trees(left, -left_height, right, -right_height)[0]
         self.__become(root)
+        root._decref()
         return self
 
     @parent_callable
@@ -1354,13 +1365,16 @@ class BList(object):
             if raw_length % step:
                 length += 1
             if length != len(y):
+                leny = len(y)
+                y._decref()
                 raise ValueError('attempt to assign sequence of size %d '
                                  'to extended slice of size %d'
-                                 % (len(y), length))
+                                 % (leny, length))
             k = 0
             for j in xrange(start, stop, step):
                 self[j] = y[k]
                 k += 1
+            y._decref()
             return
 
         if i >= self.n or i < 0:
@@ -1445,6 +1459,7 @@ class BList(object):
         # Efficiently handle the common case of small lists
         if self.leaf and other.leaf and self.n + other.n <= limit:
             self.children[i:j] = other.children
+            other._decref()
             self._adjust_n()
             return
 
@@ -1454,6 +1469,9 @@ class BList(object):
         del right[:j]
         left += other
         left += right
+
+        other._decref()
+        right._decref()
 
     @user_callable
     @modifies_self
