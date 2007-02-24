@@ -842,18 +842,23 @@ class BList(object):
         p._adjust_n()
 
     @staticmethod
-    def __merge_trees(left_subtree, left_depth, right_subtree, right_depth):
-        """Merge two subtrees of potentially different heights.
+    def __concat(left_subtree, right_subtree, height_diff):
+        """Concatenate two trees of potentially different heights.
 
-        Returns a tuple of the new, combined subtree and its depth.
+        The parameters are the two trees, and the difference in their
+        heights expressed as left_height - right_height.
 
-        Depths are the depth in the parent, not their height.
+        Returns a tuple of the new, combined tree, and an integer.
+        The integer expresses the height difference between the new
+        tree and the taller of the left and right subtrees.  It will
+        be 0 if there was no change, and 1 if the new tree is taller
+        by 1.
         """
 
         assert left_subtree.refcount == 1
         assert right_subtree.refcount == 1
 
-        if left_depth == right_depth:
+        if height_diff == 0:
             root = _BList()
             root.children = [left_subtree, right_subtree]
             root.leaf = False
@@ -861,18 +866,44 @@ class BList(object):
             if not collapse:
                 collapse = root.__underflow(1)
             if collapse: adj = 0
-            else: adj = -1
+            else: adj = 1
             overflow = None
-        elif left_depth < right_depth: # Left is larger
+        elif height_diff > 0: # Left is larger
             root = left_subtree
             overflow = root._insert_subtree(-1, right_subtree,
-                                            right_depth - left_depth - 1)
+                                            height_diff - 1)
         else: # Right is larger
             root = right_subtree
             overflow = root._insert_subtree(0, left_subtree,
-                                            left_depth - right_depth - 1)
-        adj = root.__overflow_root(overflow)
-        return root, max(left_depth, right_depth) + adj
+                                            -height_diff - 1)
+        adj = -root.__overflow_root(overflow)
+        return root, adj
+
+    @staticmethod
+    def __concat_subtrees(left_subtree, left_depth, right_subtree,right_depth):
+        """Concatenate two subtrees of potentially different heights.
+
+        Returns a tuple of the new, combined subtree and its depth.
+
+        Depths are the depth in the parent, not their height.
+        """
+
+        root, adj = BList.__concat(left_subtree, right_subtree,
+                                   -(left_depth - right_depth))
+        return root, max(left_depth, right_depth) - adj
+
+    @staticmethod
+    def __concat_roots(left_root, left_height, right_root, right_height):
+        """Concatenate two roots of potentially different heights.
+
+        Returns a tuple of the new, combined root and its height.
+
+        Heights are the height from the root to its leaf nodes.
+        """
+
+        root, adj = BList.__concat(left_root, right_root,
+                                   left_height - right_height)
+        return root, max(left_height, right_height) + adj
 
     @may_collapse
     @modifies_self
@@ -895,7 +926,6 @@ class BList(object):
         subtree again, possibly requiring collapsing the tree.
 
         Always calls self._adjust_n() (often via self.__collapse()).
-
         """
 
         if self.leaf:
@@ -1073,7 +1103,8 @@ class BList(object):
         left_height = left._get_height()
         right_height = right._get_height()
 
-        root = BList.__merge_trees(left, -left_height, right, -right_height)[0]
+        root = BList.__concat_subtrees(left, -left_height,
+                                       right, -right_height)[0]
         self.__become(root)
         root._decref()
         return self
@@ -1164,8 +1195,8 @@ class BList(object):
             # Both exist and collapsed.  Merge them into one subtree.
             left = self.children.pop(k)
             right = self.children.pop(k)
-            subtree, depth = BList.__merge_trees(left, collapse_left,
-                                                 right, collapse_right)
+            subtree, depth = BList.__concat_subtrees(left, collapse_left,
+                                                     right, collapse_right)
             del left
             del right
             self.children.insert(k, subtree)
@@ -1191,6 +1222,7 @@ class BList(object):
         # We definitely have a short subtree at k, and we have other children
         return self.__reinsert_subtree(k, depth)
 
+    @modifies_self
     def __init_from_seq(self, seq):
         # Try the common case of a sequence < limit in length
         iterator = iter(seq)
@@ -1204,12 +1236,17 @@ class BList(object):
             except AttributeError:
                 raise TypeError('instance has no next() method')
             self.children.append(x)
-        self.n = len(self.children)
+        self.n = limit
+        assert limit == len(self.children)
+        self._check_invariants()
 
         # No such luck, build bottom-up instead.
         # The sequence data so far goes in a leaf node.
         cur = _BList()
+        self._check_invariants()
+        cur._check_invariants()
         cur.__become(self)
+        cur._check_invariants()
         self.__forget_children()
         cur._check_invariants()
 
@@ -1527,13 +1564,18 @@ class BList(object):
     def __mul__(self, n):
         if n <= 0:
             return BList()
-        mask = 1
-        powers = [self]
+
+        power = BList(self)
         rv = BList()
+
+        if n & 1:
+            rv += self
+        mask = 2
+
         while mask <= n:
+            power += power
             if mask & n:
-                rv += powers[-1]
-            powers.append(powers[-1] + powers[-1])
+                rv += power
             mask <<= 1
         return rv
 
@@ -1548,109 +1590,52 @@ class BList(object):
     @parent_callable
     @modifies_self
     def _merge(self, other, cmp=None, key=None, reverse=False):
-        """Merge two sorted BLists, mostly in place
+        """Merge two sorted BLists into one sorted BList, part of MergeSort
 
-        This function may modify both self and other.  It's a subroutine
-        for .sort().
+        This function consumes the two input BLists along the way,
+        making the MergeSort nearly in-place.  This function gains ownership
+        of the self and other objects and must .decref() them if appropriate.
 
-        This version isn't quite as in-place as we'd like.  It still
-        uses O(n) extra space, to store the leaf node pointers as an
-        array.  We could bring this down to O(log n) extra space by
-        building the output tree up as we go and recyling interior
-        nodes of the input trees (instead of just recycling leaf
-        nodes).  We could accomplish this by keeping a separate
-        recyling list for different types of nodes, grouped by their
-        distance from the bottom.
+        It returns one sorted BList.
+
+        It operates by maintaining two forests (lists of BList
+        objects), one for each of the two inputs lists.  When it needs
+        a new leaf node, it looks at the first element of the forest
+        and checks to see if it's a leaf.  If so, it grabs that.  If
+        not a leaf, it takes that node, removes the root, and prepends
+        the children to the forest.  Then, it checks again for a leaf.
+        It repeats this process until it is able to acquire a leaf.
+        This process avoids the cost of doing O(log n) work O(n) times
+        (for a total O(n log n) cost per merge).  It takes O(log n)
+        extra memory and O(n) steps.
+
+        We also maintain a forest for the output.  Whenever we fill an
+        output leaf node, we append it to the output forest.  We keep
+        track of the total number of leaf nodes added to the forest,
+        and use that to analytically determine if we have "limit" nodes at the
+        end of the forest all of the same height.  When we do, we remove them
+        from the forest, place them under a new node, and put the new node on
+        the end of the forest.  This guarantees that the output forest
+        takes only O(log n) extra memory.  When we're done with the input, we
+        merge the forest into one final BList.
+
+        Whenever we finish with an input leaf node, we add it to a
+        recyclable list, which we use as a source for nodes for the
+        output.  Since the output will use only O(1) more nodes than the
+        combined input, this part is effectively in-place.
+
+        Overall, this function uses O(log n) extra memory and takes O(n) time.
         """
-
-        other._check_invariants()
+        
+        other._check_invariants();
         if not cmp:
             cmp = builtin_cmp
-
-        if do_cmp(self[-1], other[0]) <= 0:
-            self += other
-            return
-
-        lst1 = self
-        lst2 = other
-
-        # Basic approach: walk through the elements of both BLists,
-        # accumulating the output in a new BList (just like a regular
-        # merge-sort).  We build the output BList from the bottom up, in
-        # an array of leafs.
-
-        # To save memory, as we consume leafs from the two input BLists,
-        # we set them aside in a list of recyclable leaf nodes.  When the
-        # output BList needs a new leaf, we draw it from the recyclable list.
-        # At most, we will need to allocate two new leafs for the output.
-        # After that we will always be able to draw from the recyclable list.
-        # We don't change the .n for recycled leaf nodes because that would
-        # break the invariants for the input BLists, which we must still
-        # maintain.
-
-        # Use a stack for each input BList, so we can walk through them
-        # in O(n) time.
-        stack1 = []
-        stack2 = []
-        while not lst1.leaf:
-            stack1.append((lst1, 0))
-            lst1 = lst1.__prepare_write(0)
-        while not lst2.leaf:
-            stack2.append((lst2, 0))
-            lst2 = lst2.__prepare_write(0)
-
-        leafs = []          # leafs of the output BList
-        recyclable = []     # list of recyclable leaf nodes
-        out_leaf = None     # Current output leaf
-
-        def get_out_leaf():
-            "Get a new output leaf, either via recycling or allocation"
-
-            if recyclable:
-                leaf = recyclable.pop(-1)
-            else:
-                leaf = _BList()
-                leaf.n = limit
-                leaf.children = [None]*limit
-            leaf.leaf = True
-            leafs.append(leaf)
-            return leaf
-
-        def recycle(lst):
-            "Mark a consumed input leaf for recyling as an output leaf"
-            
-            assert lst.refcount == 1, lst.refcount
-            if lst.leaf and lst is not self:
-                lst._incref()
-                recyclable.append(lst)
-
-        def advance(stack):
-            "Return the next input leaf for one of the input BLists"
-            
-            while stack:
-                lst, i = stack.pop(-1)
-                i += 1
-                if i < len(lst.children):
-                    break
-                recycle(lst)
-            else:
-                return None  # end of this BList
-
-            stack.append((lst, i))
-            lst = lst.__prepare_write(i)
-            while not lst.leaf:
-                stack.append((lst, 0))
-                lst = lst.__prepare_write(0)
-            return lst
-
+    
+        recyclable = []
+    
         def do_cmp(a, b):
             "Utility function for performing a comparison"
             
-            # The user-supplied functions may through exceptions, so must
-            # have a valid state here in case the sort terminates abruptly
-            self._check_invariants()
-            other._check_invariants()
-
             if key:
                 a = a[key]
                 b = b[key]
@@ -1658,72 +1643,188 @@ class BList(object):
             if reverse:
                 x = -x
             return x
-
-        def finish(remainder):
-            "One of the input lists finished; append the other and cleanup"
-
-            # Transform the list of leafs into a proper BList
-            root = BList()
-            root.__build_tree(leafs)
-
-            # Delete any extra elements from the last leaf
-            # We need to do this because it may have been a recycled leaf
-            # with more elements than we actually needed
-            del root[-(out_leaf.n - k):]
-
-            # Append the rest of the unfinished input BList
-            root += remainder
-            
-            assert len(root) == len(self) + len(other), \
-                   (len(root), len(self), len(other))
-
-            # Change self to be the base of the output BList
-            self.__become(root)
-
-            if debugging_level == PARANOIA and cmp is None:
-                good = sorted(self, cmp=cmp, key=key, reverse=reverse)
-                assert list(self) == good, (self, good)
-
-        out_leaf = get_out_leaf()
-        i = 0   # Index into current leaf from lst1
-        j = 0   # Index into current leaf from lst2
-        n = 0   # Absolute index into lst1
-        m = 0   # Absolute index into lst2
-        k = 0   # Index into the current leaf of output
-
-        while 1:
-            if i >= lst1.n:
-                recycle(lst1)
-                lst1 = advance(stack1)
-                i = 0
-                if lst1 is None:
-                    finish(other[m:])
-                    break
-
-            if j >= lst2.n:
-                recycle(lst2)
-                lst2 = advance(stack2)
-                j = 0
-                if lst2 is None:
-                    finish(self[n:])
-                    break
-            
-            if do_cmp(lst1.children[i], lst2.children[j]) <= 0:
-                out_leaf.children[k] = lst1.children[i]
-                k += 1
-                i += 1
-                n += 1
+    
+        def recycle(node):
+            "We've consumed a node, set it aside for re-use"
+            del node.children[:]
+            node.n = 0
+            node.leaf = True
+            recyclable.append(node)
+            assert node.refcount == 1
+            assert node.__get_reference_count() == 0
+    
+        def get_node(leaf):
+            "Get a node, either from the recycled list or through allocation"
+            if recyclable:
+                node = recyclable.pop(-1)
             else:
-                out_leaf.children[k] = lst2.children[j]
-                k += 1
-                j += 1
-                m += 1
-            if k == out_leaf.n:
-                out_leaf = get_out_leaf()
-                k = 0
+                node = _BList()
+            node.leaf = leaf
+            return node
+    
+        leaf_count = 0 # Total number of leaf nodes in the output forest
+        
+        def append_leaf(leaf):
+            "Append a leaf to the output forest, possible combining nodes"
+            
+            if not leaf.children:     # Don't add empty leaf nodes
+                recycle(leaf)
+                return lf
+            forest_out.append(leaf)
+            leaf._adjust_n()
 
-        for c in recyclable:
-            c._decref()
+            # Every "limit" leaf nodes, combine the last "limit" nodes
+            # This takes "limit" leaf nodes and replaces them with one node
+            # that has the leaf nodes as children.
+            
+            # Every "limit**2" leaf nodes, take the last "limit" nodes
+            # (which have height 2) and replace them with one node
+            # (with height 3).
+
+            # Every "limit**i" leaf nodes, take the last "limit" nodes
+            # (which have height i) and replace them with one node
+            # (with height i+1).
+
+            i = 1
+            lf = leaf_count + 1
+            while lf % limit**i == 0:
+                parent = get_node(leaf=False)
+                assert len(forest_out) >= limit, (len(forest_out), limit, i, lf)
+                parent.children[:] = forest_out[-limit:]
+                del forest_out[-limit:]
+
+                # If the right-hand node has too few children,
+                # borrow from a neighbor
+                x = parent.__underflow(len(parent.children)-1)
+                assert not x
+
+                forest_out.append(parent)
+                i += 1
+            return lf
+    
+        def get_leaf(forest):
+            "Get a new leaf node to process from one of the input forests"
+            node = forest.pop(-1)
+            assert not node.__get_reference_count()
+            while not node.leaf:
+                forest.extend(reversed(node.children))
+                recycle(node)
+                node = forest.pop(-1)
+            assert node.__get_reference_count() == 0
+            return node
+
+        try:
+            if do_cmp(self[-1], other[0]) <= 0: # Speed up a common case
+                self += other
+                other._decref()
+                return self
+
+            # Input forests
+            forest1 = [self]
+            forest2 = [other]
+
+            # Output forests
+            forest_out = []
+
+            # Input leaf nodes we are currently processing
+            leaf1 = get_leaf(forest1)
+            leaf2 = get_leaf(forest2)
+
+            # Index into leaf1 and leaf2, respectively
+            i = 0 
+            j = 0
+
+            # Current output leaf node we are building
+            output = get_node(leaf=True)
+                
+            while ((forest1 or i < len(leaf1.children))
+                    and (forest2 or j < len(leaf2.children))):
+
+                # Check if we need to get a new input leaf node
+                if i == len(leaf1.children):
+                    recycle(leaf1)
+                    leaf1 = get_leaf(forest1)
+                    i = 0
+                if j == len(leaf2.children):
+                    recycle(leaf2)
+                    leaf2 = get_leaf(forest2)
+                    j = 0
+
+                # Check if we have filled up an output leaf node
+                if output.n == limit:
+                    leaf_count = append_leaf(output)
+                    output = get_node(leaf=True)
+
+                # Figure out which input leaf has the lower element
+                if do_cmp(leaf1.children[i], leaf2.children[j]) <= 0:
+                    output.children.append(leaf1.children[i])
+                    i += 1
+                else:
+                    output.children.append(leaf2.children[j])
+                    j += 1
+
+                output.n += 1
+
+            # At this point, we have completely consumed at least one
+            # of the lists
+
+            # Append our partially-complete output leaf node to the forest
+            leaf_count = append_leaf(output)
+
+            # Append a partially-consumed input leaf node, if one exists
+            if i < len(leaf1.children):
+                del leaf1.children[:i]
+                leaf_count = append_leaf(leaf1)
+            else:
+                recycle(leaf1)
+            if j < len(leaf2.children):
+                del leaf2.children[:j]
+                leaf_count = append_leaf(leaf2)
+            else:
+                recycle(leaf2)
+    
+            # Append the rest of whichever input forest still has
+            # nodes.  This could be sped up by merging trees instead
+            # of doing it leaf-by-leaf.
+            while forest1:
+                leaf_count = append_leaf(get_leaf(forest1))
+            while forest2:
+                leaf_count = append_leaf(get_leaf(forest2))
+    
+            # Now merge the output forest into a single tree
+            out_tree = None    # The final BList we are building
+            out_height = 0     # It's height
+            group_height = 1   # The height of the next group from the forest
+            while forest_out:
+                n = leaf_count % limit  # Numbers of same-height nodes
+                leaf_count /= limit  
+                group_height += 1
+        
+                if not n:
+                    # No nodes at this height
+                    continue
+
+                # Merge nodes of the same height into 1 node, and
+                # merge it into our output BList.
+                group = get_node(leaf=False)
+                group.children[:] = forest_out[-n:]
+                del forest_out[-n:]
+                adj = group.__underflow(len(group.children)-1)
+                if not out_tree:
+                    out_tree = group
+                    out_height = group_height - adj
+                else:
+                    out_tree, out_height = BList.__concat_roots(group,
+                                                                group_height - adj,
+                                                                out_tree,
+                                                                out_height)
+        finally:
+            # Fix reference counters, in case the user-compare function
+            # threw an exception.
+            for c in recyclable:
+                c._decref()
+
+        return out_tree
 
     @parent_callable
     @modifies_self
@@ -1733,15 +1834,23 @@ class BList(object):
             return
         for i in range(len(self.children)):
             self.__prepare_write(i)
-            self.children[i].sort(*args, **kw)
+            self.children[i]._sort(*args, **kw)
         while len(self.children) != 1:
             children = []
             for i in range(0, len(self.children)-1, 2):
-                self.children[i]._merge(self.children[i+1], *args, **kw)
-                self.children[i+1]._decref()
+                #print 'Merge:', self.children[i], self.children[i+1]
+                a = self.children[i]
+                b = self.children[i+1]
+                self.children[i] = None     # Keep reference-checker happy
+                self.children[i+1] = None
+                self.children[i] = a._merge(b, *args, **kw)
+                #print '->', self.children[i].debug()
+                #assert list(self.children[i]) == sorted(self.children[i], *args, **kw)
+                #self.children[i+1]._decref()
                 children.append(self.children[i])
             self.children[:] = children
         self.__become(self.children[0])
+        self._check_invariants_r()
 
     @user_callable
     @modifies_self
@@ -1754,10 +1863,14 @@ class BList(object):
         self.__become(no_list)
         try:
             real_self._sort(*args, **kw)
+            self._check_invariants_r()
             if self.n:
                 raise ValueError('list modified during sort')
         finally:
+            self._check_invariants_r()
+            real_self._check_invariants_r()
             self.__become(real_self)
+            self._check_invariants_r()
                     
     @user_callable
     def __add__(self, other):
@@ -1991,6 +2104,7 @@ def main():
     assert tuple(lst) == tuple(range(200))
 
     lst = BList(range(3))
+    lst*3
     assert lst*3 == range(3)*3
 
     a = BList('spam')
