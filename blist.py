@@ -260,7 +260,7 @@ __getslice__        O(k)          O(log n)
 __delslice__        O(n)          O(log n + k)
 __setslice__        O(n+k)        O(log n + log k)        [1]
 extend              O(k)          O(log n + log k)        [1]
-__sort__            O(n*log n)    O(n*log n)
+__sort__            O(n*log n)    O(n*log n)              [2]
 index               O(k)          O(log n + k)
 remove              O(n)          O(n)
 count               O(n)          O(n)
@@ -268,6 +268,8 @@ extended slicing    O(k)          O(k*log n)
 __cmp__             O(min(n,k))   O(min(n,k))
 
 [1]: Plus O(k) if the sequence being added is not also a BList
+[2]: list.__sort__ requires O(n) worst-case extra memory, while BList.__sort
+     requires only (log n) extra memory
 
 For BLists smaller than "limit" elements, each operation essentially
 reduces to the equivalent list operation, so there is little-to-no
@@ -858,6 +860,8 @@ class BList(object):
         assert left_subtree.refcount == 1
         assert right_subtree.refcount == 1
 
+        adj = 0
+
         if height_diff == 0:
             root = _BList()
             root.children = [left_subtree, right_subtree]
@@ -865,8 +869,8 @@ class BList(object):
             collapse = root.__underflow(0)
             if not collapse:
                 collapse = root.__underflow(1)
-            if collapse: adj = 0
-            else: adj = 1
+            if not collapse:
+                adj = 1
             overflow = None
         elif height_diff > 0: # Left is larger
             root = left_subtree
@@ -876,7 +880,8 @@ class BList(object):
             root = right_subtree
             overflow = root._insert_subtree(0, left_subtree,
                                             -height_diff - 1)
-        adj = -root.__overflow_root(overflow)
+        adj += -root.__overflow_root(overflow)
+
         return root, adj
 
     @staticmethod
@@ -1224,7 +1229,7 @@ class BList(object):
 
     @modifies_self
     def __init_from_seq(self, seq):
-        # Try the common case of a sequence < limit in length
+        # Try the common case of a sequence <= limit in length
         iterator = iter(seq)
         for i in range(limit):
             try:
@@ -1250,8 +1255,10 @@ class BList(object):
         self.__forget_children()
         cur._check_invariants()
 
-        # Build the base of the tree (all the leaf nodes)
-        lists = []
+        forest = Forest()
+        forest.append_leaf(cur)
+        cur = _BList()
+
         while 1:
             try:
                 x = iterator.next()
@@ -1260,54 +1267,19 @@ class BList(object):
             if len(cur.children) == limit:
                 cur.n = limit
                 cur._check_invariants()
-                lists.append(cur)
+                forest.append_leaf(cur)
                 cur = _BList()
             cur.children.append(x)
 
         if cur.children:
-            lists.append(cur)
+            forest.append_leaf(cur)
             cur.n = len(cur.children)
+        else:
+            cur._decref()
 
-        self.__build_tree(lists)
-
-    def __build_tree(self, lists):
-        """Build up all the intermediate nodes of a BList.
-
-        self is an empty root node.  "lists" is a list of leaf nodes.
-        """
-        
-        # Iteratively build the next higher layer of the tree, until we have
-        # a single root
-        while len(lists) > 1:
-            cur = lists[-1]
-
-            if len(cur.children) < half:
-                left = lists[-2]
-                cur.children[:0] = left.children[half:]
-                del left.children[half:]
-                left._adjust_n()
-                cur._adjust_n()
-
-            cur = _BList()
-            cur.leaf = False
-            new_lists = []
-            for i in range(len(lists)):
-                if i and not i % limit:
-                    new_lists.append(cur)
-                    cur._check_invariants()
-                    cur = _BList()
-                    cur.leaf = False
-                cur.children.append(lists[i])
-                cur.n += lists[i].n
-            if cur.children:
-                new_lists.append(cur)
-            lists = new_lists
-
-        self.children[:] = lists
-        self._adjust_n()
-        self.leaf = False
-        self.__collapse()
-        self._check_invariants()
+        final = forest.finish()
+        self.__become(final)
+        final._decref()
 
     ########################################################################
     # Below here are other user-callable functions built using the above
@@ -1662,46 +1634,6 @@ class BList(object):
             node.leaf = leaf
             return node
     
-        leaf_count = 0 # Total number of leaf nodes in the output forest
-        
-        def append_leaf(leaf):
-            "Append a leaf to the output forest, possible combining nodes"
-            
-            if not leaf.children:     # Don't add empty leaf nodes
-                recycle(leaf)
-                return lf
-            forest_out.append(leaf)
-            leaf._adjust_n()
-
-            # Every "limit" leaf nodes, combine the last "limit" nodes
-            # This takes "limit" leaf nodes and replaces them with one node
-            # that has the leaf nodes as children.
-            
-            # Every "limit**2" leaf nodes, take the last "limit" nodes
-            # (which have height 2) and replace them with one node
-            # (with height 3).
-
-            # Every "limit**i" leaf nodes, take the last "limit" nodes
-            # (which have height i) and replace them with one node
-            # (with height i+1).
-
-            i = 1
-            lf = leaf_count + 1
-            while lf % limit**i == 0:
-                parent = get_node(leaf=False)
-                assert len(forest_out) >= limit, (len(forest_out), limit, i, lf)
-                parent.children[:] = forest_out[-limit:]
-                del forest_out[-limit:]
-
-                # If the right-hand node has too few children,
-                # borrow from a neighbor
-                x = parent.__underflow(len(parent.children)-1)
-                assert not x
-
-                forest_out.append(parent)
-                i += 1
-            return lf
-    
         def get_leaf(forest):
             "Get a new leaf node to process from one of the input forests"
             node = forest.pop(-1)
@@ -1724,7 +1656,7 @@ class BList(object):
             forest2 = [other]
 
             # Output forests
-            forest_out = []
+            forest_out = Forest()
 
             # Input leaf nodes we are currently processing
             leaf1 = get_leaf(forest1)
@@ -1752,7 +1684,7 @@ class BList(object):
 
                 # Check if we have filled up an output leaf node
                 if output.n == limit:
-                    leaf_count = append_leaf(output)
+                    forest_out.append_leaf(output)
                     output = get_node(leaf=True)
 
                 # Figure out which input leaf has the lower element
@@ -1769,17 +1701,17 @@ class BList(object):
             # of the lists
 
             # Append our partially-complete output leaf node to the forest
-            leaf_count = append_leaf(output)
+            forest_out.append_leaf(output)
 
             # Append a partially-consumed input leaf node, if one exists
             if i < len(leaf1.children):
                 del leaf1.children[:i]
-                leaf_count = append_leaf(leaf1)
+                forest_out.append_leaf(leaf1)
             else:
                 recycle(leaf1)
             if j < len(leaf2.children):
                 del leaf2.children[:j]
-                leaf_count = append_leaf(leaf2)
+                forest_out.append_leaf(leaf2)
             else:
                 recycle(leaf2)
     
@@ -1787,37 +1719,12 @@ class BList(object):
             # nodes.  This could be sped up by merging trees instead
             # of doing it leaf-by-leaf.
             while forest1:
-                leaf_count = append_leaf(get_leaf(forest1))
+                forest_out.append_leaf(get_leaf(forest1))
             while forest2:
-                leaf_count = append_leaf(get_leaf(forest2))
-    
-            # Now merge the output forest into a single tree
-            out_tree = None    # The final BList we are building
-            out_height = 0     # It's height
-            group_height = 1   # The height of the next group from the forest
-            while forest_out:
-                n = leaf_count % limit  # Numbers of same-height nodes
-                leaf_count /= limit  
-                group_height += 1
-        
-                if not n:
-                    # No nodes at this height
-                    continue
+                forest_out.append_leaf(get_leaf(forest2))
 
-                # Merge nodes of the same height into 1 node, and
-                # merge it into our output BList.
-                group = get_node(leaf=False)
-                group.children[:] = forest_out[-n:]
-                del forest_out[-n:]
-                adj = group.__underflow(len(group.children)-1)
-                if not out_tree:
-                    out_tree = group
-                    out_height = group_height - adj
-                else:
-                    out_tree, out_height = BList.__concat_roots(group,
-                                                                group_height - adj,
-                                                                out_tree,
-                                                                out_height)
+            out_tree = forest_out.finish()
+    
         finally:
             # Fix reference counters, in case the user-compare function
             # threw an exception.
@@ -1970,6 +1877,88 @@ class BList(object):
         return BList(self)
 
 ########################################################################
+# Forest class; an internal utility class for building BLists bottom-up
+
+class Forest:
+    def __init__(self):
+        self.num_leafs = 0
+        self.forest = []
+
+    def append_leaf(self, leaf):
+        "Append a leaf to the output forest, possible combining nodes"
+        
+        if not leaf.children:     # Don't add empty leaf nodes
+            leaf._decref()
+            return
+        self.forest.append(leaf)
+        leaf._adjust_n()
+    
+        # Every "limit" leaf nodes, combine the last "limit" nodes
+        # This takes "limit" leaf nodes and replaces them with one node
+        # that has the leaf nodes as children.
+        
+        # Every "limit**2" leaf nodes, take the last "limit" nodes
+        # (which have height 2) and replace them with one node
+        # (with height 3).
+    
+        # Every "limit**i" leaf nodes, take the last "limit" nodes
+        # (which have height i) and replace them with one node
+        # (with height i+1).
+    
+        i = 1
+        self.num_leafs += 1
+        while self.num_leafs % limit**i == 0:
+            parent = _BList()
+            parent.leaf = False
+            assert len(self.forest) >= limit, \
+                   (len(self.forest), limit, i, self.num_leafs)
+            parent.children[:] = self.forest[-limit:]
+            del self.forest[-limit:]
+    
+            # If the right-hand node has too few children,
+            # borrow from a neighbor
+            x = parent._BList__underflow(len(parent.children)-1)
+            assert not x
+    
+            self.forest.append(parent)
+            i += 1
+            parent._check_invariants_r()
+
+    def finish(self):
+        "Combine the forest into a final BList"
+    
+        out_tree = None    # The final BList we are building
+        out_height = 0     # It's height
+        group_height = 1   # The height of the next group from the forest
+        while self.forest:
+            n = self.num_leafs % limit  # Numbers of same-height nodes
+            self.num_leafs /= limit  
+            group_height += 1
+    
+            if not n:
+                # No nodes at this height
+                continue
+
+            # Merge nodes of the same height into 1 node, and
+            # merge it into our output BList.
+            group = _BList()
+            group.leaf = False
+            group.children[:] = self.forest[-n:]
+            del self.forest[-n:]
+            adj = group._BList__underflow(len(group.children)-1)
+            if not out_tree:
+                out_tree = group
+                out_height = group_height - adj
+            else:
+                out_tree, out_height = BList._BList__concat_roots(group,
+                                                            group_height - adj,
+                                                            out_tree,
+                                                            out_height)
+        out_tree._check_invariants_r()
+        return out_tree
+
+
+########################################################################
 # Iterator classes.  BList._iter() choses which one to use.
 
 class ShortBListIterator:
@@ -2118,5 +2107,8 @@ def main():
             print (x*i).debug()
             break
 
+    little_list = BList([0])
+    big_list = little_list * 2**512
+    
 if __name__ == '__main__':
     main()
