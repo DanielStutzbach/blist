@@ -47,6 +47,7 @@ PyTypeObject PyBList_Type;
 PyTypeObject PyUserBList_Type;
 static PyObject *blistiter_next(PyObject *);
 static PyObject *blist_iter(PyObject *oseq);
+static PyObject *blist_iter2(PyBList *seq, int start, int stop);
 static PyObject *blist_repeat(PyBList *self, ssize_t n);
 static PyObject *blist_get1(PyBList *self, ssize_t i);
 static void blist_forget_children2(PyBList *self, int i, int j);
@@ -1484,10 +1485,10 @@ static PyObject *blist_richcompare(PyObject *ov, PyObject *ow, int op)
         }
 
         /* Search for the first index where items are different */
-        it1 = PyObject_GetIter(ov);
+        it1 = blist_iter(ov);
         if (it1 == NULL)
                 return NULL;
-        it2 = PyObject_GetIter(ow);
+        it2 = blist_iter(ow);
         if (it2 == NULL) {
                 Py_DECREF(it1);
                 return NULL;
@@ -1557,7 +1558,7 @@ static int blist_contains(PyBList *self, PyObject *el)
 {
         int c;
 
-        PyObject *it = PyObject_GetIter((PyObject *)self);
+        PyObject *it = blist_iter((PyObject *)self);
 
         if (it == NULL)
                 return -1;
@@ -1671,7 +1672,7 @@ static PyObject *blist_index(PyBList *self, PyObject *args)
                         stop = 0;
         }
 
-        it = PyObject_GetIter((PyObject *) self);
+        it = blist_iter2(self, start, stop);
         if (it == NULL)
                 return NULL;
         
@@ -1705,7 +1706,7 @@ static PyObject *blist_remove(PyBList *self, PyObject *v)
 {
         ssize_t i;
 
-        PyObject *it = PyObject_GetIter((PyObject *) self);
+        PyObject *it = blist_iter((PyObject *) self);
         if (it == NULL)
                 return NULL;
         
@@ -1740,7 +1741,7 @@ static PyObject *blist_count(PyBList *self, PyObject *v)
         ssize_t count = 0;
         ssize_t i;
 
-        PyObject *it = PyObject_GetIter((PyObject *) self);
+        PyObject *it = blist_iter((PyObject *) self);
         
         for (i = 0 ;; i++) {
                 PyObject *item = blistiter_next(it);
@@ -2163,24 +2164,32 @@ PyTypeObject PyBListIter_Type = {
         0,                                      /* tp_members */
 };
 
-static PyObject *blist_iter(PyObject *oseq)
+static PyObject *blist_iter2(PyBList *seq, int start, int stop)
 {
         blistiterobject *it;
-        PyBList *seq = (PyBList *) oseq;
-
-        if (!PyBList_Check(oseq)) {
-                PyErr_BadInternalCall();
-                return NULL;
-        }
 
         it = PyObject_GC_New(blistiterobject, &PyBListIter_Type);
         if (it == NULL)
                 return NULL;
         it->ob_type = &PyType_Type;
 
-        it->iter = iter_new(seq, 0, seq->n);
+        it->iter = iter_new(seq, start, stop);
         PyObject_GC_Track(it);
         return (PyObject *) it;
+}
+
+static PyObject *blist_iter(PyObject *oseq)
+{
+        PyBList *seq;
+        
+        if (!PyBList_Check(oseq)) {
+                PyErr_BadInternalCall();
+                return NULL;
+        }
+
+        seq = (PyBList *) oseq;
+
+        return blist_iter2(seq, 0, seq->n);
 }
 
 static void blistiter_dealloc(blistiterobject *it)
