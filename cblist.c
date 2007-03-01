@@ -42,7 +42,31 @@ typedef struct PyBList {
         PyObject *children[LIMIT];  // Immediate children
 } PyBList;
 
+typedef struct {
+        PyBList *lst;
+        int i;
+} point_t;
+
+typedef struct {
+        PyBList *blist;     /* Set to NULL when iterator exhausted */
+        point_t *stack;
+        int depth;
+        int remaining;
+} iter_t;
+
+typedef struct {
+        PyObject_HEAD
+        iter_t *iter;
+} blistiterobject;
+
 /* Forward declarations */
+void iter_delete(iter_t *iter);
+PyObject *iter_next(iter_t *iter);
+iter_t *iter_new2(PyBList *lst, int start, int stop);
+#define iter_new(lst) (iter_new2((lst), 0, (lst)->n))
+static PyObject *blist_iter(PyObject *);
+static void blistiter_dealloc(blistiterobject *);
+static int blistiter_traverse(blistiterobject *, visitproc, void *);
 PyTypeObject PyBList_Type;
 PyTypeObject PyUserBList_Type;
 static PyObject *blistiter_next(PyObject *);
@@ -1016,14 +1040,13 @@ static int blist_init_from_seq(PyBList *self, PyObject *b)
                 PyObject *item = iternext(it);
                 if (item == NULL) {
                         if (PyErr_Occurred()) {
-                                if (PyErr_ExceptionMatches(PyExc_StopIteration)) {
+                                if (PyErr_ExceptionMatches(PyExc_StopIteration))
                                         PyErr_Clear();
-                                        self->n = self->num_children;
-                                        goto done;
-                                } 
-                                goto error;
+                                else
+                                        goto error;
                         }
-                        break;
+                        self->n = self->num_children;
+                        goto done;
                 }
 
                 self->children[self->num_children] = item;
@@ -1048,12 +1071,12 @@ static int blist_init_from_seq(PyBList *self, PyObject *b)
                 PyObject *item = iternext(it);
                 if (item == NULL) {
                         if (PyErr_Occurred()) {
-                                if (PyErr_ExceptionMatches(PyExc_StopIteration)) {
+                                if (PyErr_ExceptionMatches(PyExc_StopIteration))
                                         PyErr_Clear();
-                                        break;
-                                }
-                                goto error;
+                                else 
+                                        goto error;
                         }
+                        break;
                 }
 
                 if (cur->num_children == LIMIT) {
@@ -1162,7 +1185,9 @@ static PyObject *blist_repr(PyBList *self)
         s = PyString_FromString(", ");
         if (s == NULL)
                 goto Done;
+        printf("calling join\n");
         result = PyUnicode_Join(s, (PyObject *) pieces);
+        printf("eek! %p\n", result);
         Py_DECREF(s);
         
  Done:
@@ -1458,7 +1483,7 @@ static PyObject *blist_richcompare(PyObject *ov, PyObject *ow, int op)
 {
         PyBList *v, *w;
         ssize_t cmp;
-        PyObject *it1 = NULL, *it2 = NULL;
+        iter_t *it1 = NULL, *it2 = NULL;
 
         if (!PyBList_Check(ov) || !PyBList_Check(ow)) {
                 Py_INCREF(Py_NotImplemented);
@@ -1478,19 +1503,19 @@ static PyObject *blist_richcompare(PyObject *ov, PyObject *ow, int op)
                 true:
                         res = Py_True;
                 }
-                Py_XDECREF(it1);
-                Py_XDECREF(it2);
+                if (it1) iter_delete(it1);
+                if (it2) iter_delete(it2);
                 Py_INCREF(res);
                 return res;
         }
 
         /* Search for the first index where items are different */
-        it1 = blist_iter(ov);
+        it1 = iter_new(v);
         if (it1 == NULL)
                 return NULL;
-        it2 = blist_iter(ow);
+        it2 = iter_new(w);
         if (it2 == NULL) {
-                Py_DECREF(it1);
+                iter_delete(it1);
                 return NULL;
         }
 
@@ -1498,27 +1523,13 @@ static PyObject *blist_richcompare(PyObject *ov, PyObject *ow, int op)
         int w_stopped = 0;
 
         while (1) {
-                PyObject *item1 = blistiter_next(it1);
-                if (item1 == NULL) {
-                        if (PyErr_Occurred()) {
-                                if (PyErr_ExceptionMatches(PyExc_StopIteration)) {
-                                        PyErr_Clear();
-                                        v_stopped = 1;
-                                }
-                                goto error;
-                        }
-                }
+                PyObject *item1 = iter_next(it1);
+                if (item1 == NULL)
+                        v_stopped = 1;
                 
-                PyObject *item2 = blistiter_next(it2);
-                if (item2 == NULL) {
-                        if (PyErr_Occurred()) {
-                                if (PyErr_ExceptionMatches(PyExc_StopIteration)) {
-                                        PyErr_Clear();
-                                        w_stopped = 1;
-                                }
-                                goto error;
-                        }
-                }
+                PyObject *item2 = iter_next(it2);
+                if (item2 == NULL)
+                        w_stopped = 1;
                 
                 if (v_stopped || w_stopped)
                         break;
@@ -1529,8 +1540,8 @@ static PyObject *blist_richcompare(PyObject *ov, PyObject *ow, int op)
                 if (!cmp) {
                         if (op == Py_EQ) goto false;
                         if (op == Py_NE) goto true;
-                        Py_DECREF(it1);
-                        Py_DECREF(it2);
+                        iter_delete(it1);
+                        iter_delete(it2);
                         return PyObject_RichCompare(item1, item2, op);
                 }
         }
@@ -1549,8 +1560,8 @@ static PyObject *blist_richcompare(PyObject *ov, PyObject *ow, int op)
         else goto false;
 
  error:
-        Py_XDECREF(it1);
-        Py_XDECREF(it2);
+        if (it1) iter_delete(it1);
+        if (it2) iter_delete(it2);
         return NULL;
 }
 
@@ -1558,28 +1569,21 @@ static int blist_contains(PyBList *self, PyObject *el)
 {
         int c;
 
-        PyObject *it = blist_iter((PyObject *)self);
+        iter_t *it = iter_new(self);
 
         if (it == NULL)
                 return -1;
 
         do {
-                PyObject *item = blistiter_next(it);
+                PyObject *item = iter_next(it);
                 if (item == NULL) {
-                        if (PyErr_Occurred()) {
-                                if (PyErr_ExceptionMatches(PyExc_StopIteration)) {
-                                        PyErr_Clear();
-                                        Py_DECREF(it);
-                                        return 0;
-                                }
-                                Py_DECREF(it);
-                                return -1;
-                        }
+                        iter_delete(it);
+                        return 0;
                 }
                 c = PyObject_RichCompareBool(el, item, Py_EQ);
         } while (!c);
 
-        Py_DECREF(it);
+        iter_delete(it);
         return 1;
 }
 
@@ -1655,7 +1659,7 @@ static PyObject *blist_index(PyBList *self, PyObject *args)
         ssize_t i, start=0, stop=self->n;
         PyObject *v;
         int c;
-        PyObject *it;
+        iter_t *it;
         
         if (!PyArg_ParseTuple(args, "O|O&O&:index", &v,
                               _PyEval_SliceIndex, &start,
@@ -1672,32 +1676,26 @@ static PyObject *blist_index(PyBList *self, PyObject *args)
                         stop = 0;
         }
 
-        it = blist_iter2(self, start, stop);
+        it = iter_new2(self, start, stop);
         if (it == NULL)
                 return NULL;
         
         for (i = start; i < stop; i++) {
-                PyObject *item = blistiter_next(it);
-                if (item == NULL) {
-                        if (PyErr_Occurred()) {
-                                if (PyErr_ExceptionMatches(PyExc_StopIteration)) {
-                                        PyErr_Clear();
-                                        goto stop;
-                                }
-                        }
-                        Py_DECREF(it);
-                        return NULL;
-                }
+                PyObject *item = iter_next(it);
+                if (item == NULL)
+                        break;
                 
                 c = PyObject_RichCompareBool(item, v, Py_EQ);
-                if (c > 0)
+                if (c > 0) {
+                        iter_delete(it);
                         return PyInt_FromSsize_t(i);
-                else if (c < 0)
+                } else if (c < 0) {
+                        iter_delete(it);
                         return NULL;
+                }
         }
 
- stop:
-        Py_DECREF(it);
+        iter_delete(it);
         PyErr_SetString(PyExc_ValueError, "list.index(x): x not in list");
         return NULL;
 }
@@ -1706,32 +1704,26 @@ static PyObject *blist_remove(PyBList *self, PyObject *v)
 {
         ssize_t i;
 
-        PyObject *it = blist_iter((PyObject *) self);
+        iter_t *it = iter_new(self);
         if (it == NULL)
                 return NULL;
         
         for (i = 0 ;; i++) {
-                PyObject *item = blistiter_next(it);
-                if (item == NULL) {
-                        if (PyErr_Occurred()) {
-                                if (PyErr_ExceptionMatches(PyExc_StopIteration)) {
-                                        PyErr_Clear();
-                                        goto stop;
-                                }
-                        }
-                        Py_DECREF(it);
-                        return NULL;
-                }
+                PyObject *item = iter_next(it);
+                if (item == NULL) 
+                        break;
                 
                 int c = PyObject_RichCompareBool(item, v, Py_EQ);
-                if (c > 0)
+                if (c > 0) {
+                        iter_delete(it);
                         return blist_delitem_return(self, i);
-                else if (c < 0)
+                } else if (c < 0) {
+                        iter_delete(it);
                         return NULL;
+                }
         }
 
- stop:
-        Py_DECREF(it);
+        iter_delete(it);
         PyErr_SetString(PyExc_ValueError, "list.index(x): x not in list");
         return NULL;
 }
@@ -1741,28 +1733,23 @@ static PyObject *blist_count(PyBList *self, PyObject *v)
         ssize_t count = 0;
         ssize_t i;
 
-        PyObject *it = blist_iter((PyObject *) self);
+        iter_t *it = iter_new(self);
         
         for (i = 0 ;; i++) {
-                PyObject *item = blistiter_next(it);
-                if (item == NULL) {
-                        if (PyErr_Occurred()) {
-                                if (PyErr_ExceptionMatches(PyExc_StopIteration)) {
-                                        PyErr_Clear();
-                                        break;
-                                }
-                        }
-                        Py_DECREF(it);
-                        return NULL;
-                }
+                PyObject *item = iter_next(it);
+                if (item == NULL)
+                        break;
 
                 int c = PyObject_RichCompareBool(item, v, Py_EQ);
                 if (c > 0)
                         count++;
-                else if (c < 0)
+                else if (c < 0) {
+                        iter_delete(it);
                         return NULL;
+                }
         }
-                
+
+        iter_delete(it);
         return PyInt_FromSsize_t(count);
 }
 
@@ -1970,7 +1957,7 @@ PyTypeObject PyBList_Type = {
 PyTypeObject PyUserBList_Type = {
         PyObject_HEAD_INIT(NULL)
         0,
-        "BList",
+        "UserBList",
         sizeof(PyBList),
         0,
         (destructor)blist_dealloc,              /* tp_dealloc */
@@ -2015,19 +2002,7 @@ PyTypeObject PyUserBList_Type = {
  * BList iterator
  */
 
-typedef struct {
-        PyBList *lst;
-        int i;
-} point_t;
-
-typedef struct {
-        PyBList *blist;     /* Set to NULL when iterator exhausted */
-        point_t *stack;
-        int depth;
-        int remaining;
-} iter_t;
-
-iter_t *iter_new(PyBList *lst, int start, int stop)
+iter_t *iter_new2(PyBList *lst, int start, int stop)
 {
         iter_t *iter;
 
@@ -2121,15 +2096,6 @@ void iter_delete(iter_t *iter)
         PyMem_Free(iter);
 }
 
-typedef struct {
-        PyObject_HEAD
-        iter_t *iter;
-} blistiterobject;
-
-static PyObject *blist_iter(PyObject *);
-static void blistiter_dealloc(blistiterobject *);
-static int blistiter_traverse(blistiterobject *, visitproc, void *);
-
 PyTypeObject PyBListIter_Type = {
         PyObject_HEAD_INIT(NULL)
         0,                                      /* ob_size */
@@ -2173,7 +2139,7 @@ static PyObject *blist_iter2(PyBList *seq, int start, int stop)
                 return NULL;
         it->ob_type = &PyType_Type;
 
-        it->iter = iter_new(seq, start, stop);
+        it->iter = iter_new2(seq, start, stop);
         PyObject_GC_Track(it);
         return (PyObject *) it;
 }
@@ -2181,6 +2147,8 @@ static PyObject *blist_iter2(PyBList *seq, int start, int stop)
 static PyObject *blist_iter(PyObject *oseq)
 {
         PyBList *seq;
+
+        printf("blist_iter\n");
         
         if (!PyBList_Check(oseq)) {
                 PyErr_BadInternalCall();
@@ -2209,6 +2177,7 @@ static PyObject *blistiter_next(PyObject *oit)
 {
         blistiterobject *it = (blistiterobject *) oit;
         PyObject *obj = iter_next(it->iter);
+        printf("blistiter_next!\n");
         if (obj == NULL)
                 return NULL;
         Py_INCREF(obj);
@@ -2222,12 +2191,6 @@ initcblist(void)
 {
         PyObject *m;
 
-        if (PyType_Ready(&PyBList_Type) < 0) return;
-        if (PyType_Ready(&PyUserBList_Type) < 0) return;
-        if (PyType_Ready(&PyBListIter_Type) < 0) return;
-
-        m = Py_InitModule3("cblist", module_methods, "BList");
-
         PyBList_Type.ob_type = &PyType_Type;
         PyUserBList_Type.ob_type = &PyType_Type;
         PyBListIter_Type.ob_type = &PyType_Type;
@@ -2235,6 +2198,12 @@ initcblist(void)
         Py_INCREF(&PyBList_Type);
         Py_INCREF(&PyUserBList_Type);
         Py_INCREF(&PyBListIter_Type);
+
+        if (PyType_Ready(&PyBListIter_Type) < 0) return;
+        if (PyType_Ready(&PyBList_Type) < 0) return;
+        if (PyType_Ready(&PyUserBList_Type) < 0) return;
+
+        m = Py_InitModule3("cblist", module_methods, "BList");
 
         PyModule_AddObject(m, "BList", (PyObject *) &PyUserBList_Type);
 }
