@@ -83,6 +83,10 @@ void shift_left(PyBList *self, int k, int n)
 }
 
 /* Forward declarations */
+#define blist_delslice(self, i, j) \
+    rvalidate(self, VALID_RW|VALID_PARENT|VALID_COLLAPSE, int, \
+        _blist_delslice(self, i, j))
+int _blist_delslice(PyBList *self, int i, int j);
 static int blist_ass_item(PyBList *self, ssize_t i, PyObject *v);
 void iter_delete(iter_t *iter);
 PyObject *iter_next(iter_t *iter);
@@ -97,20 +101,34 @@ static PyObject *blistiter_next(PyObject *);
 static PyObject *blist_iter(PyObject *oseq);
 static PyObject *blist_iter2(PyBList *seq, int start, int stop);
 static PyObject *blist_repeat(PyBList *self, ssize_t n);
-static PyObject *blist_get1(PyBList *self, ssize_t i);
-static void blist_forget_children2(PyBList *self, int i, int j);
+#define blist_get1(self, i) \
+    rvalidate(self, VALID_RW|VALID_USER, PyObject *, _blist_get1(self, i))
+static PyObject *_blist_get1(PyBList *self, ssize_t i);
+#define blist_forget_children2(self, i, j) \
+    vvalidate(self, VALID_RW, _blist_forget_children2(self, i, j))
+static void _blist_forget_children2(PyBList *self, int i, int j);
 #define blist_forget_children1(self, i) \
         (blist_forget_children2((self), (i), (self)->num_children))
 #define blist_forget_children(self) \
         (blist_forget_children2((self), 0, (self)->num_children))
 #define blist_forget_child(self, i) \
         (blist_forget_children2((self), (i), (i)+1))
-static void blist_become(PyBList *self, PyBList *other);
-static int blist_init_from_seq(PyBList *self, PyObject *b);
-static int blist_underflow(PyBList *self, int k);
-static PyBList *blist_insert_subtree(PyBList *self, int side,
+#define blist_become(self, other) vvalidate(self, VALID_RW, _blist_become(self, other))
+static void _blist_become(PyBList *self, PyBList *other);
+#define blist_init_from_seq(self, b) \
+    rvalidate(self, VALID_RW, int, _blist_init_from_seq(self, b))
+static int _blist_init_from_seq(PyBList *self, PyObject *b);
+#define blist_underflow(self, k) \
+    rvalidate(self, VALID_RW|VALID_COLLAPSE, int, _blist_underflow(self, k))
+static int _blist_underflow(PyBList *self, int k);
+#define blist_insert_subtree(self, side, subtree, depth) \
+    rvalidate(self, VALID_RW|VALID_OVERFLOW, PyBList *, \
+              _blist_insert_subtree(self, side, subtree, depth))
+static PyBList *_blist_insert_subtree(PyBList *self, int side,
                                      PyBList *subtree, int depth);
-static int blist_overflow_root(PyBList *self, PyBList *overflow);
+#define blist_overflow_root(self, overflow) \
+    rvalidate(self, VALID_RW, int, _blist_overflow_root(self, overflow))
+static int _blist_overflow_root(PyBList *self, PyBList *overflow);
 static PyBList *blist_new(void);
 static PyBList *blist_concat_roots(PyBList *left_root, int left_height,
                                    PyBList *right_root, int right_height,
@@ -129,26 +147,99 @@ void check_invariants(PyBList *self)
 {
         if (self->leaf) {
                 assert(self->n == self->num_children);
+                int i;
+
+                for (i = 0; i < self->num_children; i++) {
+                        PyObject *child = self->children[i];
+                        assert(child != (PyObject *) self);
+                        assert(child->ob_refcnt > 0);
+                }
         } else {
                 int i, total = 0;
+
                 for (i = 0; i < self->num_children; i++) {
                         assert(PyBList_Check(self->children[i]));
                         PyBList *child = (PyBList *) self->children[i];
+                        assert(child != self);
                         total += child->n; 
                         assert(child->num_children <= LIMIT);
                         assert(HALF <= child->num_children);
+                        check_invariants(child);
                 }
                 assert(self->n == total);
                 assert(self->num_children > 1 || self->num_children == 0);
+
         }
 
         assert (self->ob_refcnt >= 1 || self->ob_type == &PyUserBList_Type
                 || (self->ob_refcnt == 0 && self->num_children == 0));
 }
 
+#define VALID_RW 1
+#define VALID_PARENT 2
+#define VALID_RET 4
+#define VALID_USER 8
+#define VALID_OVERFLOW 16
+#define VALID_COLLAPSE 32
+
+#define vvalidate(self, options, make_call) ({                              \
+    PyBList *_self = self; \
+    assert(!((options) & (VALID_USER|VALID_OVERFLOW|VALID_COLLAPSE)));        \
+    if ((options) & VALID_RW) {                                               \
+        assert(_self->ob_refcnt == 1                                         \
+           || _self->ob_type == &PyUserBList_Type);                          \
+    }                                                                       \
+                                                                            \
+    make_call;                                                              \
+                                                                            \
+    if ((options) & VALID_RW) {                                               \
+        assert(_self->ob_refcnt == 1                                         \
+           || _self->ob_refcnt == 0                                          \
+           || _self->ob_type == &PyUserBList_Type);                          \
+    }                                                                       \
+    if ((options) & (VALID_PARENT))                                           \
+        check_invariants(_self);                                             \
+})
+
+#define rvalidate(self, options, rtype, make_call) ({                       \
+    PyBList *_self = self; \
+    rtype _ret;                                                             \
+    int _refs;                                                              \
+    if ((options) & VALID_RW) {                                               \
+        assert(_self->ob_refcnt == 1                                         \
+           || _self->ob_type == &PyUserBList_Type);                          \
+    }                                                                       \
+    if ((options) & VALID_USER) {                                             \
+        assert(_self->ob_refcnt >= 1);                                       \
+        _refs = _self->ob_refcnt;                                            \
+    }                                                                       \
+                                                                            \
+    _ret = make_call;                                                   \
+                                                                            \
+    if ((options) & VALID_OVERFLOW)                                           \
+        if (_ret) {                                                 \
+            assert(PyBList_Check((PyObject *)_ret));                        \
+            check_invariants((PyBList *)_ret);                              \
+        }                                                                   \
+    if ((options) & VALID_COLLAPSE)                                           \
+        assert (_ret >= 0);                                                 \
+                                                                            \
+    if ((options) & VALID_RW) {                                               \
+        assert(_self->ob_refcnt == 1                                         \
+           || _self->ob_refcnt == 0                                          \
+           || _self->ob_type == &PyUserBList_Type);                          \
+    }                                                                       \
+    if ((options) & (VALID_PARENT|VALID_USER|VALID_OVERFLOW|VALID_COLLAPSE))  \
+        check_invariants(_self);                                             \
+    if ((options) & VALID_USER)                                               \
+        assert(_self->ob_refcnt == _refs);                                   \
+    _ret;                                                                   \
+})
+
 #else /* !Py_DEBUG */
 
 #define check_invariants(self)
+#define validate(self, options, make_call) make_call
 
 #endif
 
@@ -393,7 +484,7 @@ static int blist_init(PyBList *self, PyObject *args, PyObject *kw)
  * Useful internal utility functions
  */
 
-static void blist_become(PyBList *self, PyBList *other)
+static void _blist_become(PyBList *self, PyBList *other)
 {
         if (self == other)
                 return;
@@ -416,7 +507,9 @@ static void blist_become(PyBList *self, PyBList *other)
  * Returns a 3-tuple: (the child object, our index of the child,
  *                     the number of leaf elements before the child)
  */
-static void blist_locate(PyBList *self, int i,
+#define blist_locate(self, i, child, idx, before) \
+    vvalidate(self, VALID_PARENT, _blist_locate(self, i, child, idx, before))
+static void _blist_locate(PyBList *self, int i,
                          PyObject **child, int *idx, int *before)
 {
         if (self->leaf) {
@@ -451,7 +544,8 @@ static void blist_locate(PyBList *self, int i,
  *      suspect it's not worth the extra overhead of updating it all
  *      over the place.
  */
-static int blist_get_height(PyBList *self)
+#define blist_get_height(self) rvalidate(self, VALID_PARENT, int, _blist_get_height(self))
+static int _blist_get_height(PyBList *self)
 {
         if (self->leaf)
                 return 1;
@@ -460,7 +554,7 @@ static int blist_get_height(PyBList *self)
 }
 
 /* Remove links to some of our children, decrementing their refcounts */
-static void blist_forget_children2(PyBList *self, int i, int j)
+static void _blist_forget_children2(PyBList *self, int i, int j)
 {
         int k;
         int delta = j - i;
@@ -471,7 +565,9 @@ static void blist_forget_children2(PyBList *self, int i, int j)
         self->num_children -= delta;
 }
 
-static PyBList *blist_prepare_write(PyBList *self, int pt)
+#define blist_prepare_write(self, pt) \
+    rvalidate(self, VALID_RW, PyBList *, _blist_prepare_write(self, pt))
+static PyBList *_blist_prepare_write(PyBList *self, int pt)
 {
         /* We are about to modify the child at index pt.  Prepare it.
          *
@@ -502,7 +598,8 @@ static PyBList *blist_prepare_write(PyBList *self, int pt)
         return (PyBList *) self->children[pt];
 }
 
-static void blist_adjust_n(PyBList *self)
+#define blist_adjust_n(self) vvalidate(self, (VALID_PARENT|VALID_RW), _blist_adjust_n(self))
+static void _blist_adjust_n(PyBList *self)
 {
         if (self->leaf) {
                 self->n = self->num_children;
@@ -537,7 +634,9 @@ static PyBList *blist_new_sibling(PyBList *sibling)
  */
 
 /* Child k has underflowed.  Borrow from k+1 */
-static void blist_borrow_right(PyBList *self, int k)
+#define blist_borrow_right(self, k) \
+    vvalidate(self, VALID_RW, _blist_borrow_right(self, k))
+static void _blist_borrow_right(PyBList *self, int k)
 {
         PyBList *p = (PyBList *) self->children[k];
         PyBList *right = blist_prepare_write(self, k+1);
@@ -558,7 +657,9 @@ static void blist_borrow_right(PyBList *self, int k)
 }
 
 /* Child k has underflowed.  Borrow from k-1 */
-static void blist_borrow_left(PyBList *self, int k)
+#define blist_borrow_left(self, k) \
+    vvalidate(self, VALID_RW, _blist_borrow_left(self, k))
+static void _blist_borrow_left(PyBList *self, int k)
 {
         PyBList *p = (PyBList *) self->children[k];
         PyBList *left = blist_prepare_write(self, k-1);
@@ -579,7 +680,9 @@ static void blist_borrow_left(PyBList *self, int k)
 }
 
 /* Child k has underflowed.  Merge with k+1 */
-static void blist_merge_right(PyBList *self, int k)
+#define blist_merge_right(self, k) \
+    vvalidate(self, VALID_RW, _blist_merge_right(self, k))
+static void _blist_merge_right(PyBList *self, int k)
 {
         PyBList *p = (PyBList *) self->children[k];
         PyBList *p2 = (PyBList *) self->children[k+1];
@@ -593,7 +696,9 @@ static void blist_merge_right(PyBList *self, int k)
 }
 
 /* Child k has underflowed.  Merge with k-1 */
-static void blist_merge_left(PyBList *self, int k)
+#define blist_merge_left(self, k) \
+    vvalidate(self, VALID_RW, _blist_merge_left(self, k))
+static void _blist_merge_left(PyBList *self, int k)
 {
         PyBList *p = (PyBList *) self->children[k];
         PyBList *p2 = (PyBList *) self->children[k-1];
@@ -697,7 +802,9 @@ static PyBList *blist_concat_roots(PyBList *left_root, int left_height,
 }
 
 /* Collapse the tree, if possible */
-static int blist_collapse(PyBList *self)
+#define blist_collapse(self) \
+    rvalidate(self, VALID_RW|VALID_COLLAPSE, int, _blist_collapse(self))
+static int _blist_collapse(PyBList *self)
 {
         if (self->num_children != 1 || self->leaf) {
                 blist_adjust_n(self);
@@ -717,7 +824,7 @@ static int blist_collapse(PyBList *self)
  * 
  * Always calls self._adjust_n() (often via self.__collapse()).
  */
-static int blist_underflow(PyBList *self, int k)
+static int _blist_underflow(PyBList *self, int k)
 {
         if (self->leaf) {
                 blist_adjust_n(self);
@@ -763,7 +870,7 @@ static int blist_underflow(PyBList *self, int k)
 }
 
 /* Handle the case where a user-visible node overflowed */
-static int blist_overflow_root(PyBList *self, PyBList *overflow)
+static int _blist_overflow_root(PyBList *self, PyBList *overflow)
 {
         if (!overflow) return 0;
         PyBList *child = blist_copy(self);
@@ -777,7 +884,10 @@ static int blist_overflow_root(PyBList *self, PyBList *overflow)
 }
 
 /* Insert 'item', which may be a subtree, at index k. */
-PyBList *blist_insert_here(PyBList *self, int k, PyObject *item)
+#define blist_insert_here(self, k, item) \
+    rvalidate(self, VALID_RW|VALID_OVERFLOW, PyBList *, \
+              _blist_insert_here(self, k, item))
+PyBList *_blist_insert_here(PyBList *self, int k, PyObject *item)
 {
         /* Since the subtree may have fewer than half elements, we may
          * need to merge it after insertion.
@@ -825,7 +935,7 @@ PyBList *blist_insert_here(PyBList *self, int k, PyObject *item)
 }
 
 /* Recurse depth layers, then insert subtree on the left or right */
-static PyBList *blist_insert_subtree(PyBList *self, int side,
+static PyBList *_blist_insert_subtree(PyBList *self, int side,
                                      PyBList *subtree, int depth)
 {
         /* This function may cause an overflow.
@@ -855,7 +965,10 @@ static PyBList *blist_insert_subtree(PyBList *self, int side,
 }
 
 /* Child at position k is too short by "depth".  Fix it */
-int blist_reinsert_subtree(PyBList *self, int k, int depth)
+#define blist_reinsert_subtree(self, k, depth) \
+    rvalidate(self, VALID_RW, int, \
+             _blist_reinsert_subtree(self, k, depth))
+int _blist_reinsert_subtree(PyBList *self, int k, int depth)
 {
         assert(self->children[k]->ob_refcnt == 1);
         PyBList *subtree = (PyBList *) self->children[k];
@@ -892,7 +1005,9 @@ int blist_reinsert_subtree(PyBList *self, int k, int depth)
  */
 
 /* Recursive to find position i, and insert item just there. */
-PyBList *ins1(PyBList *self, int i, PyObject *item)
+#define ins1(self, i, item) \
+  rvalidate(self, VALID_RW|VALID_OVERFLOW, PyBList *, _ins1(self, i, item))
+static PyBList *_ins1(PyBList *self, int i, PyObject *item)
 {
         /* This function may cause an overflow. */
 
@@ -917,7 +1032,9 @@ PyBList *ins1(PyBList *self, int i, PyObject *item)
         return ret;
 }
 
-static int blist_extend_blist(PyBList *self, PyBList *other)
+#define blist_extend_blist(self, other) \
+    rvalidate(self, VALID_RW|VALID_USER, int, _blist_extend_blist(self, other))
+static int _blist_extend_blist(PyBList *self, PyBList *other)
 {
         // Make not-user-visible roots for the subtrees
         PyBList *right = blist_new();
@@ -934,6 +1051,7 @@ static int blist_extend_blist(PyBList *self, PyBList *other)
         return 0;
 }
 
+/* XXX Missing validation */
 static PyObject *blist_extend(PyBList *self, PyObject *other)
 {
         int err;
@@ -952,6 +1070,7 @@ static PyObject *blist_extend(PyBList *self, PyObject *other)
         Py_RETURN_NONE;
 }
 
+/* XXX Missing validation */
 static PyObject *blist_inplace_concat(PyBList *self, PyObject *other)
 {
         PyObject *result;
@@ -964,6 +1083,7 @@ static PyObject *blist_inplace_concat(PyBList *self, PyObject *other)
         return (PyObject *)self;
 }
 
+/* XXX Missing validation */
 static PyBList *blist_inplace_repeat(PyBList *self, Py_ssize_t n)
 {
         PyBList *tmp = (PyBList *) blist_repeat(self, n);
@@ -980,7 +1100,7 @@ blist_nohash(PyObject *self)
 }
 
 /* Recursive version of __delslice__ */
-int blist_delslice(PyBList *self, int i, int j)
+int _blist_delslice(PyBList *self, int i, int j)
 {
         /* This may cause self to collapse.  It returns None if it did
          * not.  If a collapse occured, it returns a positive integer
@@ -1118,7 +1238,7 @@ static PyObject *blist_delitem_return(PyBList *self, ssize_t i)
         return rv;
 }
 
-static int blist_init_from_seq(PyBList *self, PyObject *b)
+static int _blist_init_from_seq(PyBList *self, PyObject *b)
 {
         if (PyBList_Check(b)) {
                 // We can copy other BLists in O(1) time :-)
@@ -1217,7 +1337,9 @@ static int blist_init_from_seq(PyBList *self, PyObject *b)
  */
 
 /* Utility function for performing repr() */
-static int blist_repr_r(PyBList *self)
+#define blist_repr_r(self) \
+    rvalidate(self, VALID_RW, int, _blist_repr_r(self))
+static int _blist_repr_r(PyBList *self)
 {
         int i;
         PyObject *s;
@@ -1242,6 +1364,7 @@ static int blist_repr_r(PyBList *self)
 }
 
 /* User-visible repr() */
+/* XXX Missing validation */
 static PyObject *blist_repr(PyBList *self)
 {
         /* Basic approach: Clone self in O(1) time, then walk through
@@ -1359,7 +1482,7 @@ static PyObject *blist_debug(PyBList *self, PyObject *indent)
         return result;
 }
 
-static PyObject *blist_get1(PyBList *self, ssize_t i)
+static PyObject *_blist_get1(PyBList *self, ssize_t i)
 {
         check_invariants(self);
         if (self->leaf)
@@ -1387,6 +1510,7 @@ static PyObject *blist_get_item(PyObject *oself, ssize_t i)
         return blist_get1(self, i);
 }
 
+/* XXX missing validation */
 static PyBList *blist_get_slice(PyBList *self, ssize_t start, ssize_t stop)
 {
         check_invariants(self);
@@ -1414,6 +1538,7 @@ static PyBList *blist_get_slice(PyBList *self, ssize_t start, ssize_t stop)
         return rv;
 }
 
+/* XXX missing validation */
 static PyObject *blist_subscript(PyBList *self, PyObject *item)
 {
         if (PyIndex_Check(item)) {
@@ -1457,7 +1582,10 @@ static PyObject *blist_subscript(PyBList *self, PyObject *item)
         }
 }
 
-static PyObject *blist_ass_item_return(PyBList *self, ssize_t i, PyObject *v)
+#define blist_ass_item_return(self, i, v) \
+    rvalidate(self, VALID_RW|VALID_USER, PyObject *, \
+        _blist_ass_item_return(self, i, v))
+static PyObject *_blist_ass_item_return(PyBList *self, ssize_t i, PyObject *v)
 {
         if (self->leaf) {
                 Py_INCREF(v);
@@ -1977,7 +2105,10 @@ static PyObject *blist_insert(PyBList *self, PyObject *args)
 static void blist_dealloc(PyBList *self)
 {
         PyObject_GC_UnTrack(self);
+        assert(self->ob_refcnt == 0);
+        self->ob_refcnt = 1; // Hack to make validator happy
         blist_forget_children(self);
+        self->ob_refcnt = 0;
 }
 
 PyDoc_STRVAR(getitem_doc,
