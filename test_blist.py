@@ -7,7 +7,8 @@ import sys
 import os
 
 import unittest
-import blist
+#import blist
+import cblist as blist
 from test import test_support, list_tests
 
 class BListTest(list_tests.CommonTest):

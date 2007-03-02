@@ -522,4 +522,4 @@ class CommonTest(seq_tests.CommonTest):
                 yield 23
             def __len__(self):
                 raise KeyboardInterrupt
-        self.assertRaises(KeyboardInterrupt, list, F())
+        self.assertRaises(KeyboardInterrupt, self.type2test, F())
