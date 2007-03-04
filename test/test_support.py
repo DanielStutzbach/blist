@@ -365,7 +365,6 @@ class BasicTestRunner:
         test(result)
         return result
 
-
 def run_suite(suite, testclass=None):
     """Run tests from a unittest.TestSuite-derived class."""
     if verbose:

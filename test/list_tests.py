@@ -8,6 +8,8 @@ import os
 import unittest
 from test import test_support, seq_tests
 
+from decimal import Decimal
+
 class CommonTest(seq_tests.CommonTest):
 
     def test_init(self):
@@ -269,7 +271,6 @@ class CommonTest(seq_tests.CommonTest):
         self.assertRaises(TypeError, a.insert)
 
     def test_pop(self):
-        from decimal import Decimal
         a = self.type2test([-1, 0, 1])
         a.pop()
         self.assertEqual(a, [-1, 0])
@@ -517,9 +518,11 @@ class CommonTest(seq_tests.CommonTest):
 
     def test_constructor_exception_handling(self):
         # Bug #1242657
+        class Iter(object):
+            def next(self):
+                raise KeyboardInterrupt
+        
         class F(object):
             def __iter__(self):
-                yield 23
-            def __len__(self):
-                raise KeyboardInterrupt
+                return Iter()
         self.assertRaises(KeyboardInterrupt, self.type2test, F())
