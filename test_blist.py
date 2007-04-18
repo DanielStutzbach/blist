@@ -178,6 +178,8 @@ class BListTest(list_tests.CommonTest):
         x = BList(range(10))
         self.assertEqual(x.index(5,1,-1), 5)
         self.assertRaises(ValueError, x.index, 5, -1, -9)
+        self.assertRaises(ValueError, x.index, 8, 1, 4)
+        self.assertRaises(ValueError, x.index, 0, 1, 4)
 
     def test_reversebig(self):
         x = BList(range(n))
