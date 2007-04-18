@@ -1,13 +1,16 @@
-CFLAGS=-Wall -g -fno-strict-aliasing -Wstrict-prototypes -I/home/agthorr/src-other/Python-2.5/Include -I/home/agthorr/src-other/Python-2.5
-LDFLAGS=-g -shared -Wl,--enable-auto-image-base -L/home/agthorr/src-other/Python-2.5/
-LDFLAGS=-g -L/home/agthorr/src-other/Python-2.5/
-LD=gcc
+CFLAGS=-Wall -Winline -g -fno-strict-aliasing -Wstrict-prototypes $(COPT)
+CC=gcc-4.1
+
+COPT=-O3 -DLIMIT=128 # For performance
+#COPT=-pg -O3 -DLIMIT=128 -ftest-coverage -fprofile-arcs # For profiling
+#COPT=-DPy_DEBUG=1 -DLIMIT=8    # For debug mode
+
+LDFLAGS=-g -shared  $(COPT)
+LD=$(CC)
 LOADLIBES=-lpython2.5
 
-#cblist.dll: cblist.o
-#	$(LD) $(LDFLAGS) -o $@ $< $(LOADLIBES)
-
-cblist: cblist.o main.o
+cblist.so: cblist.o
+	$(LD) $(LDFLAGS) -o $@ $< $(LOADLIBES)
 
 clean:
-	rm -f *.o *.dll
+	rm -f *.o *.so
