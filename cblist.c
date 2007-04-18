@@ -1,3 +1,20 @@
+/* Copyright (C) 2007 Stutzbach Enterprises, LLC.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ */      
+
 #include <python2.5/Python.h>
 
 /* XXX, DECREF can cause callbacks into the object through user
@@ -15,13 +32,6 @@
  * This goes into an infinite loop:
  *   little_list = BList([0])
  *   big_list = little_list * 2**30
- *
- * Optimization:
- *   We can make iteration faster by maintaining a "next" pointer in
- *   each leaf node.  We'll have to do extra work to maintain this
- *   pointer when creating or removing leaf nodes (and with
- *   copy-on-write), but it may be worthwhile given the importance of
- *   iteration and the relative infrequency of splits and joins.
  *
  */
 
@@ -79,6 +89,7 @@ static blistiterobject *free_iters[MAXFREELISTS];
 static int num_free_iters = 0;
 
 #define PyBList_Check(op) (PyObject_TypeCheck((op), &PyBList_Type) || (PyObject_TypeCheck((op), &PyUserBList_Type)))
+#define PyUserBList_Check(op) (PyObject_TypeCheck((op), &PyUserBList_Type))
 #define PyBList_CheckExact(op) ((op)->ob_type == &PyBList_Type || (op)->ob_type == &PyUserBList_Type)
 
 #define copy(self, k, other, k2, n) \
@@ -152,23 +163,48 @@ static void shift_left(PyBList *self, int k, int n)
                         block; \
                 } \
         } else { \
+                PyBList *_p; \
                 _it = iter_new2_stack((lst), (start), (stop)); \
+                _p = _it->leaf; \
                 while (1) { \
-                        PyBList *_p; \
-                        _p = _it->leaf; \
                         if (_it->i < _p->num_children) { \
                                 if (_it->remaining == 0) break; \
                                 _it->remaining--; \
                                 item = _p->children[_it->i++]; \
                         } else { \
                                 item = iter_next(_it); \
+                                _p = _it->leaf; \
                                 if (item == NULL) break; \
                         } \
                         block; \
                 } \
                 iter_cleanup(_it); \
         }
-#define ITER(lst, item, block) ITER2(lst, item, 0, (lst)->n, (block))
+
+#define ITER(lst, item, block) \
+        iter_t *_it = NULL; \
+        if (lst->leaf) { \
+                int _i; \
+                for (_i = 0; _i < lst->num_children; _i++) { \
+                        item = lst->children[_i]; \
+                        block; \
+                } \
+        } else { \
+                PyBList *_p; \
+                _it = iter_new_stack((lst)); \
+                _p = _it->leaf; \
+                while (1) { \
+                        if (_it->i < _p->num_children) { \
+                                item = _p->children[_it->i++]; \
+                        } else { \
+                                item = iter_next(_it); \
+                                _p = _it->leaf; \
+                                if (item == NULL) break; \
+                        } \
+                        block; \
+                } \
+                iter_cleanup(_it); \
+        }
 #define ITER_CLEANUP() if (_it) iter_cleanup(_it)
 
 /* Forward declarations */
@@ -1894,7 +1930,7 @@ static ssize_t blist_length(PyBList *self)
         return self->n;
 }
 
-static PyObject *blist_richcompare_list(PyBList *v, PyListObject *w, int op)
+static inline PyObject *blist_richcompare_list(PyBList *v, PyListObject *w, int op)
 {
         Py_ssize_t i;
         iter_t *it = NULL;
@@ -1968,28 +2004,52 @@ static PyObject *blist_richcompare_list(PyBList *v, PyListObject *w, int op)
         return NULL;
 }
 
-static PyObject *blist_richcompare_blist(PyBList *v, PyBList *w, int op)
+static inline PyObject *blist_richcompare_item(int c, int op, PyObject *item1, PyObject *item2)
 {
-        int cmp;
-        iter_t *it1 = NULL, *it2 = NULL;
-
-        if (v->n != w->n && (op == Py_EQ || op == Py_NE)) {
-                /* Shortcut: if the lengths differ, the lists differ */
-                PyObject *res;
+        if (c < 0)
+                return NULL;
+        if (!c) {
                 if (op == Py_EQ) {
-                false:
-                        res = Py_False;
-                } else {
-                true:
-                        res = Py_True;
+                        Py_INCREF(Py_False);
+                        return Py_False;
                 }
-                if (it1) iter_cleanup(it1);
-                if (it2) iter_cleanup(it2);
-                Py_INCREF(res);
-                return res;
+                if (op == Py_NE) {
+                        Py_INCREF(Py_True);
+                        return Py_True;
+                }
+                return PyObject_RichCompare(item1, item2, op);
         }
 
+        /* Impossible to get here */
+        assert(0);
+        return NULL;
+}
+
+#define Py_RETURN_TRUE return Py_INCREF(Py_True), Py_True
+#define Py_RETURN_FALSE return Py_INCREF(Py_False), Py_False
+
+static inline PyObject *blist_richcompare_len(PyBList *v, PyBList *w, int op)
+{
+        /* No more items to compare -- compare sizes */
+        switch (op) {
+        case Py_LT: if (v->n <  w->n) Py_RETURN_TRUE; else Py_RETURN_FALSE;
+        case Py_LE: if (v->n <= w->n) Py_RETURN_TRUE; else Py_RETURN_FALSE;
+        case Py_EQ: if (v->n == w->n) Py_RETURN_TRUE; else Py_RETURN_FALSE;
+        case Py_NE: if (v->n != w->n) Py_RETURN_TRUE; else Py_RETURN_FALSE;
+        case Py_GT: if (v->n >  w->n) Py_RETURN_TRUE; else Py_RETURN_FALSE;
+        case Py_GE: if (v->n >= w->n) Py_RETURN_TRUE; else Py_RETURN_FALSE;
+        default: return NULL; /* cannot happen */
+        }
+}
+
+static inline PyObject *blist_richcompare_slow(PyBList *v, PyBList *w, int op)
+{
         /* Search for the first index where items are different */
+        PyObject *item1, *item2;
+        iter_t *it1, *it2;
+        int c;
+        PyBList *leaf1, *leaf2;
+
         it1 = iter_new_stack(v);
         if (it1 == NULL)
                 return NULL;
@@ -1999,64 +2059,79 @@ static PyObject *blist_richcompare_blist(PyBList *v, PyBList *w, int op)
                 return NULL;
         }
 
-        int v_stopped = 0;
-        int w_stopped = 0;
+        leaf1 = it1->leaf;
+        leaf2 = it2->leaf;
+        do {
+                if (it1->i < leaf1->num_children) {
+                        item1 = leaf1->children[it1->i++];
+                } else {
+                        item1 = iter_next(it1);
+                        leaf1 = it1->leaf;
+                        if (item1 == NULL) {
+                        compare_len:
+                                iter_cleanup(it1);
+                                iter_cleanup(it2);
+                                return blist_richcompare_len(v, w, op);
+                        }
+                }
 
-        while (1) {
-                PyObject *item1 = iter_next(it1);
-                if (item1 == NULL)
-                        v_stopped = 1;
-                
-                PyObject *item2 = iter_next(it2);
-                if (item2 == NULL)
-                        w_stopped = 1;
-                
-                if (v_stopped || w_stopped)
-                        break;
+                if (it2->i < leaf2->num_children) {
+                        item2 = leaf2->children[it2->i++];
+                } else {
+                        item2 = iter_next(it2);
+                        leaf2 = it2->leaf;
+                        if (item2 == NULL)
+                                goto compare_len;
+                }
 
-                cmp = PyObject_RichCompareBool(item1, item2, Py_EQ);
-                if (cmp < 0)
-                        return NULL;
-                if (!cmp) {
-                        if (op == Py_EQ) goto false;
-                        if (op == Py_NE) goto true;
-                        iter_cleanup(it1);
-                        iter_cleanup(it2);
-                        return PyObject_RichCompare(item1, item2, op);
+                c = PyObject_RichCompareBool(item1, item2, Py_EQ);
+        } while (c >= 1);
+        
+        iter_cleanup(it1);
+        iter_cleanup(it2);
+        return blist_richcompare_item(c, op, item1, item2);
+}
+
+static inline PyObject *blist_richcompare_blist(PyBList *v, PyBList *w, int op)
+{
+        int i, c;
+
+        if (v->n != w->n) {
+                /* Shortcut: if the lengths differ, the lists differ */
+                if (op == Py_EQ) {
+                        Py_INCREF(Py_False);
+                        return Py_False;
+                } else if (op == Py_NE) {
+                        Py_INCREF(Py_True);
+                        return Py_True;
                 }
         }
 
-        switch (op) {
-        case Py_LT: cmp = v_stopped && !w_stopped; break;
-        case Py_LE: cmp = v_stopped; break;
-        case Py_EQ: cmp = v_stopped == w_stopped; break;
-        case Py_NE: cmp = v_stopped != w_stopped; break;
-        case Py_GT: cmp = !v_stopped && w_stopped; break;
-        case Py_GE: cmp = w_stopped; break;
-        default: goto error; /* cannot happen */
+        if (!v->leaf || !w->leaf)
+                return blist_richcompare_slow(v, w, op);
+                
+        for (i = 0; i < v->num_children && i < w->num_children; i++) {
+                c = PyObject_RichCompareBool(v->children[i],
+                                             w->children[i],Py_EQ);
+                if (c < 1)
+                        return blist_richcompare_item(c, op, v->children[i],
+                                                      w->children[i]);
         }
-
-        if (cmp) goto true;
-        else goto false;
-
- error:
-        if (it1) iter_cleanup(it1);
-        if (it2) iter_cleanup(it2);
-        return NULL;
+        return blist_richcompare_len(v, w, op);
+                                     
 }
 
 static PyObject *blist_richcompare(PyObject *v, PyObject *w, int op)
 {
-        if (!PyBList_Check(v)) 
-                goto not_implemented;
-        
-        if (PyBList_Check(w))
-                return blist_richcompare_blist((PyBList *)v, (PyBList *)w, op);
+        if (PyUserBList_Check(v)) {
+                if (PyUserBList_Check(w))
+                        return blist_richcompare_blist((PyBList *)v,
+                                                       (PyBList *)w, op);
+                if (PyList_Check(w))
+                        return blist_richcompare_list((PyBList*)v,
+                                                      (PyListObject*)w, op);
+        }
 
-        if (PyList_Check(w))
-                return blist_richcompare_list((PyBList*)v,(PyListObject*)w,op);
-
- not_implemented:
         Py_INCREF(Py_NotImplemented);
         return Py_NotImplemented;
 }
