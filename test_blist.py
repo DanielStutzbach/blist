@@ -28,8 +28,7 @@ import sys
 import os
 
 import unittest
-#import blist
-from cblist import BList
+from blist import BList
 #BList = list
 from test import test_support, list_tests
 

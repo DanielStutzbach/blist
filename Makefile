@@ -9,8 +9,12 @@ LDFLAGS=-g -shared  $(COPT)
 LD=$(CC)
 LOADLIBES=-lpython2.5
 
-cblist.so: cblist.o
+blist.so: blist.o
 	$(LD) $(LDFLAGS) -o $@ $< $(LOADLIBES)
 
 clean:
 	rm -f *.o *.so
+
+tarball:
+	cd .. ; tar -zcvf blist.tar.gz blist/blist.c blist/Makefile blist/test_blist.py blist/test/*.py
+
