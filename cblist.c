@@ -30,6 +30,9 @@
 #endif
 #define HALF  (LIMIT/2) // Minimum size
 
+#define MAX_HEIGHT 16   // ceil(log(PY_SSIZE_T_MAX)/log(HALF));
+        
+
 #if LIMIT & 1
 #error LIMIT must be divisible by 2
 #endif
@@ -53,14 +56,27 @@ typedef struct {
 
 typedef struct {
         int depth;
+        PyBList *leaf;
+        int i;
         int remaining;
-        point_t stack[1];
+        point_t stack[MAX_HEIGHT];
 } iter_t;
 
 typedef struct {
         PyObject_HEAD
-        iter_t *iter;
+        iter_t iter;
 } blistiterobject;
+
+/* Empty BList reuse scheme to save calls to malloc and free */
+#define MAXFREELISTS 80
+static PyBList *free_lists[MAXFREELISTS];
+static int num_free_lists = 0;
+
+static PyBList *free_ulists[MAXFREELISTS];
+static int num_free_ulists = 0;
+
+static blistiterobject *free_iters[MAXFREELISTS];
+static int num_free_iters = 0;
 
 #define PyBList_Check(op) (PyObject_TypeCheck((op), &PyBList_Type) || (PyObject_TypeCheck((op), &PyUserBList_Type)))
 #define PyBList_CheckExact(op) ((op)->ob_type == &PyBList_Type || (op)->ob_type == &PyUserBList_Type)
@@ -69,10 +85,12 @@ typedef struct {
     (memcpy(&(self)->children[k], &(other)->children[k2], \
             sizeof(PyObject *) * n))
 #define copyref(self, k, other, k2, n) { \
-        int _i, _cur, _stop = (k)+(n); \
-        for ( _i = (k), _cur = (k2); _i < _stop; _i++) { \
-                (self)->children[_i] = (other)->children[_cur++]; \
-                Py_INCREF((self)->children[_i]); \
+        register PyObject **src = &(other)->children[(k2)]; \
+        register PyObject **dst = &(self)->children[(k)];  \
+        register PyObject **stop = &src[n]; \
+        while (src < stop) { \
+                Py_INCREF(*src); \
+                *dst++ = *src++; \
         } \
 }
 
@@ -95,7 +113,10 @@ static void shift_left(PyBList *self, int k, int n)
         memmove(&self->children[k-n], &self->children[k],
                 sizeof(PyObject *) * (self->num_children - k));
 }
+
 #else /* !Py_DEBUG */
+
+#if 0
 #define shift_right(self, k, n) \
         (memmove(&(self)->children[(k)+(n)], &(self)->children[(k)], \
                 sizeof(PyObject *) * ((self)->num_children - (k))))
@@ -103,6 +124,52 @@ static void shift_left(PyBList *self, int k, int n)
         (memmove(&(self)->children[(k)-(n)], &(self)->children[(k)], \
                 sizeof(PyObject *) * ((self)->num_children - (k))))
 #endif
+
+#define shift_right(self, k, n) ({\
+        register PyObject **src = &(self)->children[(self)->num_children-1]; \
+        register PyObject **dst = &(self)->children[(self)->num_children-1 + (n)]; \
+        register PyObject **stop = &(self)->children[(k)]; \
+        while (src >= stop) \
+                *dst-- = *src--; \
+}) 
+
+#define shift_left(self, k, n) ({\
+        register PyObject **src = &(self)->children[(k)]; \
+        register PyObject **dst = &(self)->children[(k) - (n)]; \
+        register PyObject **stop = &(self)->children[(self)->num_children]; \
+        while (src < stop) \
+                *dst++ = *src++; \
+}) 
+
+#endif
+
+#define ITER2(lst, item, start, stop, block) \
+        iter_t *_it = NULL; \
+        if (lst->leaf) { \
+                int _i; \
+                for (_i = (start); _i < lst->num_children && _i < (stop); _i++) { \
+                        item = lst->children[_i]; \
+                        block; \
+                } \
+        } else { \
+                _it = iter_new2_stack((lst), (start), (stop)); \
+                while (1) { \
+                        PyBList *_p; \
+                        _p = _it->leaf; \
+                        if (_it->i < _p->num_children) { \
+                                if (_it->remaining == 0) break; \
+                                _it->remaining--; \
+                                item = _p->children[_it->i++]; \
+                        } else { \
+                                item = iter_next(_it); \
+                                if (item == NULL) break; \
+                        } \
+                        block; \
+                } \
+                iter_cleanup(_it); \
+        }
+#define ITER(lst, item, block) ITER2(lst, item, 0, (lst)->n, (block))
+#define ITER_CLEANUP() if (_it) iter_cleanup(_it)
 
 /* Forward declarations */
 static void iter_cleanup(iter_t *iter);
@@ -419,9 +486,14 @@ static PyBList *blist_new(void)
 {
         PyBList *self;
 
-        self = PyObject_GC_New(PyBList, &PyBList_Type);
-        if (self == NULL)
-                return NULL;
+        if (num_free_lists) {
+                self = free_lists[--num_free_lists];
+                _Py_NewReference((PyObject *) self);
+        } else {
+                self = PyObject_GC_New(PyBList, &PyBList_Type);
+                if (self == NULL)
+                        return NULL;
+        }
 
         self->leaf = 1; // True
         self->num_children = 0;
@@ -437,9 +509,14 @@ static PyBList *blist_user_new(void)
 {
         PyBList *self;
 
-        self = PyObject_GC_New(PyBList, &PyUserBList_Type);
-        if (self == NULL)
-                return NULL;
+        if (num_free_ulists) {
+                self = free_ulists[--num_free_ulists];
+                _Py_NewReference((PyObject *) self);
+        } else {
+                self = PyObject_GC_New(PyBList, &PyUserBList_Type);
+                if (self == NULL)
+                        return NULL;
+        }
 
         self->leaf = 1; // True
         self->num_children = 0;
@@ -534,22 +611,40 @@ static void _blist_locate(PyBList *self, int i,
 {
         assert (!self->leaf);
 
-        int so_far = 0;
-        int k;
-        for (k = 0; k < self->num_children; k++) {
-                PyBList *p = (PyBList *) self->children[k];
-                if (i < so_far + p->n) {
-                        *child = (PyObject *) p;
-                        *idx = k;
-                        *before = so_far;
-                        return;
+        if (i <= self->n/2) {
+                /* Search from the left */
+                int so_far = 0;
+                int k;
+                for (k = 0; k < self->num_children; k++) {
+                        PyBList *p = (PyBList *) self->children[k];
+                        if (i < so_far + p->n) {
+                                *child = (PyObject *) p;
+                                *idx = k;
+                                *before = so_far;
+                                return;
+                        }
+                        so_far += p->n;
                 }
-                so_far += p->n;
+        } else {
+                /* Search from the right */
+                int so_far = self->n;
+                int k;
+                for (k = self->num_children-1; k >= 0; k--) {
+                        PyBList *p = (PyBList *) self->children[k];
+                        so_far -= p->n;
+                        if (i >= so_far) {
+                                *child = (PyObject *) p;
+                                *idx = k;
+                                *before = so_far;
+                                return;
+                        }
+                }
         }
 
+        /* Just append */
         *child = self->children[self->num_children-1];
         *idx = self->num_children-1;
-        *before = so_far - ((PyBList *)(*child))->n;
+        *before = self->n - ((PyBList *)(*child))->n;
 }
 
 /* Find the current height of the tree.
@@ -1030,6 +1125,16 @@ static PyBList *_ins1(PyBList *self, int i, PyObject *item)
 
         if (self->leaf) {
                 Py_INCREF(item);
+
+                /* Speed up the common case */
+                if (self->num_children < LIMIT) {
+                        shift_right(self, i, 1);
+                        self->num_children++;
+                        self->n++;
+                        self->children[i] = item;
+                        return NULL;
+                }
+
                 return blist_insert_here(self, i, item);
         }
 
@@ -1134,7 +1239,7 @@ blist_nohash(PyObject *self)
 /* Recursive version of __delslice__ */
 static int _blist_delslice(PyBList *self, int i, int j)
 {
-        /* This may cause self to collapse.  It returns None if it did
+        /* This may cause self to collapse.  It returns 0 if it did
          * not.  If a collapse occured, it returns a positive integer
          * indicating how much shorter this subtree is compared to when
          * _delslice() was entered.
@@ -1538,17 +1643,15 @@ static PyObject *blist_get_item(PyObject *oself, ssize_t i)
         PyBList *self = (PyBList *) oself;
         PyObject *ret;
         
-        if (!PyBList_Check(oself)) {
-                PyErr_BadInternalCall();
-                return NULL;
-        }
-
         if (i < 0 || i >= self->n) {
                 set_index_error();
                 return NULL;
         }
 
-        ret = blist_get1(self, i);
+        if (self->leaf)
+                ret = self->children[i];
+        else
+                ret = blist_get1(self, i);
         Py_INCREF(ret);
         return ret;
 }
@@ -1563,10 +1666,12 @@ static PyBList *blist_get_slice(PyBList *self, ssize_t ilow, ssize_t ihigh)
         if (ihigh < ilow) ihigh = ilow;
         else if (ihigh > self->n) ihigh = self->n;
 
-        if (ihigh <= ilow || ilow >= self->n)
-                return blist_user_new();
-
         PyBList *rv = blist_user_new();
+        if (rv == NULL)
+                return NULL;
+
+        if (ihigh <= ilow || ilow >= self->n)
+                return rv;
 
         if (self->leaf) {
                 int delta = ihigh - ilow;
@@ -1662,9 +1767,11 @@ static int blist_ass_item(PyBList *self, ssize_t i, PyObject *v)
                 return -1;
         }
 
-        if (v == NULL)
-                return blist_ass_slice(self, i, i+1, v);
-
+        if (v == NULL) {
+                blist_delitem(self, i);
+                return 0;
+        }
+        
         PyObject *old_value = blist_ass_item_return(self, i, v);
         Py_DECREF(old_value);
         return 0;
@@ -1867,7 +1974,7 @@ static PyObject *blist_richcompare_blist(PyBList *v, PyBList *w, int op)
         iter_t *it1 = NULL, *it2 = NULL;
 
         if (v->n != w->n && (op == Py_EQ || op == Py_NE)) {
-                /* Shortcut: if the lengths differe, the lists differ */
+                /* Shortcut: if the lengths differ, the lists differ */
                 PyObject *res;
                 if (op == Py_EQ) {
                 false:
@@ -1957,27 +2064,21 @@ static PyObject *blist_richcompare(PyObject *v, PyObject *w, int op)
 static int blist_contains(PyBList *self, PyObject *el)
 {
         int c;
+        PyObject *item;
 
-        iter_t *it = iter_new_stack(self);
-
-        if (it == NULL)
-                return -1;
-
-        do {
-                PyObject *item = iter_next(it);
-                if (item == NULL) {
-                        iter_cleanup(it);
-                        return 0;
-                }
+        ITER(self, item, {
                 c = PyObject_RichCompareBool(el, item, Py_EQ);
                 if (c < 0) {
-                        iter_cleanup(it);
+                        ITER_CLEANUP();
                         return -1;
                 }
-        } while (!c);
+                if (c > 0) {
+                        ITER_CLEANUP();
+                        return 1;
+                }
+        });
 
-        iter_cleanup(it);
-        return 1;
+        return 0;
 }
 
 static int blist_ass_slice(PyBList *self, ssize_t ilow, ssize_t ihigh,
@@ -2074,7 +2175,7 @@ static PyObject *blist_index(PyBList *self, PyObject *args)
         ssize_t i, start=0, stop=self->n;
         PyObject *v;
         int c;
-        iter_t *it;
+        PyObject *item;
         
         if (!PyArg_ParseTuple(args, "O|O&O&:index", &v,
                               _PyEval_SliceIndex, &start,
@@ -2091,26 +2192,19 @@ static PyObject *blist_index(PyBList *self, PyObject *args)
                         stop = 0;
         }
 
-        it = iter_new2_stack(self, start, stop);
-        if (it == NULL)
-                return NULL;
-        
-        for (i = start; i < stop; i++) {
-                PyObject *item = iter_next(it);
-                if (item == NULL)
-                        break;
-                
+        i = start;
+        ITER2(self, item, start, stop, {
                 c = PyObject_RichCompareBool(item, v, Py_EQ);
                 if (c > 0) {
-                        iter_cleanup(it);
+                        ITER_CLEANUP();
                         return PyInt_FromSsize_t(i);
                 } else if (c < 0) {
-                        iter_cleanup(it);
+                        ITER_CLEANUP();
                         return NULL;
                 }
-        }
+                i++;
+        })
 
-        iter_cleanup(it);
         PyErr_SetString(PyExc_ValueError, "list.index(x): x not in list");
         return NULL;
 }
@@ -2118,28 +2212,22 @@ static PyObject *blist_index(PyBList *self, PyObject *args)
 static PyObject *blist_remove(PyBList *self, PyObject *v)
 {
         ssize_t i;
+        PyObject *item;
 
-        iter_t *it = iter_new_stack(self);
-        if (it == NULL)
-                return NULL;
-        
-        for (i = 0 ;; i++) {
-                PyObject *item = iter_next(it);
-                if (item == NULL) 
-                        break;
-                
+        i = 0;
+        ITER(self, item, {
                 int c = PyObject_RichCompareBool(item, v, Py_EQ);
                 if (c > 0) {
-                        iter_cleanup(it);
+                        ITER_CLEANUP();
                         blist_delitem(self, i);
                         Py_RETURN_NONE;
                 } else if (c < 0) {
-                        iter_cleanup(it);
+                        ITER_CLEANUP();
                         return NULL;
                 }
-        }
+                i++;
+        })
 
-        iter_cleanup(it);
         PyErr_SetString(PyExc_ValueError, "list.index(x): x not in list");
         return NULL;
 }
@@ -2147,25 +2235,18 @@ static PyObject *blist_remove(PyBList *self, PyObject *v)
 static PyObject *blist_count(PyBList *self, PyObject *v)
 {
         ssize_t count = 0;
-        ssize_t i;
+        PyObject *item;
 
-        iter_t *it = iter_new_stack(self);
-        
-        for (i = 0 ;; i++) {
-                PyObject *item = iter_next(it);
-                if (item == NULL)
-                        break;
-
+        ITER(self, item, {
                 int c = PyObject_RichCompareBool(item, v, Py_EQ);
                 if (c > 0)
                         count++;
                 else if (c < 0) {
-                        iter_cleanup(it);
+                        ITER_CLEANUP();
                         return NULL;
                 }
-        }
+        })
 
-        iter_cleanup(it);
         return PyInt_FromSsize_t(count);
 }
 
@@ -2223,7 +2304,7 @@ static void blist_double(PyBList *self)
 static PyObject *blist_repeat(PyBList *self, ssize_t n)
 {
         int mask;
-        PyBList *power, *rv, *remainder = NULL;
+        PyBList *power = NULL, *rv, *remainder = NULL;
         int remainder_n = 0;
 
         if (n <= 0 || self->n == 0)
@@ -2357,6 +2438,17 @@ static PyObject *blist_insert(PyBList *self, PyObject *args)
         } else if (i > self->n)
                 i = self->n;
         
+        /* Speed up the common case */
+        if (self->leaf && self->num_children < LIMIT) {
+                Py_INCREF(v);
+
+                shift_right(self, i, 1);
+                self->num_children++;
+                self->n++;
+                self->children[i] = v;
+                Py_RETURN_NONE;
+        }
+        
         overflow = ins1(self, i, v);
         if (overflow)
                 blist_overflow_root(self, overflow);
@@ -2367,11 +2459,22 @@ static void blist_dealloc(PyBList *self)
 {
         PyObject_GC_UnTrack(self);
         Py_TRASHCAN_SAFE_BEGIN(self)
-        assert(self->ob_refcnt == 0);
+                assert(self->ob_refcnt == 0);
+#ifdef Py_DEBUG
         self->ob_refcnt = 1; // Hack to make validator happy
+#endif
         blist_forget_children(self);
-        self->ob_refcnt = 0;
-        self->ob_type->tp_free((PyObject *)self);
+#ifdef Py_DEBUG
+        self->ob_refcnt = 0; // Hack to make validator happy
+#endif
+        if (num_free_lists < MAXFREELISTS
+            && (self->ob_type == &PyBList_Type))
+                free_lists[num_free_lists++] = self;
+        else if (num_free_ulists < MAXFREELISTS
+                 && (self->ob_type == &PyUserBList_Type))
+                free_ulists[num_free_ulists++] = self;
+        else
+                self->ob_type->tp_free((PyObject *)self);
         Py_TRASHCAN_SAFE_END(self);
 }
 
@@ -2533,8 +2636,7 @@ static iter_t *iter_new2(PyBList *lst, int start, int stop)
 {
         iter_t *iter;
 
-        iter = (iter_t *) PyMem_Malloc(sizeof (iter_t)
-                     + (blist_get_height(lst)-1) * sizeof (iter->stack));
+        iter = (iter_t *) PyMem_Malloc(sizeof (iter_t));
         if (iter == NULL)
                 return NULL;
         iter_init(iter, lst, start, stop);
@@ -2559,8 +2661,9 @@ static iter_t *iter_init(iter_t *iter, PyBList *lst, int start, int stop)
                 start -= so_far;
         }
 
-        iter->stack[iter->depth].lst = lst;
-        iter->stack[iter->depth++].i = start;
+        iter->leaf = lst;
+        iter->i = start;
+        iter->depth++;
         Py_INCREF(lst);
 
         return iter;
@@ -2568,23 +2671,23 @@ static iter_t *iter_init(iter_t *iter, PyBList *lst, int start, int stop)
 
 static PyObject *iter_next(iter_t *iter)
 {
-        if (!iter->remaining)
+        PyBList *p;
+        int i;
+
+        p = iter->leaf;
+        if (iter->remaining == 0)
                 return NULL;
+        
         iter->remaining--;
-
-        PyBList *p = iter->stack[iter->depth-1].lst;
-        int i = iter->stack[iter->depth-1].i;
-
-        if (i < p->num_children) {
-                iter->stack[iter->depth-1].i++;
-                return p->children[i];
-        }
+        if (iter->i < p->num_children) 
+                return p->children[iter->i++];
 
         iter->depth--;
         do {
                 Py_DECREF(p);
                 if (!iter->depth) {
                         iter->remaining = 0;
+                        iter->leaf = NULL;
                         return NULL;
                 }
                 p = iter->stack[--iter->depth].lst;
@@ -2602,14 +2705,20 @@ static PyObject *iter_next(iter_t *iter)
                 iter->stack[iter->depth++].i = i+1;
         }
 
+        iter->leaf = iter->stack[iter->depth-1].lst;
+        iter->i = iter->stack[iter->depth-1].i;
+
         return p->children[i];
 }
 
 static void iter_cleanup(iter_t *iter)
 {
         int i;
-        for (i = 0; i < iter->depth; i++)
+        for (i = 0; i < iter->depth-1; i++)
                 Py_DECREF(iter->stack[i].lst);
+        if (iter->depth) {
+                Py_DECREF(iter->leaf);
+        }
 }
 
 static void iter_delete(iter_t *iter)
@@ -2655,6 +2764,7 @@ PyTypeObject PyBListIter_Type = {
 static PyObject *blist_iter(PyObject *oseq)
 {
         PyBList *seq;
+        blistiterobject *it;
 
         if (!PyBList_Check(oseq)) {
                 PyErr_BadInternalCall();
@@ -2663,13 +2773,25 @@ static PyObject *blist_iter(PyObject *oseq)
 
         seq = (PyBList *) oseq;
 
-        blistiterobject *it;
+        if (num_free_iters) {
+                it = free_iters[--num_free_iters];
+                _Py_NewReference((PyObject *) it);
+        } else {
+                it = PyObject_GC_New(blistiterobject, &PyBListIter_Type);
+                if (it == NULL)
+                        return NULL;
+        }
 
-        it = PyObject_GC_New(blistiterobject, &PyBListIter_Type);
-        if (it == NULL)
-                return NULL;
+        if (seq->leaf) {
+                /* Speed up common case */
+                it->iter.leaf = seq;
+                it->iter.i = 0;
+                it->iter.depth = 1;
+                it->iter.remaining = seq->n;
+                Py_INCREF(seq);
+        } else 
+                iter_init(&it->iter, seq, 0, seq->n);
 
-        it->iter = iter_new2(seq, 0, seq->n);
         PyObject_GC_Track(it);
         return (PyObject *) it;
 }
@@ -2677,22 +2799,42 @@ static PyObject *blist_iter(PyObject *oseq)
 static void blistiter_dealloc(blistiterobject *it)
 {
         PyObject_GC_UnTrack(it);
-        iter_delete(it->iter);
-        PyObject_GC_Del(it);
+        iter_cleanup(&it->iter);
+        if (num_free_iters < MAXFREELISTS
+            && (it->ob_type == &PyBListIter_Type))
+                free_iters[num_free_iters++] = it;
+        else
+                PyObject_GC_Del(it);
 }
 
 static int blistiter_traverse(blistiterobject *it, visitproc visit, void *arg)
 {
         int i;
-        for (i = 0; i < it->iter->depth; i++)
-                Py_VISIT(it->iter->stack[i].lst);
+        for (i = 0; i < it->iter.depth-1; i++)
+                Py_VISIT(it->iter.stack[i].lst);
+        if (it->iter.depth)
+                Py_VISIT(it->iter.leaf);
         return 0;
 }
 
 static PyObject *blistiter_next(PyObject *oit)
 {
         blistiterobject *it = (blistiterobject *) oit;
-        PyObject *obj = iter_next(it->iter);
+        PyObject *obj;
+        
+        /* Speed up common case */
+        PyBList *p;
+        p = it->iter.leaf;
+        if (it->iter.remaining == 0)
+                return NULL;
+        if (it->iter.i < p->num_children) {
+                it->iter.remaining--;
+                obj = p->children[it->iter.i++];
+                Py_INCREF(obj);
+                return obj;
+        }
+
+        obj = iter_next(&it->iter);
         if (obj == NULL)
                 return NULL;
         Py_INCREF(obj);
