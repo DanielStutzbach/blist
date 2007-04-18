@@ -215,9 +215,7 @@ static iter_t *iter_init(iter_t *iter, PyBList *lst, int start, int stop);
         _blist_delslice(self, i, j))
 static int _blist_delslice(PyBList *self, int i, int j);
 static int blist_ass_item(PyBList *self, ssize_t i, PyObject *v);
-static void iter_delete(iter_t *iter);
 static PyObject *iter_next(iter_t *iter);
-static iter_t *iter_new2(PyBList *lst, int start, int stop);
 #define iter_new(lst) (iter_new2((lst), 0, (lst)->n))
 #define iter_new2_stack(lst, start, stop) \
         (iter_init(alloca(sizeof (iter_t) \
@@ -1930,7 +1928,7 @@ static ssize_t blist_length(PyBList *self)
         return self->n;
 }
 
-static inline PyObject *blist_richcompare_list(PyBList *v, PyListObject *w, int op)
+static PyObject *blist_richcompare_list(PyBList *v, PyListObject *w, int op)
 {
         Py_ssize_t i;
         iter_t *it = NULL;
@@ -2042,7 +2040,7 @@ static inline PyObject *blist_richcompare_len(PyBList *v, PyBList *w, int op)
         }
 }
 
-static inline PyObject *blist_richcompare_slow(PyBList *v, PyBList *w, int op)
+static PyObject *blist_richcompare_slow(PyBList *v, PyBList *w, int op)
 {
         /* Search for the first index where items are different */
         PyObject *item1, *item2;
@@ -2554,9 +2552,11 @@ static void blist_dealloc(PyBList *self)
 }
 
 PyDoc_STRVAR(getitem_doc,
-"x.__getitem__(y) <==> x[y]");
+             "x.__getitem__(y) <==> x[y]");
+#if 0
 PyDoc_STRVAR(reversed_doc,
-"L.__reversed__() -- return a reverse iterator over the list");
+             "L.__reversed__() -- return a reverse iterator over the list");
+#endif
 PyDoc_STRVAR(append_doc,
 "L.append(object) -- append object to end");
 PyDoc_STRVAR(extend_doc,
@@ -2573,9 +2573,12 @@ PyDoc_STRVAR(count_doc,
 "L.count(value) -> integer -- return number of occurrences of value");
 PyDoc_STRVAR(reverse_doc,
 "L.reverse() -- reverse *IN PLACE*");
+
+#if 0
 PyDoc_STRVAR(sort_doc,
 "L.sort(cmp=None, key=None, reverse=False) -- stable sort *IN PLACE*;\n\
 cmp(x, y) -> -1, 0, 1");
+#endif
 
 static PyMethodDef blist_methods[] = {
         {"__getitem__", (PyCFunction)blist_subscript, METH_O|METH_COEXIST, getitem_doc},
@@ -2707,6 +2710,7 @@ PyTypeObject PyUserBList_Type = {
  * BList iterator
  */
 
+#if 0
 static iter_t *iter_new2(PyBList *lst, int start, int stop)
 {
         iter_t *iter;
@@ -2717,6 +2721,7 @@ static iter_t *iter_new2(PyBList *lst, int start, int stop)
         iter_init(iter, lst, start, stop);
         return iter;
 }
+#endif
 
 static iter_t *iter_init(iter_t *iter, PyBList *lst, int start, int stop)
 {
@@ -2796,11 +2801,13 @@ static void iter_cleanup(iter_t *iter)
         }
 }
 
+#if 0
 static void iter_delete(iter_t *iter)
 {
         iter_cleanup(iter);
         PyMem_Free(iter);
 }
+#endif
 
 PyTypeObject PyBListIter_Type = {
         PyObject_HEAD_INIT(NULL)
@@ -2919,7 +2926,7 @@ static PyObject *blistiter_next(PyObject *oit)
 static PyMethodDef module_methods[] = { { NULL } };
 
 PyMODINIT_FUNC
-initcblist(void)
+initblist(void)
 {
         PyObject *m;
 
@@ -2935,7 +2942,7 @@ initcblist(void)
         if (PyType_Ready(&PyBList_Type) < 0) return;
         if (PyType_Ready(&PyBListIter_Type) < 0) return;
 
-        m = Py_InitModule3("cblist", module_methods, "BList");
+        m = Py_InitModule3("blist", module_methods, "BList");
 
         PyModule_AddObject(m, "BList", (PyObject *) &PyUserBList_Type);
 }
