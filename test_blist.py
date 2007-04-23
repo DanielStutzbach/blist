@@ -218,11 +218,10 @@ def test_main(verbose=None):
     import sys
     if verbose:
         import gc
-        for i in xrange(5):
-            test_support.run_unittest(BListTest)
-            #gc.set_debug(gc.DEBUG_STATS | gc.DEBUG_UNCOLLECTABLE | gc.DEBUG_INSTANCES | gc.DEBUG_LEAK)
-            gc.collect()
-            print len(gc.get_objects())
+        test_support.run_unittest(BListTest)
+        #gc.set_debug(gc.DEBUG_STATS | gc.DEBUG_UNCOLLECTABLE | gc.DEBUG_INSTANCES | gc.DEBUG_LEAK)
+        gc.collect()
+        print len(gc.get_objects())
 
 
 if __name__ == "__main__":

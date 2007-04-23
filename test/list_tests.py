@@ -427,6 +427,10 @@ class CommonTest(seq_tests.CommonTest):
 
         self.assertRaises(TypeError, u.sort, 42, 42)
 
+        a = self.type2test(reversed(range(512)))
+        a.sort()
+        self.assertEqual(a, self.type2test(range(512)))
+
         def revcmp(a, b):
             return cmp(b, a)
         u.sort(revcmp)
