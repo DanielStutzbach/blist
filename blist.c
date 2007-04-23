@@ -233,11 +233,11 @@ static PyObject *blistiter_next(PyObject *);
 static PyObject *blist_iter(PyObject *oseq);
 static PyObject *blist_repeat(PyBList *self, ssize_t n);
 #define blist_get1(self, i) \
-    rvalidate(self, VALID_RW|VALID_USER, PyObject *, _blist_get1(self, i))
+    rvalidate(self, VALID_USER, PyObject *, _blist_get1(self, i))
 static PyObject *_blist_get1(PyBList *self, ssize_t i);
 #define blist_forget_children2(self, i, j) \
     vvalidate(self, VALID_RW, _blist_forget_children2(self, i, j))
-static void _blist_forget_children2(PyBList *self, int i, int j);
+static void inline _blist_forget_children2(PyBList *self, int i, int j);
 #define blist_forget_children1(self, i) \
         (blist_forget_children2((self), (i), (self)->num_children))
 #define blist_forget_children(self) \
@@ -248,7 +248,7 @@ static void _blist_forget_children2(PyBList *self, int i, int j);
 static void _blist_become(PyBList *self, PyBList *other);
 #define blist_init_from_seq(self, b) \
     rvalidate(self, VALID_RW, int, _blist_init_from_seq(self, b))
-static int _blist_init_from_seq(PyBList *self, PyObject *b);
+static int inline _blist_init_from_seq(PyBList *self, PyObject *b);
 #define blist_underflow(self, k) \
     rvalidate(self, VALID_RW|VALID_COLLAPSE, int, _blist_underflow(self, k))
 static int _blist_underflow(PyBList *self, int k);
@@ -399,22 +399,60 @@ typedef struct Forest
         PyBList **list;        
 } Forest;
 
-static Forest *forest_new(void)
+static PyBList *
+forest_get_leaf(Forest *forest)
 {
-        Forest *forest = PyMem_New(Forest, 1);
-        if (forest == NULL) return (Forest *) PyErr_NoMemory();
+        PyBList *node = forest->list[--forest->num_trees];
+        PyBList **list;
+        while (!node->leaf) {
+                int i;
+                while (forest->num_trees + node->num_children
+                       > forest->max_trees) {
+                        list = forest->list;
+                        forest->max_trees *= 2;
+                        PyMem_Resize(list, PyBList*,forest->max_trees);
+                        if (list == NULL) {
+                                PyErr_NoMemory();
+                                return NULL;
+                        }
+                        forest->list = list;
+                }
+                        
+                for (i = node->num_children - 1; i >= 0; i--)
+                        forest->list[forest->num_trees++]
+                                = (PyBList *) node->children[i];
+
+                node->num_children = 0;
+                Py_DECREF(node);
+                node = forest->list[--forest->num_trees];
+        }
+
+        return node;
+}
+
+#define MAX_FREE_FORESTS 4
+static PyBList **forest_saved[MAX_FREE_FORESTS];
+static unsigned forest_max_trees[MAX_FREE_FORESTS];
+static unsigned num_free_forests = 0;
+
+static inline Forest *forest_init(Forest *forest)
+{
         forest->num_trees = 0;
         forest->num_leafs = 0;
-        forest->max_trees = LIMIT; // enough for O(LIMIT**2) items
-        forest->list = PyMem_New(PyBList *, forest->max_trees);
-        if (forest->list == NULL) {
-                PyMem_Free(forest);
-                return (Forest *) PyErr_NoMemory();
+        if (num_free_forests) {
+                forest->list = forest_saved[--num_free_forests];
+                forest->max_trees = forest_max_trees[num_free_forests];
+        } else {
+                forest->max_trees = LIMIT; // enough for O(LIMIT**2) items
+                forest->list = PyMem_New(PyBList *, forest->max_trees);
+                if (forest->list == NULL)
+                        return (Forest *) PyErr_NoMemory();
         }
         return forest;
 }
+#define forest_new() (forest_init(alloca(sizeof(Forest))))
 
-static int forest_append(Forest *forest, PyBList *leaf)
+static inline int forest_append(Forest *forest, PyBList *leaf)
 {
         if (!leaf->num_children) {  // Don't bother adding empty leaf nodes
                 Py_DECREF(leaf);
@@ -456,17 +494,20 @@ static int forest_append(Forest *forest, PyBList *leaf)
         return 0;
 }
 
-static void forest_delete(Forest *forest)
+static inline void forest_delete(Forest *forest)
 {
         int i;
         for (i = 0; i < forest->num_trees; i++)
                 Py_DECREF(forest->list[i]);
-        PyMem_Free(forest->list);
-        PyMem_Free(forest);
+        if (num_free_forests < MAX_FREE_FORESTS) {
+                forest_saved[num_free_forests] = forest->list;
+                forest_max_trees[num_free_forests++] = forest->max_trees;
+        } else 
+                PyMem_Free(forest->list);
 }
 
 /* Combine the forest into a final BList */
-static PyBList *forest_finish(Forest *forest)
+static inline PyBList *forest_finish(Forest *forest)
 {
         PyBList *out_tree = NULL; // The final BList we are building
         int out_height = 0;       // It's height
@@ -527,11 +568,11 @@ static PyBList *blist_new(void)
                 self = PyObject_GC_New(PyBList, &PyBList_Type);
                 if (self == NULL)
                         return NULL;
-        }
 
-        self->leaf = 1; // True
-        self->num_children = 0;
-        self->n = 0;
+                self->leaf = 1; // True
+                self->num_children = 0;
+                self->n = 0;
+        }
 
         PyObject_GC_Track(self);
         
@@ -550,15 +591,32 @@ static PyBList *blist_user_new(void)
                 self = PyObject_GC_New(PyBList, &PyUserBList_Type);
                 if (self == NULL)
                         return NULL;
-        }
 
-        self->leaf = 1; // True
-        self->num_children = 0;
-        self->n = 0;
+                self->leaf = 1; // True
+                self->n = 0;
+                self->num_children = 0;
+        }
 
         PyObject_GC_Track(self);
         
         return self;
+}
+
+static PyObject *blist_user_tp_new(PyTypeObject *subtype, PyObject *args,
+                                  PyObject *kwds)
+{
+        PyBList *self;
+        
+        if (subtype == &PyUserBList_Type)
+                return (PyObject *) blist_user_new();
+
+        self = (PyBList *) subtype->tp_alloc(subtype, 0);
+        if (self == NULL)
+                return NULL;
+
+        self->leaf = 1;
+        
+        return (PyObject *) self;
 }
 
 static int blist_traverse(PyBList *self, visitproc visit, void *arg)
@@ -572,6 +630,8 @@ static int blist_traverse(PyBList *self, visitproc visit, void *arg)
 static int blist_clear(PyBList *self)
 {
         blist_forget_children(self);
+        self->n = 0;
+        self->leaf = 1;
         return 0;
 }
 
@@ -601,11 +661,8 @@ static int blist_init(PyBList *self, PyObject *args, PyObject *kw)
         if (!PyArg_ParseTupleAndKeywords(args, kw, "|O:list", kwlist, &arg))
                 return -1;
 
-        blist_forget_children(self);
-        
-        self->leaf = 1; // True
-        self->num_children = 0;
-        self->n = 0;
+        if (self->n)
+                blist_clear(self); /* XXX: this could add things back! */
 
         if (arg == NULL) return 0;
 
@@ -946,6 +1003,14 @@ static PyBList *blist_concat_roots(PyBList *left_root, int left_height,
         return root;
 }
 
+static PyBList *
+blist_concat_unknown_roots(PyBList *left_root, PyBList *right_root)
+{
+        return blist_concat_roots(left_root, blist_get_height(left_root),
+                                  right_root, blist_get_height(right_root),
+                                  NULL);
+}
+
 /* Collapse the tree, if possible */
 #define blist_collapse(self) \
     rvalidate(self, VALID_RW|VALID_COLLAPSE, int, _blist_collapse(self))
@@ -1257,6 +1322,8 @@ static PyObject *blist_inplace_concat(PyBList *self, PyObject *other)
 static PyBList *blist_inplace_repeat(PyBList *self, Py_ssize_t n)
 {
         PyBList *tmp = (PyBList *) blist_repeat(self, n);
+        if (tmp == NULL)
+                return NULL;
         blist_become(self, tmp);
         Py_INCREF(self);
         Py_DECREF(tmp);
@@ -1294,9 +1361,7 @@ static int _blist_delslice(PyBList *self, int i, int j)
         
         if (i == 0 && j >= self->n) {
                 // Delete everything.
-                blist_forget_children(self);
-                self->n = 0;
-                self->leaf = 1;
+                blist_clear(self);
                 return 0;
         }
 
@@ -1415,6 +1480,61 @@ static PyObject *blist_delitem_return(PyBList *self, ssize_t i)
         return rv;
 }
 
+static int inline blist_init_from_fast_seq(PyBList *self, PyObject *b)
+{
+        int i, n = PySequence_Fast_GET_SIZE(b);
+        PyObject **dst, **src = PySequence_Fast_ITEMS(b);
+        PyObject **stop = &src[n];
+        if (n <= LIMIT) {
+                dst = self->children;
+                while (src < stop) {
+                        Py_INCREF(*src);
+                        *dst++ = *src++;
+                }
+                self->num_children = n;
+                self->n = n;
+                return 0;
+        }
+
+        Forest *forest = forest_new();
+        if (forest == NULL)
+                return -1;
+        PyBList *cur = blist_new();
+        dst = cur->children;
+        i = 0;
+        
+        while (src < stop) {
+                if (i == LIMIT) {
+                        cur->num_children = LIMIT;
+                        if (forest_append(forest, cur) < 0)
+                                goto error3;
+                        cur = blist_new();
+                        dst = cur->children;
+                        i = 0;
+                }
+
+                Py_INCREF(*src);
+                dst[i++] = *src++;
+        }
+
+        if (i) {
+                cur->num_children = i;
+                if (forest_append(forest, cur) < 0) {
+                error3:
+                        forest_delete(forest);
+                        Py_DECREF(cur);
+                        return -1;
+                }
+        } else {
+                Py_DECREF(cur);
+        }
+
+        PyBList *final = forest_finish(forest);
+        blist_become(self, final);
+        Py_DECREF(final);
+        return 0;
+}
+
 static int _blist_init_from_seq(PyBList *self, PyObject *b)
 {
         if (PyBList_Check(b)) {
@@ -1422,6 +1542,9 @@ static int _blist_init_from_seq(PyBList *self, PyObject *b)
                 blist_become(self, (PyBList *) b);
                 return 0;
         }
+
+        if (PyList_CheckExact(b) || PyTuple_CheckExact(b))
+                return blist_init_from_fast_seq(self, b);
         
         PyObject *it;
         PyObject *(*iternext)(PyObject *);
@@ -1453,7 +1576,7 @@ static int _blist_init_from_seq(PyBList *self, PyObject *b)
          * so far goes in a leaf node. */
 
         PyBList *cur = blist_copy(self);
-        blist_forget_children(self);
+        blist_clear(self);
 
         Forest *forest = forest_new();
         if (forest == NULL) {
@@ -2382,6 +2505,9 @@ static PyObject *blist_repeat(PyBList *self, ssize_t n)
 
         if (n <= 0 || self->n == 0)
                 return (PyObject *) blist_user_new();
+
+        if (n > (PY_SSIZE_T_MAX / self->n / 2))
+                return PyErr_NoMemory();
         
         rv = blist_user_new();
         if (rv == NULL) {
@@ -2536,20 +2662,631 @@ static void blist_dealloc(PyBList *self)
 #ifdef Py_DEBUG
         self->ob_refcnt = 1; // Hack to make validator happy
 #endif
-        blist_forget_children(self);
+        blist_clear(self);
 #ifdef Py_DEBUG
         self->ob_refcnt = 0; // Hack to make validator happy
 #endif
         if (num_free_lists < MAXFREELISTS
-            && (self->ob_type == &PyBList_Type))
+            && (self->ob_type == &PyBList_Type)) {
                 free_lists[num_free_lists++] = self;
-        else if (num_free_ulists < MAXFREELISTS
-                 && (self->ob_type == &PyUserBList_Type))
+        } else if (num_free_ulists < MAXFREELISTS
+                   && (self->ob_type == &PyUserBList_Type)) {
                 free_ulists[num_free_ulists++] = self;
-        else
+        } else
                 self->ob_type->tp_free((PyObject *)self);
         Py_TRASHCAN_SAFE_END(self);
 }
+
+/************************************************************************
+ * Sorting code
+ *
+ * Bits and pieces swiped from Python's listobject.c
+ ************************************************************************/
+
+/* If COMPARE is NULL, calls PyObject_RichCompareBool with Py_LT, else calls
+ * islt.  This avoids a layer of function call in the usual case, and
+ * sorting does many comparisons.
+ * Returns -1 on error, 1 if x < y, 0 if x >= y.
+ */
+#define ISLT(X, Y, COMPARE) ((COMPARE) == NULL ?                        \
+                             PyObject_RichCompareBool(X, Y, Py_LT) :    \
+                             islt(X, Y, COMPARE))
+
+typedef struct {
+        PyObject *compare;
+        PyObject *keyfunc;
+} compare_t;
+
+/* XXX
+
+   Efficiency improvement:
+   Keep one PyTuple in compare_t and just change what it points to.
+   We can also skip all the INCREF/DECREF stuff then and just borrow
+   references
+*/
+
+static int islt(PyObject *x, PyObject *y, const compare_t *compare)
+{
+        PyObject *res;
+        PyObject *args;
+        Py_ssize_t i;
+
+        if (compare->keyfunc != NULL) {
+                x = PyObject_CallFunctionObjArgs(compare->keyfunc, x, NULL);
+                if (x == NULL) return -1;
+                y = PyObject_CallFunctionObjArgs(compare->keyfunc, y, NULL);
+                if (y == NULL) {
+                        Py_DECREF(x);
+                        return -1;
+                }
+        } else {
+                Py_INCREF(x);
+                Py_INCREF(y);
+        }
+
+        if (compare->compare == NULL) {
+                i = PyObject_RichCompareBool(x, y, Py_LT);
+                Py_DECREF(x);
+                Py_DECREF(y);
+                if (i < 0)
+                        return -1;
+                return i < 0;
+        }
+        
+        args = PyTuple_New(2);
+        if (args == NULL) {
+                Py_DECREF(x);
+                Py_DECREF(y);
+                return -1;
+        }
+
+        PyTuple_SET_ITEM(args, 0, x);
+        PyTuple_SET_ITEM(args, 1, y);
+        res = PyObject_Call(compare->compare, args, NULL);
+        Py_DECREF(args);
+        if (res == NULL)
+                return -1;
+        if (!PyInt_CheckExact(res)) {
+                PyErr_Format(PyExc_TypeError,
+                             "comparison function must return int, not %.200s",
+                             res->ob_type->tp_name);
+                Py_DECREF(res);
+                return -1;
+        }
+        i = PyInt_AsLong(res);
+        Py_DECREF(res);
+        return i < 0;
+}
+
+#define INSERTION_THRESH 0
+#define BINARY_THRESH 10
+
+/* Compare X to Y via "<".  Goto "fail" if the comparison raises an
+   error.  Else "k" is set to true iff X<Y, and an "if (k)" block is
+   started.  It makes more sense in context <wink>.  X and Y are PyObject*s.
+*/
+#define IFLT(X, Y) if ((k = ISLT(X, Y, compare)) < 0) goto fail;  \
+                   if (k)
+
+#define SWAP(x, y) {PyObject *_tmp = x; x = y; y = _tmp;}
+#define TESTSWAP(x, y) IFLT(y, x) SWAP(x, y)
+
+static int
+network_sort(PyObject **array, int n, const compare_t *compare)
+{
+        int k;
+
+        switch(n) {
+        case 0:
+        case 1:
+                return 0;
+        case 2:
+                TESTSWAP(array[0], array[1]);
+                return 0;
+        case 3:
+                TESTSWAP(array[0], array[1]);
+                TESTSWAP(array[0], array[2]);
+                TESTSWAP(array[1], array[2]);
+                return 0;
+        case 4:
+                TESTSWAP(array[0], array[1]);
+                TESTSWAP(array[2], array[3]);
+                TESTSWAP(array[0], array[2]);
+                TESTSWAP(array[1], array[3]);
+                TESTSWAP(array[1], array[2]);
+                return 0;
+        case 5:
+                TESTSWAP(array[0], array[1]);
+                TESTSWAP(array[3], array[4]);
+                TESTSWAP(array[0], array[2]);
+                TESTSWAP(array[1], array[2]);
+                TESTSWAP(array[0], array[3]);
+                TESTSWAP(array[2], array[3]);
+                TESTSWAP(array[1], array[4]);
+                TESTSWAP(array[1], array[2]);
+                TESTSWAP(array[3], array[4]);
+                return 0;
+        default:
+                /* Should not be possible */
+                assert (0);
+                abort();
+        }
+
+ fail:
+        return -1;
+}
+
+static int insertion_sort(PyObject **array, int n, const compare_t *compare)
+{
+        int i, j;
+        PyObject *tmp;
+        for (i = 1; i < n; i++) {
+                tmp = array[i];
+                for (j = i; j >= 1; j--) {
+                        int c = ISLT(array[j-1], tmp, compare);
+                        if (c < 0) {
+                                array[j] = tmp;
+                                return -1;
+                        }
+                        if (c > 0)
+                                break;
+                        array[j] = array[j-1];
+                }
+                array[j] = tmp;
+        }
+
+        return 0;
+}
+
+static int binary_sort(PyObject **array, int n, const compare_t *compare)
+{
+        int i, j, low, high, mid, c;
+        PyObject *tmp;
+
+        for (i = 1; i < n; i++) {
+                tmp = array[i];
+
+                c = ISLT(array[i-1], tmp, compare);
+                if (c < 0)
+                        return -1;
+                if (c > 0)
+                        continue;
+                
+                low = 0;
+                high = i-1;
+
+                while (low < high) {
+                        mid = low + (high - low)/2;
+                        c = ISLT(array[mid], tmp, compare);
+                        if (c < 0) 
+                                return -1;
+                        if (c > 0)
+                                low = mid+1;
+                        else
+                                high = mid;
+                }
+
+                for (j = i; j >= low; j--)
+                        array[j] = array[j-1];
+
+                array[low] = tmp;
+        }
+
+        return 0;
+}
+
+static inline int
+mini_merge(PyObject **array, int middle, int n, const compare_t *compare)
+{
+        int c, ret = 0;
+
+        PyObject *copy[LIMIT];
+        PyObject **left;
+        PyObject **right = &array[middle];
+        PyObject **rend = &array[n];
+        PyObject **lend = &copy[middle];
+        PyObject **src;
+        PyObject **dst;
+
+        assert (middle <= LIMIT);
+
+        for (left = array; left < right; left++) {
+                c = ISLT(*left, *right, compare);
+                if (c < 0)
+                        return -1;
+                if (!c)
+                        goto normal;
+        }
+
+        return 0;
+        
+ normal:
+        src = left;
+        dst = left;
+        
+        for (left = copy; src < right; left++)
+                *left = *src++;
+
+        lend = left;
+
+        *dst++ = *right++;        
+        
+        for (left = copy; left < lend && right < rend; dst++) {
+                c = ISLT(*left, *right, compare);
+                if (c < 0) {
+                        ret = -1;
+                        goto done;
+                }
+                if (c > 0)
+                        *dst = *left++;
+                else
+                        *dst = *right++;
+        }
+
+ done:
+        while (left < lend)
+                *dst++ = *left++;
+
+        return ret;
+}
+
+#define RUN_THRESH 5
+
+static int
+gallop_sort(PyObject **array, int n, const compare_t *compare)
+{
+        int i, j;
+        int run_length = 1, run_dir;
+        PyObject **runs[n/RUN_THRESH+2];
+        int ns[n/RUN_THRESH+2];
+        int num_runs = 0;
+        PyObject **run = array;
+        for (i = 1; i < n; i++) {
+                int c = ISLT(array[i-1], array[i], compare);
+                if (c < 0)
+                        return -1;
+                c = !!c; /* Ensure c is 0 or 1 */
+                if (run_length == 1)
+                        run_dir = c;
+                if (c == run_dir)
+                        run_length++;
+                else if (run_length >= RUN_THRESH) {
+                                if (run_dir == 0)
+                                        reverse_slice(run, &array[i]);
+                                runs[num_runs] = run;
+                                ns[num_runs++] = run_length;
+                                run = &array[i];
+                                run_length = 1;
+                } else {
+                        int low = run - array;
+                        int high = i-1;
+                        int mid;
+                        PyObject *tmp = array[i];
+
+                        /* XXX: Is this a stable sort? */
+                        
+                        while (low < high) {
+                                mid = low + (high - low)/2;
+                                c = ISLT(array[mid], tmp, compare);
+                                if (c < 0) 
+                                        return -1;
+                                if ((!!c) == run_dir)
+                                        low = mid+1;
+                                else
+                                        high = mid;
+                        }
+
+                        for (j = i; j >= low; j--)
+                                array[j] = array[j-1];
+
+                        array[low] = tmp;
+
+                        run_length++;
+                }
+        }
+
+        if (run_dir == 0)
+                reverse_slice(run, &array[i]);
+        runs[num_runs] = run;
+        ns[num_runs++] = run_length;
+
+        while(num_runs > 1) {
+                for (i = 0; i < num_runs/2; i++) {
+                        int total = ns[2*i] + ns[2*i+1];
+                        if (0 > mini_merge(runs[2*i], ns[2*i], total,
+                                           compare)) {
+                                /* XXX validity? */
+                                return -1;
+                        }
+
+                        runs[i] = runs[2*i];
+                        ns[i] = total;
+                }
+
+                if (num_runs & 1) {
+                        runs[i] = runs[num_runs - 1];
+                        ns[i] = ns[num_runs - 1];
+                }
+                num_runs = (num_runs+1)/2;
+        }
+
+        assert(ns[0] == n);
+
+        return 0;
+        
+}
+
+static int
+mini_merge_sort(PyObject **array, int n, const compare_t *compare)
+{
+        int i, run_size = BINARY_THRESH;
+        
+        for (i = 0; i < n; i += run_size) {
+                int len = run_size;
+                if (n - i < len)
+                        len = n - i;
+                if (binary_sort(&array[i], len, compare) < 0)
+                        return -1;
+        }
+
+        run_size *= 2;
+        while (run_size < n) {
+                for (i = 0; i < n; i += run_size) {
+                        int len = run_size;
+                        if (n - i < len)
+                                len = n - i;
+                        if (len <= run_size/2)
+                                continue;
+                        if (mini_merge(&array[i], run_size/2, len, compare) < 0)
+                                return -1;
+                }
+                run_size *= 2;
+        }
+
+        return 0;
+}
+
+static int
+is_default_cmp(PyObject *cmpfunc)
+{
+        PyCFunctionObject *f;
+        if (cmpfunc == NULL || cmpfunc == Py_None)
+                return 1;
+        if (!PyCFunction_Check(cmpfunc))
+                return 0;
+        f = (PyCFunctionObject *)cmpfunc;
+        if (f->m_self != NULL)
+                return 0;
+        if (!PyString_Check(f->m_module))
+                return 0;
+        if (strcmp(PyString_AS_STRING(f->m_module), "__builtin__") != 0)
+                return 0;
+        if (strcmp(f->m_ml->ml_name, "cmp") != 0)
+                return 0;
+        return 1;
+}
+
+static PyBList *
+merge(PyBList *self, PyBList *other, const compare_t *compare)
+{
+        int c, i, j;
+
+#if 0
+        c = ISLT(blist_get1(self, self->n-1), blist_get1(other, 0), compare);
+        if (c < 0) {
+                /* XXX */
+                return NULL;
+        }
+        if (c > 0) {
+                blist_extend_blist(self, other);
+                Py_DECREF(other);
+                return self;
+        }
+#endif
+        
+        Forest *forest1, *forest2, *forest_out;
+        PyBList *leaf1, *leaf2, *output;
+
+        forest1 = forest_new();
+        forest2 = forest_new();
+        forest_out = forest_new();
+
+        /* XXX: Check return values */
+        forest_append(forest1, self);
+        forest_append(forest2, other);
+
+        leaf1 = forest_get_leaf(forest1);
+        leaf2 = forest_get_leaf(forest2);
+
+        i = 0; /* Index into leaf 1 */
+        j = 0; /* Index into leaf 2 */
+
+        output = blist_new();
+
+        while ((forest1->num_trees || i < leaf1->num_children)
+               && (forest2->num_trees || j < leaf2->num_children)) {
+
+                /* Check if we need to get a new input leaf node */
+                if (i == leaf1->num_children) {
+                        leaf1->num_children = 0;
+                        Py_DECREF(leaf1);
+                        leaf1 = forest_get_leaf(forest1);
+                        i = 0;
+                }
+
+                if (j == leaf2->num_children) {
+                        leaf2->num_children = 0;
+                        Py_DECREF(leaf2);
+                        leaf2 = forest_get_leaf(forest2);
+                        j = 0;
+                }
+
+                /* Check if we have filled up an output leaf node */
+                if (output->n == LIMIT) {
+                        forest_append(forest_out, output);
+                        output = blist_new();
+                }
+
+                /* Figure out which input leaf has the lower element */
+                c = ISLT(leaf1->children[i], leaf2->children[j], compare);
+                if (c < 0) {
+                        /* XXX: Need to return to a sane state here */
+                        return NULL;
+                }
+                if (c > 0) {
+                        output->children[output->num_children++]
+                                = leaf1->children[i++];
+                } else {
+                        output->children[output->num_children++]
+                                = leaf2->children[j++];
+                }
+
+                output->n++;
+        }
+
+        /* At this point, we have completely consumed at least one of
+         * the lists */
+
+        /* Append our partially-complete output leaf node to the forest */
+        forest_append(forest_out, output);
+
+        /* Append a partially-consumed input leaf node, if one exists */
+        if (i < leaf1->num_children) {
+                shift_left(leaf1, i, i);
+                leaf1->num_children -= i;
+                forest_append(forest_out, leaf1);
+        } else {
+                leaf1->num_children = 0;
+                Py_DECREF(leaf1);
+        }
+
+        if (j < leaf2->num_children) {
+                shift_left(leaf2, j, j);
+                leaf2->num_children -= j;
+                forest_append(forest_out, leaf2);
+        } else {
+                leaf2->num_children = 0;
+                Py_DECREF(leaf2);
+        }
+
+        /* Append the rest of whichever input forest still has nodes. */
+
+        PyBList *ret = forest_finish(forest_out);
+        while (forest1->num_trees) {
+                PyBList *tree = forest1->list[--forest1->num_trees];
+                ret = blist_concat_unknown_roots(ret, tree);
+        }
+        while (forest2->num_trees) {
+                PyBList *tree = forest2->list[--forest2->num_trees];
+                ret = blist_concat_unknown_roots(ret, tree);
+        }
+                
+        forest_delete(forest1);
+        forest_delete(forest2);
+                                   
+        return ret;
+}
+
+static int
+sort(PyBList *self, const compare_t *compare)
+{
+        int i, ret;
+        PyBList *s;
+
+        if (self->leaf)
+                return gallop_sort(self->children, self->num_children,
+                                   compare);
+
+        for (i = 0; i < self->num_children; i++) {
+                blist_prepare_write(self, i);
+                ret = sort((PyBList *) self->children[i], compare);
+                if (ret < 0)
+                        return ret;
+        }
+
+        while (self->num_children != 1) {
+                for (i = 0; i < self->num_children/2; i++) {
+                        s = merge((PyBList *) self->children[2*i],
+                                  (PyBList *) self->children[2*i+1], compare);
+                        if (s == NULL) {
+                                /* XXX: we need to return the tree to
+                                 * a valid state here */
+                                return -1;
+                        }
+
+                        self->children[i] = (PyObject *) s;
+                }
+
+                if (self->num_children & 1)
+                        self->children[i]
+                                = self->children[self->num_children - 1];
+                self->num_children = (self->num_children+1)/2;
+        }
+
+        blist_become(self, (PyBList *) self->children[0]);
+        return 0;
+}
+
+static PyObject *
+blist_sort(PyBList *self, PyObject *args, PyObject *kwds)
+{
+        static char *kwlist[] = {"cmp", "key", "reverse", 0};
+        int reverse = 0;
+        compare_t compare = {NULL, NULL};
+        int ret;
+        PyBList saved;
+        PyObject *result = Py_None;
+
+        if (args != NULL) {
+                if (!PyArg_ParseTupleAndKeywords(args, kwds, "|OOi:sort",
+                                                 kwlist, &compare.compare,
+                                                 &compare.keyfunc,
+                                                 &reverse))
+                        return NULL;
+        }
+        
+        if (is_default_cmp(compare.compare))
+                compare.compare = NULL;
+        if (compare.keyfunc == Py_None)
+                compare.keyfunc = NULL;
+
+        saved.ob_type = &PyUserBList_Type; // Make validator happy
+        saved.n = self->n;
+        saved.num_children = self->num_children;
+        saved.leaf = self->leaf;
+        copy(&saved, 0, self, 0, self->num_children);
+        self->n = 0;
+        self->num_children = 0;
+        self->leaf = 1;
+
+        if (compare.compare == NULL && compare.keyfunc == NULL)
+                ret = sort(&saved, NULL);
+        else
+                ret = sort(&saved, &compare);
+
+        if (ret < 0)
+                result = NULL;
+
+        if (self->n && saved.n) {
+                PyErr_SetString(PyExc_ValueError, "list modified during sort");
+                result = NULL;
+                blist_clear(self);
+                /* XXX: Bug.  the __del__ method on an object could
+                   add more items back to the list.  We need to delay
+                   these deallocations until the sort is complete to
+                   gaurantee we don't leak references */
+        }
+
+        assert(!self->n);
+        self->n = saved.n;
+        self->num_children = saved.num_children;
+        self->leaf = saved.leaf;
+        copy(self, 0, &saved, 0, saved.num_children);        
+        
+        Py_XINCREF(result);
+        return result;
+}
+
 
 PyDoc_STRVAR(getitem_doc,
              "x.__getitem__(y) <==> x[y]");
@@ -2573,12 +3310,9 @@ PyDoc_STRVAR(count_doc,
 "L.count(value) -> integer -- return number of occurrences of value");
 PyDoc_STRVAR(reverse_doc,
 "L.reverse() -- reverse *IN PLACE*");
-
-#if 0
 PyDoc_STRVAR(sort_doc,
 "L.sort(cmp=None, key=None, reverse=False) -- stable sort *IN PLACE*;\n\
 cmp(x, y) -> -1, 0, 1");
-#endif
 
 static PyMethodDef blist_methods[] = {
         {"__getitem__", (PyCFunction)blist_subscript, METH_O|METH_COEXIST, getitem_doc},
@@ -2591,7 +3325,7 @@ static PyMethodDef blist_methods[] = {
         {"index",       (PyCFunction)blist_index,   METH_VARARGS, index_doc},
         {"count",       (PyCFunction)blist_count,   METH_O, count_doc},
         {"reverse",     (PyCFunction)blist_reverse, METH_NOARGS, reverse_doc},
-//        {"sort",        (PyCFunction)blist_sort,    METH_VARARGS | METH_KEYWORDS, sort_doc},
+        {"sort",        (PyCFunction)blist_sort,    METH_VARARGS | METH_KEYWORDS, sort_doc},
         {"debug",       (PyCFunction)blist_debug,   METH_NOARGS, NULL},
         {NULL,          NULL}           /* sentinel */
 };
@@ -2702,7 +3436,8 @@ PyTypeObject PyUserBList_Type = {
         0,                                      /* tp_dictoffset */
         (initproc)blist_init,                   /* tp_init */
         PyType_GenericAlloc,                    /* tp_alloc */
-        PyType_GenericNew,                      /* tp_new */
+        //PyType_GenericNew,                      /* tp_new */
+        blist_user_tp_new,                      /* tp_new */
         PyObject_GC_Del,                        /* tp_free */
 };        
 
