@@ -218,9 +218,7 @@ static int blist_ass_item(PyBList *self, ssize_t i, PyObject *v);
 static PyObject *iter_next(iter_t *iter);
 #define iter_new(lst) (iter_new2((lst), 0, (lst)->n))
 #define iter_new2_stack(lst, start, stop) \
-        (iter_init(alloca(sizeof (iter_t) \
-                   + (blist_get_height((lst))-1) * sizeof (point_t)), \
-                   (lst), (start), (stop)))
+        (iter_init(alloca(sizeof (iter_t)))
 #define iter_new_stack(lst) (iter_new2_stack((lst), 0, (lst)->n))
 
 static PyObject *blist_iter(PyObject *);
@@ -248,7 +246,7 @@ static void inline _blist_forget_children2(PyBList *self, int i, int j);
 static void _blist_become(PyBList *self, PyBList *other);
 #define blist_init_from_seq(self, b) \
     rvalidate(self, VALID_RW, int, _blist_init_from_seq(self, b))
-static int inline _blist_init_from_seq(PyBList *self, PyObject *b);
+static int _blist_init_from_seq(PyBList *self, PyObject *b);
 #define blist_underflow(self, k) \
     rvalidate(self, VALID_RW|VALID_COLLAPSE, int, _blist_underflow(self, k))
 static int _blist_underflow(PyBList *self, int k);
@@ -452,7 +450,7 @@ static inline Forest *forest_init(Forest *forest)
 }
 #define forest_new() (forest_init(alloca(sizeof(Forest))))
 
-static inline int forest_append(Forest *forest, PyBList *leaf)
+static int forest_append(Forest *forest, PyBList *leaf)
 {
         if (!leaf->num_children) {  // Don't bother adding empty leaf nodes
                 Py_DECREF(leaf);
@@ -1480,7 +1478,7 @@ static PyObject *blist_delitem_return(PyBList *self, ssize_t i)
         return rv;
 }
 
-static int inline blist_init_from_fast_seq(PyBList *self, PyObject *b)
+static int blist_init_from_fast_seq(PyBList *self, PyObject *b)
 {
         int i, n = PySequence_Fast_GET_SIZE(b);
         PyObject **dst, **src = PySequence_Fast_ITEMS(b);
@@ -2936,7 +2934,7 @@ static int
 gallop_sort(PyObject **array, int n, const compare_t *compare)
 {
         int i, j;
-        int run_length = 1, run_dir;
+        int run_length = 1, run_dir = 1;
         PyObject **runs[n/RUN_THRESH+2];
         int ns[n/RUN_THRESH+2];
         int num_runs = 0;

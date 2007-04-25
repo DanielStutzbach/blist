@@ -16,5 +16,4 @@ clean:
 	rm -f *.o *.so
 
 tarball:
-	cd .. ; tar -zcvf blist.tar.gz blist/blist.c blist/Makefile blist/test_blist.py blist/test/*.py
-
+	cd .. ; tar -zcvf blist.tar.gz blist/blist.c blist/Makefile blist/test_blist.py blist/test/*.py prototype/blist.py
