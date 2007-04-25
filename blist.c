@@ -218,7 +218,7 @@ static int blist_ass_item(PyBList *self, ssize_t i, PyObject *v);
 static PyObject *iter_next(iter_t *iter);
 #define iter_new(lst) (iter_new2((lst), 0, (lst)->n))
 #define iter_new2_stack(lst, start, stop) \
-        (iter_init(alloca(sizeof (iter_t)))
+        (iter_init(alloca(sizeof (iter_t)), (lst), (start), (stop)))
 #define iter_new_stack(lst) (iter_new2_stack((lst), 0, (lst)->n))
 
 static PyObject *blist_iter(PyObject *);
