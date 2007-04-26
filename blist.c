@@ -1689,7 +1689,7 @@ static PyObject *blist_repr(PyBList *self)
         }
 
         if (self->n == 0) {
-                result = PyString_FromString("[]");
+                result = PyString_FromString("blist([])");
                 goto Done;
         }
 
@@ -1700,7 +1700,7 @@ static PyObject *blist_repr(PyBList *self)
         if (blist_repr_r(pieces) < 0)
                 goto Done;
 
-        s = PyString_FromString("[");
+        s = PyString_FromString("blist([");
         if (s == NULL)
                 goto Done;
         tmp = blist_get1(pieces, 0);
@@ -1708,7 +1708,7 @@ static PyObject *blist_repr(PyBList *self)
         blist_ass_item(pieces, 0, s);
         Py_DECREF(s);
 
-        s = PyString_FromString("]");
+        s = PyString_FromString("])");
         if (s == NULL)
                 goto Done;
         tmp = blist_get1(pieces, pieces->n-1);

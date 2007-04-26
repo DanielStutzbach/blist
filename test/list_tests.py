@@ -37,16 +37,16 @@ class CommonTest(seq_tests.CommonTest):
         a0 = self.type2test(l0)
         a2 = self.type2test(l2)
 
-        self.assertEqual(str(a0), str(l0))
-        self.assertEqual(repr(a0), repr(l0))
-        self.assertEqual(`a2`, `l2`)
-        self.assertEqual(str(a2), "[0, 1, 2]")
-        self.assertEqual(repr(a2), "[0, 1, 2]")
+        self.assertEqual(str(a0), 'blist(%s)' % str(l0))
+        self.assertEqual(repr(a0), 'blist(%s)' % repr(l0))
+        self.assertEqual(`a2`, 'blist(%s)' % `l2`)
+        self.assertEqual(str(a2),  "blist([0, 1, 2])")
+        self.assertEqual(repr(a2), "blist([0, 1, 2])")
 
         a2.append(a2)
         a2.append(3)
-        self.assertEqual(str(a2), "[0, 1, 2, [...], 3]")
-        self.assertEqual(repr(a2), "[0, 1, 2, [...], 3]")
+        self.assertEqual(str(a2),  "blist([0, 1, 2, [...], 3])")
+        self.assertEqual(repr(a2), "blist([0, 1, 2, [...], 3])")
 
     def test_print(self):
         d = self.type2test(xrange(200))
