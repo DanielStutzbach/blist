@@ -1,0 +1,13 @@
+- Debugging code is hairy
+- alloca()
+- C++ style comments
+- C99 declarations of variables
+- Breakage for 3rd party extension modules
+- int -> Py_ssize_t in many spots http://www.python.org/dev/peps/pep-0353/
+- graphs "need" error bars
+
+- build a distutils package or egg, put on PyPI, announce on
+  comp.lang.python.announce
+- Write PEP
+  - Raymond: extension module -> 2.6 -> reconsider for p3k if popular
+
