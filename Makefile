@@ -27,3 +27,7 @@ egg:
 
 html:
 	rst2html README.txt
+
+speed:
+	python2.5 speed_test.py 
+	rsync -e ssh -r fig/* webadmin@stutzbachenterprises.com:stutzbachenterprises/html/fig/
