@@ -169,15 +169,15 @@ static void shift_left(PyBList *self, int k, int n)
 #endif
 
 #define ITER2(lst, item, start, stop, block) \
-        iter_t _it; \
+        iter_t _it; int _use_iter;\
         if (lst->leaf) { \
-                int _i; \
+                int _i; _use_iter = 0; \
                 for (_i = (start); _i < lst->num_children && _i < (stop); _i++) { \
                         item = lst->children[_i]; \
                         block; \
                 } \
         } else { \
-                PyBList *_p; \
+                PyBList *_p; _use_iter = 1;\
                 iter_init2(&_it, (lst), (start), (stop)); \
                 _p = _it.leaf; \
                 while (1) { \
@@ -196,14 +196,14 @@ static void shift_left(PyBList *self, int k, int n)
         }
 
 #define ITER(lst, item, block) \
-        iter_t _it; \
-        if (lst->leaf) { \
-                int _i; \
-                for (_i = 0; _i < lst->num_children; _i++) { \
-                        item = lst->children[_i]; \
+        iter_t _it; int _use_iter;\
+        if ((lst)->leaf) { \
+                int _i; _use_iter = 0;\
+                for (_i = 0; _i < (lst)->num_children; _i++) { \
+                        item = (lst)->children[_i]; \
                         block; \
                 } \
-        } else { \
+        } else { _use_iter = 1;\
                 PyBList *_p; \
                 iter_init(&_it, (lst)); \
                 _p = _it.leaf; \
@@ -219,7 +219,7 @@ static void shift_left(PyBList *self, int k, int n)
                 } \
                 iter_cleanup(&_it); \
         }
-#define ITER_CLEANUP() iter_cleanup(&_it)
+#define ITER_CLEANUP() if (_use_iter) iter_cleanup(&_it)
 
 /* Forward declarations */
 static void iter_cleanup(iter_t *iter);
@@ -1505,6 +1505,7 @@ static int blist_init_from_fast_seq(PyBList *self, PyObject *b)
         }
 
         Forest forest;
+        forest_init(&forest);
         PyBList *cur = blist_new();
         dst = cur->children;
         i = 0;
@@ -1585,6 +1586,7 @@ static int _blist_init_from_seq(PyBList *self, PyObject *b)
         blist_clear(self);
 
         Forest forest;
+        forest_init(&forest);
         forest_append(&forest, cur);
         cur = blist_new();
 
@@ -3083,6 +3085,10 @@ merge(PyBList *self, PyBList *other, const compare_t *compare)
         
         Forest forest1, forest2, forest_out;
         PyBList *leaf1, *leaf2, *output;
+
+        forest_init(&forest1);
+        forest_init(&forest2);
+        forest_init(&forest_out);
 
         /* XXX: Check return values */
         forest_append(&forest1, self);
