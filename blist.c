@@ -1,19 +1,31 @@
-/* Copyright (C) 2007 Stutzbach Enterprises, LLC.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
- */      
+/* Copyright 2007 Stutzbach Enterprises, LLC (daniel@stutzbachenterprises.com)
+ * 
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are
+ * met:
+ * 
+ *    1. Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer. 
+ *    2. Redistributions in binary form must reproduce the above
+ *       copyright notice, this list of conditions and the following
+ *       disclaimer in the documentation and/or other materials provided
+ *       with the distribution. 
+ *    3. The name of the author may not be used to endorse or promote
+ *       products derived from this software without specific prior written
+ *       permission. 
+ * 
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT,
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+ * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
+ * IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ */
 
 #include <python2.5/Python.h>
 
@@ -27,11 +39,7 @@
  *
  * XXX, .reversed()
  *
- * XXX, .sort()
- *
- * This goes into an infinite loop:
- *   little_list = BList([0])
- *   big_list = little_list * 2**30
+ * Implement TimSort for large lists
  *
  */
 
@@ -235,7 +243,7 @@ static PyObject *blist_repeat(PyBList *self, ssize_t n);
 static PyObject *_blist_get1(PyBList *self, ssize_t i);
 #define blist_forget_children2(self, i, j) \
     vvalidate(self, VALID_RW, _blist_forget_children2(self, i, j))
-static void inline _blist_forget_children2(PyBList *self, int i, int j);
+static void _blist_forget_children2(PyBList *self, int i, int j);
 #define blist_forget_children1(self, i) \
         (blist_forget_children2((self), (i), (self)->num_children))
 #define blist_forget_children(self) \
@@ -483,7 +491,7 @@ static int forest_append(Forest *forest, PyBList *leaf)
                 parent->num_children = LIMIT;
                 forest->num_trees -= LIMIT;
                 int x = blist_underflow(parent, LIMIT - 1);
-                assert(!x);
+                assert(!x); (void) x;
 
                 forest->list[forest->num_trees++] = parent;
                 power *= LIMIT;
@@ -505,7 +513,7 @@ static inline void forest_delete(Forest *forest)
 }
 
 /* Combine the forest into a final BList */
-static inline PyBList *forest_finish(Forest *forest)
+static PyBList *forest_finish(Forest *forest)
 {
         PyBList *out_tree = NULL; // The final BList we are building
         int out_height = 0;       // It's height
@@ -1115,7 +1123,7 @@ static PyBList *_blist_insert_here(PyBList *self, int k, PyObject *item)
                 self->num_children++;
                 self->children[k] = item;
                 int collapse = blist_underflow(self, k);
-                assert(!collapse);
+                assert(!collapse); (void) collapse;
                 return NULL;
         }
 
@@ -1126,13 +1134,13 @@ static PyBList *_blist_insert_here(PyBList *self, int k, PyObject *item)
                 self->num_children++;
                 self->children[k] = item;
                 int collapse = blist_underflow(self, k);
-                assert(!collapse);
+                assert(!collapse); (void) collapse;
         } else {
                 shift_right(sibling, k - HALF, 1);
                 sibling->num_children++;
                 sibling->children[k - HALF] = item;
                 int collapse = blist_underflow(sibling, k - HALF);
-                assert(!collapse);
+                assert(!collapse); (void) collapse;
                 blist_adjust_n(sibling);
         }
 
@@ -1744,7 +1752,7 @@ static PyObject *blist_debug(PyBList *self, PyObject *indent)
                 Py_INCREF(nl_indent);
                 PyString_ConcatAndDel(&nl_indent, PyString_FromString("\n"));
         
-                result = PyString_FromFormat("BList(leaf=%d, n=%d, r=%d, ",
+                result = PyString_FromFormat("blist(leaf=%d, n=%d, r=%d, ",
                                              self->leaf, self->n,
                                              self->ob_refcnt);
                 //PyString_Concat(&result, nl_indent);
@@ -1758,7 +1766,7 @@ static PyObject *blist_debug(PyBList *self, PyObject *indent)
 
                 PyString_ConcatAndDel(&result, PyString_FromString(")"));
         } else {
-                result = PyString_FromFormat("BList(leaf=%d, n=%d, r=%d, ",
+                result = PyString_FromFormat("blist(leaf=%d, n=%d, r=%d, ",
                                              self->leaf, self->n,
                                              self->ob_refcnt);
                 int i;
@@ -2759,6 +2767,7 @@ static int islt(PyObject *x, PyObject *y, const compare_t *compare)
 #define INSERTION_THRESH 0
 #define BINARY_THRESH 10
 
+#if 0
 /* Compare X to Y via "<".  Goto "fail" if the comparison raises an
    error.  Else "k" is set to true iff X<Y, and an "if (k)" block is
    started.  It makes more sense in context <wink>.  X and Y are PyObject*s.
@@ -2872,6 +2881,7 @@ static int binary_sort(PyObject **array, int n, const compare_t *compare)
 
         return 0;
 }
+#endif
 
 static inline int
 mini_merge(PyObject **array, int middle, int n, const compare_t *compare)
@@ -3014,6 +3024,7 @@ gallop_sort(PyObject **array, int n, const compare_t *compare)
         
 }
 
+#if 0
 static int
 mini_merge_sort(PyObject **array, int n, const compare_t *compare)
 {
@@ -3043,6 +3054,7 @@ mini_merge_sort(PyObject **array, int n, const compare_t *compare)
 
         return 0;
 }
+#endif
 
 static int
 is_default_cmp(PyObject *cmpfunc)
@@ -3342,8 +3354,8 @@ static PySequenceMethods blist_as_sequence = {
 };
 
 PyDoc_STRVAR(blist_doc,
-"BList() -> new list\n"
-"BLst(sequence) -> new list initialized from sequence's items");
+"blist() -> new list\n"
+"blist(sequence) -> new list initialized from sequence's items");
 
 static PyMappingMethods blist_as_mapping = {
         (lenfunc)blist_length,
@@ -3354,7 +3366,7 @@ static PyMappingMethods blist_as_mapping = {
 PyTypeObject PyBList_Type = {
         PyObject_HEAD_INIT(NULL)
         0,
-        "BList",
+        "blist",
         sizeof(PyBList),
         0,
         (destructor)blist_dealloc,              /* tp_dealloc */
@@ -3662,6 +3674,7 @@ PyMODINIT_FUNC
 initblist(void)
 {
         PyObject *m;
+        PyObject *limit = PyInt_FromLong(LIMIT);
 
         PyBList_Type.ob_type = &PyType_Type;
         PyUserBList_Type.ob_type = &PyType_Type;
@@ -3675,8 +3688,9 @@ initblist(void)
         if (PyType_Ready(&PyBList_Type) < 0) return;
         if (PyType_Ready(&PyBListIter_Type) < 0) return;
 
-        m = Py_InitModule3("blist", module_methods, "BList");
+        m = Py_InitModule3("blist", module_methods, "blist");
 
-        PyModule_AddObject(m, "BList", (PyObject *) &PyUserBList_Type);
+        PyModule_AddObject(m, "blist", (PyObject *) &PyUserBList_Type);
+        PyModule_AddObject(m, "_limit", limit);
 }
 

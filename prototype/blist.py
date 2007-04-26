@@ -2,7 +2,7 @@
 
 """
 
-Copyright 2006 Daniel Stutzbach (agthorr@barsoom.org)
+Copyright 2007 Stutzbach Enterprises, LLC (daniel@stutzbachenterprises.com)
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are
@@ -1324,13 +1324,13 @@ class BList(object):
         "Return a string that shows the internal structure of the BList"
         indent = indent + ' '
         if not self.leaf:
-            rv = 'BList(leaf=%s, n=%s, r=%s, %s)' % (
+            rv = 'blist(leaf=%s, n=%s, r=%s, %s)' % (
                 str(self.leaf), str(self.n), str(self.refcount),
                 '\n%s' % indent +
                 ('\n%s' % indent).join([x.debug(indent+'  ')
                                         for x in self.children]))
         else:
-            rv = 'BList(leaf=%s, n=%s, r=%s, %s)' % (
+            rv = 'blist(leaf=%s, n=%s, r=%s, %s)' % (
                 str(self.leaf), str(self.n), str(self.refcount),
                 str(self.children))
         return rv
@@ -2109,6 +2109,8 @@ def main():
 
     little_list = BList([0])
     big_list = little_list * 2**512
+
+blist = BList
     
 if __name__ == '__main__':
     main()
