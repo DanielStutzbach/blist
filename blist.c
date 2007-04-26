@@ -169,7 +169,7 @@ static void shift_left(PyBList *self, int k, int n)
 #endif
 
 #define ITER2(lst, item, start, stop, block) \
-        iter_t *_it = NULL; \
+        iter_t _it; \
         if (lst->leaf) { \
                 int _i; \
                 for (_i = (start); _i < lst->num_children && _i < (stop); _i++) { \
@@ -178,25 +178,25 @@ static void shift_left(PyBList *self, int k, int n)
                 } \
         } else { \
                 PyBList *_p; \
-                _it = iter_new2_stack((lst), (start), (stop)); \
-                _p = _it->leaf; \
+                iter_init2(&_it, (lst), (start), (stop)); \
+                _p = _it.leaf; \
                 while (1) { \
-                        if (_it->i < _p->num_children) { \
-                                if (_it->remaining == 0) break; \
-                                _it->remaining--; \
-                                item = _p->children[_it->i++]; \
+                        if (_it.i < _p->num_children) { \
+                                if (_it.remaining == 0) break; \
+                                _it.remaining--; \
+                                item = _p->children[_it.i++]; \
                         } else { \
-                                item = iter_next(_it); \
-                                _p = _it->leaf; \
+                                item = iter_next(&_it); \
+                                _p = _it.leaf; \
                                 if (item == NULL) break; \
                         } \
                         block; \
                 } \
-                iter_cleanup(_it); \
+                iter_cleanup(&_it); \
         }
 
 #define ITER(lst, item, block) \
-        iter_t *_it = NULL; \
+        iter_t _it; \
         if (lst->leaf) { \
                 int _i; \
                 for (_i = 0; _i < lst->num_children; _i++) { \
@@ -205,35 +205,32 @@ static void shift_left(PyBList *self, int k, int n)
                 } \
         } else { \
                 PyBList *_p; \
-                _it = iter_new_stack((lst)); \
-                _p = _it->leaf; \
+                iter_init(&_it, (lst)); \
+                _p = _it.leaf; \
                 while (1) { \
-                        if (_it->i < _p->num_children) { \
-                                item = _p->children[_it->i++]; \
+                        if (_it.i < _p->num_children) { \
+                                item = _p->children[_it.i++]; \
                         } else { \
-                                item = iter_next(_it); \
-                                _p = _it->leaf; \
+                                item = iter_next(&_it); \
+                                _p = _it.leaf; \
                                 if (item == NULL) break; \
                         } \
                         block; \
                 } \
-                iter_cleanup(_it); \
+                iter_cleanup(&_it); \
         }
-#define ITER_CLEANUP() if (_it) iter_cleanup(_it)
+#define ITER_CLEANUP() iter_cleanup(&_it)
 
 /* Forward declarations */
 static void iter_cleanup(iter_t *iter);
-static iter_t *iter_init(iter_t *iter, PyBList *lst, int start, int stop);
+static iter_t *iter_init2(iter_t *iter, PyBList *lst, int start, int stop);
+#define iter_init(iter, lst) (iter_init2((iter), (lst), 0, (lst)->n))
 #define blist_delslice(self, i, j) \
     rvalidate(self, VALID_RW|VALID_PARENT|VALID_COLLAPSE, int, \
         _blist_delslice(self, i, j))
 static int _blist_delslice(PyBList *self, int i, int j);
 static int blist_ass_item(PyBList *self, ssize_t i, PyObject *v);
 static PyObject *iter_next(iter_t *iter);
-#define iter_new(lst) (iter_new2((lst), 0, (lst)->n))
-#define iter_new2_stack(lst, start, stop) \
-        (iter_init(alloca(sizeof (iter_t)), (lst), (start), (stop)))
-#define iter_new_stack(lst) (iter_new2_stack((lst), 0, (lst)->n))
 
 static PyObject *blist_iter(PyObject *);
 static void blistiter_dealloc(blistiterobject *);
@@ -462,7 +459,6 @@ static inline Forest *forest_init(Forest *forest)
         }
         return forest;
 }
-#define forest_new() (forest_init(alloca(sizeof(Forest))))
 
 static int forest_append(Forest *forest, PyBList *leaf)
 {
@@ -1508,9 +1504,7 @@ static int blist_init_from_fast_seq(PyBList *self, PyObject *b)
                 return 0;
         }
 
-        Forest *forest = forest_new();
-        if (forest == NULL)
-                return -1;
+        Forest forest;
         PyBList *cur = blist_new();
         dst = cur->children;
         i = 0;
@@ -1518,7 +1512,7 @@ static int blist_init_from_fast_seq(PyBList *self, PyObject *b)
         while (src < stop) {
                 if (i == LIMIT) {
                         cur->num_children = LIMIT;
-                        if (forest_append(forest, cur) < 0)
+                        if (forest_append(&forest, cur) < 0)
                                 goto error3;
                         cur = blist_new();
                         dst = cur->children;
@@ -1531,9 +1525,9 @@ static int blist_init_from_fast_seq(PyBList *self, PyObject *b)
 
         if (i) {
                 cur->num_children = i;
-                if (forest_append(forest, cur) < 0) {
+                if (forest_append(&forest, cur) < 0) {
                 error3:
-                        forest_delete(forest);
+                        forest_delete(&forest);
                         Py_DECREF(cur);
                         return -1;
                 }
@@ -1541,7 +1535,7 @@ static int blist_init_from_fast_seq(PyBList *self, PyObject *b)
                 Py_DECREF(cur);
         }
 
-        PyBList *final = forest_finish(forest);
+        PyBList *final = forest_finish(&forest);
         blist_become(self, final);
         Py_DECREF(final);
         return 0;
@@ -1590,13 +1584,8 @@ static int _blist_init_from_seq(PyBList *self, PyObject *b)
         PyBList *cur = blist_copy(self);
         blist_clear(self);
 
-        Forest *forest = forest_new();
-        if (forest == NULL) {
-                Py_DECREF(it);
-                Py_DECREF(cur);
-                return -1;
-        }
-        forest_append(forest, cur);
+        Forest forest;
+        forest_append(&forest, cur);
         cur = blist_new();
 
         while (1) {
@@ -1612,7 +1601,7 @@ static int _blist_init_from_seq(PyBList *self, PyObject *b)
                 }
 
                 if (cur->num_children == LIMIT) {
-                        if (forest_append(forest, cur) < 0) goto error2;
+                        if (forest_append(&forest, cur) < 0) goto error2;
                         cur = blist_new();
                 }
 
@@ -1620,13 +1609,13 @@ static int _blist_init_from_seq(PyBList *self, PyObject *b)
         }
 
         if (cur->num_children) {
-                if (forest_append(forest, cur) < 0) goto error2;
+                if (forest_append(&forest, cur) < 0) goto error2;
                 cur->n = cur->num_children;
         } else {
                 Py_DECREF(cur);
         }
 
-        PyBList *final = forest_finish(forest);
+        PyBList *final = forest_finish(&forest);
         blist_become(self, final);
         Py_DECREF(final);
         
@@ -1635,7 +1624,7 @@ static int _blist_init_from_seq(PyBList *self, PyObject *b)
         return 0;
 
  error2:
-        forest_delete(forest);
+        forest_delete(&forest);
         Py_DECREF(cur);
  error:
         Py_DECREF(it);
@@ -1870,7 +1859,7 @@ static PyObject *blist_subscript(PyBList *self, PyObject *item)
                         i += self->n;
                 return blist_get_item((PyObject *) self, i);
         } else if (PySlice_Check(item)) {
-                ssize_t start, stop, step, slicelength, cur, i;
+                Py_ssize_t start, stop, step, slicelength, cur, i;
                 PyBList* result;
                 PyObject* it;
 
@@ -1958,7 +1947,7 @@ static int blist_ass_subscript(PyBList *self, PyObject *item, PyObject *value)
                         i += self->n;
                 return blist_ass_item(self, i, value);
         } else if (PySlice_Check(item)) {
-                ssize_t start, stop, step, slicelength;
+                Py_ssize_t start, stop, step, slicelength;
 
                 if (PySlice_GetIndicesEx((PySliceObject*)item, self->n,
                                          &start, &stop,&step,&slicelength)<0) {
@@ -2066,8 +2055,10 @@ static ssize_t blist_length(PyBList *self)
 static PyObject *blist_richcompare_list(PyBList *v, PyListObject *w, int op)
 {
         Py_ssize_t i;
-        iter_t *it = NULL;
+        iter_t it;
         int cmp;
+
+        iter_init(&it, v);
 
         if (v->n != w->ob_size && (op == Py_EQ || op == Py_NE)) {
                 /* Shortcut: if the lengths differe, the lists differ */
@@ -2079,21 +2070,18 @@ static PyObject *blist_richcompare_list(PyBList *v, PyListObject *w, int op)
                 true:
                         res = Py_True;
                 }
-                if (it) iter_cleanup(it);
+                iter_cleanup(&it);
                 Py_INCREF(res);
                 return res;
         }
 
         /* Search for the first index where items are different */
-        it = iter_new_stack(v);
-        if (it == NULL)
-                return NULL;
         
         int v_stopped = 0;
         int w_stopped = 0;
 
         for (i = 0 ;; i++) {
-                PyObject *item1 = iter_next(it);
+                PyObject *item1 = iter_next(&it);
                 PyObject *item2;
 
                 if (item1 == NULL)
@@ -2113,7 +2101,7 @@ static PyObject *blist_richcompare_list(PyBList *v, PyListObject *w, int op)
                 } else if (!cmp) {
                         if (op == Py_EQ) goto false;
                         if (op == Py_NE) goto true;
-                        iter_cleanup(it);
+                        iter_cleanup(&it);
                         return PyObject_RichCompare(item1, item2, op);
                 }
         }
@@ -2132,8 +2120,7 @@ static PyObject *blist_richcompare_list(PyBList *v, PyListObject *w, int op)
         else goto false;
 
  error:
-        if (it)
-                iter_cleanup(it);
+        iter_cleanup(&it);
         return NULL;
 }
 
@@ -2179,40 +2166,34 @@ static PyObject *blist_richcompare_slow(PyBList *v, PyBList *w, int op)
 {
         /* Search for the first index where items are different */
         PyObject *item1, *item2;
-        iter_t *it1, *it2;
+        iter_t it1, it2;
         int c;
         PyBList *leaf1, *leaf2;
 
-        it1 = iter_new_stack(v);
-        if (it1 == NULL)
-                return NULL;
-        it2 = iter_new_stack(w);
-        if (it2 == NULL) {
-                iter_cleanup(it1);
-                return NULL;
-        }
+        iter_init(&it1, v);
+        iter_init(&it2, w);
 
-        leaf1 = it1->leaf;
-        leaf2 = it2->leaf;
+        leaf1 = it1.leaf;
+        leaf2 = it2.leaf;
         do {
-                if (it1->i < leaf1->num_children) {
-                        item1 = leaf1->children[it1->i++];
+                if (it1.i < leaf1->num_children) {
+                        item1 = leaf1->children[it1.i++];
                 } else {
-                        item1 = iter_next(it1);
-                        leaf1 = it1->leaf;
+                        item1 = iter_next(&it1);
+                        leaf1 = it1.leaf;
                         if (item1 == NULL) {
                         compare_len:
-                                iter_cleanup(it1);
-                                iter_cleanup(it2);
+                                iter_cleanup(&it1);
+                                iter_cleanup(&it2);
                                 return blist_richcompare_len(v, w, op);
                         }
                 }
 
-                if (it2->i < leaf2->num_children) {
-                        item2 = leaf2->children[it2->i++];
+                if (it2.i < leaf2->num_children) {
+                        item2 = leaf2->children[it2.i++];
                 } else {
-                        item2 = iter_next(it2);
-                        leaf2 = it2->leaf;
+                        item2 = iter_next(&it2);
+                        leaf2 = it2.leaf;
                         if (item2 == NULL)
                                 goto compare_len;
                 }
@@ -2220,8 +2201,8 @@ static PyObject *blist_richcompare_slow(PyBList *v, PyBList *w, int op)
                 c = PyObject_RichCompareBool(item1, item2, Py_EQ);
         } while (c >= 1);
         
-        iter_cleanup(it1);
-        iter_cleanup(it2);
+        iter_cleanup(&it1);
+        iter_cleanup(&it2);
         return blist_richcompare_item(c, op, item1, item2);
 }
 
@@ -3100,46 +3081,42 @@ merge(PyBList *self, PyBList *other, const compare_t *compare)
         }
 #endif
         
-        Forest *forest1, *forest2, *forest_out;
+        Forest forest1, forest2, forest_out;
         PyBList *leaf1, *leaf2, *output;
 
-        forest1 = forest_new();
-        forest2 = forest_new();
-        forest_out = forest_new();
-
         /* XXX: Check return values */
-        forest_append(forest1, self);
-        forest_append(forest2, other);
+        forest_append(&forest1, self);
+        forest_append(&forest2, other);
 
-        leaf1 = forest_get_leaf(forest1);
-        leaf2 = forest_get_leaf(forest2);
+        leaf1 = forest_get_leaf(&forest1);
+        leaf2 = forest_get_leaf(&forest2);
 
         i = 0; /* Index into leaf 1 */
         j = 0; /* Index into leaf 2 */
 
         output = blist_new();
 
-        while ((forest1->num_trees || i < leaf1->num_children)
-               && (forest2->num_trees || j < leaf2->num_children)) {
+        while ((forest1.num_trees || i < leaf1->num_children)
+               && (forest2.num_trees || j < leaf2->num_children)) {
 
                 /* Check if we need to get a new input leaf node */
                 if (i == leaf1->num_children) {
                         leaf1->num_children = 0;
                         Py_DECREF(leaf1);
-                        leaf1 = forest_get_leaf(forest1);
+                        leaf1 = forest_get_leaf(&forest1);
                         i = 0;
                 }
 
                 if (j == leaf2->num_children) {
                         leaf2->num_children = 0;
                         Py_DECREF(leaf2);
-                        leaf2 = forest_get_leaf(forest2);
+                        leaf2 = forest_get_leaf(&forest2);
                         j = 0;
                 }
 
                 /* Check if we have filled up an output leaf node */
                 if (output->n == LIMIT) {
-                        forest_append(forest_out, output);
+                        forest_append(&forest_out, output);
                         output = blist_new();
                 }
 
@@ -3164,13 +3141,13 @@ merge(PyBList *self, PyBList *other, const compare_t *compare)
          * the lists */
 
         /* Append our partially-complete output leaf node to the forest */
-        forest_append(forest_out, output);
+        forest_append(&forest_out, output);
 
         /* Append a partially-consumed input leaf node, if one exists */
         if (i < leaf1->num_children) {
                 shift_left(leaf1, i, i);
                 leaf1->num_children -= i;
-                forest_append(forest_out, leaf1);
+                forest_append(&forest_out, leaf1);
         } else {
                 leaf1->num_children = 0;
                 Py_DECREF(leaf1);
@@ -3179,7 +3156,7 @@ merge(PyBList *self, PyBList *other, const compare_t *compare)
         if (j < leaf2->num_children) {
                 shift_left(leaf2, j, j);
                 leaf2->num_children -= j;
-                forest_append(forest_out, leaf2);
+                forest_append(&forest_out, leaf2);
         } else {
                 leaf2->num_children = 0;
                 Py_DECREF(leaf2);
@@ -3187,18 +3164,18 @@ merge(PyBList *self, PyBList *other, const compare_t *compare)
 
         /* Append the rest of whichever input forest still has nodes. */
 
-        PyBList *ret = forest_finish(forest_out);
-        while (forest1->num_trees) {
-                PyBList *tree = forest1->list[--forest1->num_trees];
+        PyBList *ret = forest_finish(&forest_out);
+        while (forest1.num_trees) {
+                PyBList *tree = forest1.list[--forest1.num_trees];
                 ret = blist_concat_unknown_roots(ret, tree);
         }
-        while (forest2->num_trees) {
-                PyBList *tree = forest2->list[--forest2->num_trees];
+        while (forest2.num_trees) {
+                PyBList *tree = forest2.list[--forest2.num_trees];
                 ret = blist_concat_unknown_roots(ret, tree);
         }
                 
-        forest_delete(forest1);
-        forest_delete(forest2);
+        forest_delete(&forest1);
+        forest_delete(&forest2);
                                    
         return ret;
 }
@@ -3469,12 +3446,12 @@ static iter_t *iter_new2(PyBList *lst, int start, int stop)
         iter = (iter_t *) PyMem_Malloc(sizeof (iter_t));
         if (iter == NULL)
                 return NULL;
-        iter_init(iter, lst, start, stop);
+        iter_init2(iter, lst, start, stop);
         return iter;
 }
 #endif
 
-static iter_t *iter_init(iter_t *iter, PyBList *lst, int start, int stop)
+static iter_t *iter_init2(iter_t *iter, PyBList *lst, int start, int stop)
 {
         iter->depth = 0;
 
@@ -3623,7 +3600,7 @@ static PyObject *blist_iter(PyObject *oseq)
                 it->iter.remaining = seq->n;
                 Py_INCREF(seq);
         } else 
-                iter_init(&it->iter, seq, 0, seq->n);
+                iter_init(&it->iter, seq);
 
         PyObject_GC_Track(it);
         return (PyObject *) it;
