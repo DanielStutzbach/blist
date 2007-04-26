@@ -228,15 +228,5 @@ def test_suite():
 def test_main(verbose=None):
     test_support.run_unittest(BListTest)
 
-    # verify reference counting
-    import sys
-    if verbose:
-        import gc
-        test_support.run_unittest(BListTest)
-        #gc.set_debug(gc.DEBUG_STATS | gc.DEBUG_UNCOLLECTABLE | gc.DEBUG_INSTANCES | gc.DEBUG_LEAK)
-        gc.collect()
-        print len(gc.get_objects())
-
-
 if __name__ == "__main__":
     test_main(verbose=True)
