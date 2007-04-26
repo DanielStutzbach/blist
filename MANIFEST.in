@@ -4,3 +4,5 @@ include test_blist.py
 include test/*.py
 include README.txt
 include LICENSE
+include prototype/blist.py
+include ez_setup.py

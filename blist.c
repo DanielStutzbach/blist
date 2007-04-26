@@ -44,11 +44,17 @@
  */
 
 #ifndef LIMIT
+
+#define LIMIT (128)     // Good performance value
+
+#if 0
 #define LIMIT (8)       // Maximum size, currently low (for testing purposes)
+#endif
+
 #endif
 #define HALF  (LIMIT/2) // Minimum size
 
-#define MAX_HEIGHT 16   // ceil(log(PY_SSIZE_T_MAX)/log(HALF));
+#define MAX_HEIGHT (16) // ceil(log(PY_SSIZE_T_MAX)/log(HALF));
         
 
 #if LIMIT & 1

@@ -17,3 +17,13 @@ clean:
 
 tarball:
 	cd .. ; tar -zcvf blist.tar.gz blist/blist.c blist/Makefile blist/test_blist.py blist/test/*.py blist/prototype/blist.py
+
+egg:
+	python2.5 setup.py register
+	CFLAGS='-O3 -fno-strict-aliasing' python2.5 setup.py build -f
+	rm -f dist/*.asc
+	python2.5 setup.py sdist bdist_egg upload -s
+	rsync -e ssh dist/* webadmin@stutzbachenterprises.com:stutzbachenterprises/html/blist/
+
+html:
+	rst2html README.txt
