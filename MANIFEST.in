@@ -1,0 +1,6 @@
+include blist.c
+include setup.py
+include test_blist.py
+include test/*.py
+include README.txt
+include LICENSE
