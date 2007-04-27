@@ -23,7 +23,7 @@ Example:
 
 None of the above operations have a noticeable delay, even though the
 lists have over 500 million elements due to line 3.  The BList has two
-key features that allow it to pull this off this performance:
+key features that allow it to pull off this performance:
 
 1. Internally, a B+Tree is a wide, squat tree.  Each node has a
    maximum of 128 children.  If the entire list contains 128 or fewer
