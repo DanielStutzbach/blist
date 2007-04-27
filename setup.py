@@ -6,7 +6,7 @@ ez_setup.use_setuptools()
 from setuptools import setup, Extension
 
 setup(name='blist',
-      version='0.9.2',
+      version='0.9.3',
       description='a list-like type with better asymptotic performance',
       author='Stutzbach Enterprises, LLC',
       author_email='daniel@stutzbachenterprises.com',
