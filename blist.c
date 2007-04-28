@@ -2681,6 +2681,12 @@ static void blist_dealloc(PyBList *self)
  * Sorting code
  *
  * Bits and pieces swiped from Python's listobject.c
+ *
+ * Invariant: In case of an error, any sort function returns the list
+ * to a valid state before returning.  "Valid" means that each item
+ * originally in the list is still in the list.  No removals, no
+ * additions, and no changes to the reference counters.
+ *
  ************************************************************************/
 
 /* If COMPARE is NULL, calls PyObject_RichCompareBool with Py_LT, else calls
@@ -2997,7 +3003,7 @@ gallop_sort(PyObject **array, int n, const compare_t *compare)
                         int total = ns[2*i] + ns[2*i+1];
                         if (0 > mini_merge(runs[2*i], ns[2*i], total,
                                            compare)) {
-                                /* XXX validity? */
+                                /* List valid due to invariants */
                                 return -1;
                         }
 
