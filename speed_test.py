@@ -7,6 +7,8 @@ MIN_REPS = 3
 MIN_TIME = 0.01
 MAX_TIME = 1.0
 
+extension = 'dll'
+
 try:
     os.mkdir('fig/relative')
 except OSError:
@@ -23,13 +25,13 @@ def make(limit):
     current_limit = limit
     if limit == 'list': return
     if limit in make_cache:
-        os.system('cp .cache/blist.so-%d blist.so' % limit)
+        os.system('cp .cache/blist.%s-%d blist.%s' % (extension, limit, extension))
         return
     if os.system('make clean > /dev/null 2> /dev/null'):
         raise 'Make failure'
     if os.system('make "COPT=-O3 -DLIMIT=%d -DNDEBUG=1" > /dev/null 2> /dev/null' % limit):
         raise 'Make failure'
-    os.system('cp blist.so .cache/blist.so-%d' % limit)
+    os.system('cp blist.%s .cache/blist.%s-%d' % (extension, extension, limit))
     make_cache.add(limit)
 
 setup = 'from blist import blist'

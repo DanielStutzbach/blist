@@ -85,10 +85,7 @@ BList on your platform, please contact us.
 Known bugs and limitations
 --------------------------
 
-The .sort() method does not yet properly handle comparisons throwing
-exceptions and may crash.
-
-64-bit architectures are not yet supported.
+64-bit architectures should work in theory, but have not been tested.
 
 Objects with __del__ methods that modify the BList that triggered the
 __del__ may cause undefined behavior.  While we plan to fix this, we

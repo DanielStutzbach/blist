@@ -1,5 +1,4 @@
 - Debugging code is hairy
-- alloca()
 - C++ style comments
 - C99 declarations of variables
 - Breakage for 3rd party extension modules
@@ -10,4 +9,11 @@
   comp.lang.python.announce
 - Write PEP
   - Raymond: extension module -> 2.6 -> reconsider for p3k if popular
+- reversed iterator not yet implemented
+- TimSort not implemented for large lists
 
+Known bugs:
+
+- Not robust to strange __del__ operations
+- Not robust to out-of-memory errors in all places
+- May not be robust to trying to create lists larger than PY_SSIZE_T_MAX
