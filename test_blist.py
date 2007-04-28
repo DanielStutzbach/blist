@@ -220,6 +220,25 @@ class BListTest(list_tests.CommonTest):
         x = self.type2test(range(n))
         self.assertRaises(TypeError, x.__setitem__, slice(1,10,2), 5)
 
+    def test_sort_evil(self):
+        class EvilCompare:
+            count = 0
+            def __init__(self, x):
+                self.x = x
+            def __cmp__(self, other):
+                EvilCompare.count += 1
+                if EvilCompare.count > limit * 5:
+                    raise ValueError
+                return cmp(self.x, other.x)
+
+        x = blist(EvilCompare(x) for x in range(n))
+        from random import shuffle
+        shuffle(x)
+        self.assertRaises(ValueError, x.sort)
+        x = [a.x for a in x]
+        x.sort()
+        self.assertEquals(x, range(n))
+
 def test_suite():
     suite = unittest.TestSuite()
     suite.addTest(unittest.makeSuite(BListTest))
