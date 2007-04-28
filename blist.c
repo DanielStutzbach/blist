@@ -29,20 +29,6 @@
 
 #include <python2.5/Python.h>
 
-/* XXX, DECREF can cause callbacks into the object through user
- * __del__ methods.  We are not very good about postponing these until
- * we have finished modifying the list.
- *
- * XXX, prepare_write can cause out-of-memory, which must be handled
- *
- * Need to prevent users form making lists bigger than PY_SSIZE_T_MAX
- *
- * XXX, .reversed()
- *
- * Implement TimSort for large lists
- *
- */
-
 #ifndef LIMIT
 
 #define LIMIT (128)     // Good performance value
