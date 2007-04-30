@@ -7,16 +7,23 @@ MIN_REPS = 3
 MIN_TIME = 0.01
 MAX_TIME = 1.0
 
-extension = 'dll'
+if 'cygwin' in os.uname()[0].lower():
+    extension = 'dll'
+else:
+    extension = 'so'
 
-try:
-    os.mkdir('fig/relative')
-except OSError:
-    pass
-try:
-    os.mkdir('fig/absolute')
-except OSError:
-    pass
+def makedir(x):
+    try:
+        os.mkdir(x)
+    except OSError:
+        pass
+
+makedir('fig')
+makedir('fig/relative')
+makedir('fig/absolute')
+makedir('.cache')
+makedir('dat')
+makedir('gnuplot')
 
 make_cache = set()
 current_limit = None
@@ -331,6 +338,10 @@ add_timing('sort reversed', 'x = range(n)\nx.reverse()', 'y = TypeToTest(x)\ny.s
 add_timing('init from list', 'x = range(n)', 'y = TypeToTest(x)')
 add_timing('init from tuple', 'x = tuple(range(n))', 'y = TypeToTest(x)')
 add_timing('init from iterable', 'x = xrange(n)', 'y = TypeToTest(x)')
+add_timing('init from same type', None, 'y = TypeToTest(x)')
+
+add_timing('convert to tuple', None, 'y = tuple(x)')
+add_timing('convert to list', None, 'y = list(x)')
 
 add_timing('shuffle', 'from random import shuffle\nx = TypeToTest(range(n))', 'shuffle(x)')
 

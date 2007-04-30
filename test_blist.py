@@ -231,7 +231,7 @@ class BListTest(list_tests.CommonTest):
                     raise ValueError
                 return cmp(self.x, other.x)
 
-        x = blist(EvilCompare(x) for x in range(n))
+        x = self.type2test(EvilCompare(x) for x in range(n))
         from random import shuffle
         shuffle(x)
         self.assertRaises(ValueError, x.sort)
