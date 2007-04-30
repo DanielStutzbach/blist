@@ -96,9 +96,16 @@ static int num_free_iters = 0;
 #define PyUserBList_Check(op) (PyObject_TypeCheck((op), &PyUserBList_Type))
 #define PyBList_CheckExact(op) ((op)->ob_type == &PyBList_Type || (op)->ob_type == &PyUserBList_Type)
 
-#define copy(self, k, other, k2, n) \
-    (memcpy(&(self)->children[k], &(other)->children[k2], \
-            sizeof(PyObject *) * n))
+static void inline
+copy(PyBList *self, int k, PyBList *other, int k2, int n)
+{
+        assert(self != other);
+        register PyObject **src = &other->children[k2];
+        register PyObject **dst = &self->children[k];
+        register PyObject **stop = &other->children[k2+n];
+        while (src < stop)
+                *dst++ = *src++;
+}
 
 static void inline
 copyref(PyBList *self, int k, PyBList *other, int k2, int n) {
@@ -257,7 +264,7 @@ static void decref_init(void)
         decref_list = (PyObject **) PyMem_New(PyObject *, decref_max);
 }
 
-static void inline _decref_later(PyObject *ob)
+static void _decref_later(PyObject *ob)
 {
         if (decref_num == decref_max) {
                 decref_max *= 2;
@@ -2313,7 +2320,7 @@ blist_repeat(PyBList *self, Py_ssize_t n)
         return _ob((PyObject *) rv);
 }
 
-static inline void
+static void
 blist_reverse(PyBList *self)
 {
         invariants(self, VALID_PARENT|VALID_RW);
