@@ -17,3 +17,14 @@ Known bugs:
 - Not robust to strange __del__ operations
 - Not robust to out-of-memory errors in all places
 - May not be robust to trying to create lists larger than PY_SSIZE_T_MAX
+- repr()/str() may not be robust to list mutation
+- speedtest uses make instead of setup.py
+
+Optimizations:
+
+- non-user blist should use a better tp_new
+- use copyref() in blist_become
+
+Cleanup:
+
+- Make macros into inline function where possible

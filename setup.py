@@ -6,13 +6,13 @@ ez_setup.use_setuptools()
 from setuptools import setup, Extension
 
 setup(name='blist',
-      version='0.9.3',
-      description='a list-like type with better asymptotic performance',
+      version='0.9.4',
+      description='a list-like type with better asymptotic performance and similar performance on small lists',
       author='Stutzbach Enterprises, LLC',
       author_email='daniel@stutzbachenterprises.com',
       url='http://stutzbachenterprises.com/blist/',
       license = "BSD",
-      keywords = "blist list b+tree btree fast copy-on-write sparse",
+      keywords = "blist list b+tree btree fast copy-on-write sparse array",
       ext_modules=[Extension('blist', ['blist.c'])],
       provides = ['blist'],
       test_suite = "test_blist.test_suite",
