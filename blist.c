@@ -29,6 +29,10 @@
 
 #include <python2.5/Python.h>
 
+/* Makes debugging with gdb under cygwin easier if there's a seg-fault */
+#undef assert
+#define assert(x) if (!(x)) *(char *) 0 = 0;
+
 #ifndef LIMIT
 
 #define LIMIT (128)     // Good performance value
