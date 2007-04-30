@@ -484,6 +484,9 @@ void safe_decref_check(PyBList *self)
 
         assert(PyBList_Check((PyObject *) self));
         
+        if (self->ob_refcnt > 1)
+                return;
+        
         if (self->leaf) {
                 for (i = 0; i < self->num_children; i++)
                         assert(self->children[i]->ob_refcnt > 1);
@@ -497,6 +500,7 @@ void safe_decref_check(PyBList *self)
 void safe_decref(PyBList *self)
 {
         assert(PyBList_Check((PyObject *) self));
+        safe_decref_check(self);
 
         DANGER_BEGIN
         Py_DECREF(self);
@@ -3038,14 +3042,18 @@ py_blist_nohash(PyObject *self)
 static void
 py_blist_dealloc(PyBList *self)
 {
+        int i;
+        
         PyObject_GC_UnTrack(self);
 
         Py_TRASHCAN_SAFE_BEGIN(self)
 
-        invariants(self, VALID_DECREF|VALID_DEALLOC);
-        blist_CLEAR(self);
-        decref_flush();
-        _void();
+        for (i = 0; i < self->num_children; i++)
+                Py_DECREF(self->children[i]);
+
+        self->num_children = 0;
+        self->n = 0;
+        self->leaf = 1;
 
         if (num_free_lists < MAXFREELISTS
             && (self->ob_type == &PyBList_Type)) {
@@ -3062,7 +3070,7 @@ py_blist_dealloc(PyBList *self)
 static int
 py_blist_ass_item(PyBList *self, Py_ssize_t i, PyObject *v)
 {
-        invariants(self, VALID_USER|VALID_RW);
+        invariants(self, VALID_USER|VALID_RW|VALID_DECREF);
 
         if (i >= self->n || i < 0) {
                 set_index_error();
@@ -3071,6 +3079,7 @@ py_blist_ass_item(PyBList *self, Py_ssize_t i, PyObject *v)
 
         if (v == NULL) {
                 blist_delitem(self, i);
+                decref_flush();
                 return _int(0);
         }
         
@@ -3250,15 +3259,20 @@ py_blist_length(PyBList *self)
 static PyObject *
 py_blist_repeat(PyBList *self, Py_ssize_t n)
 {
-        invariants(self, VALID_USER);
+        PyObject *ret;
+        
+        invariants(self, VALID_USER|VALID_DECREF);
 
-        return _ob(blist_repeat(self, n));
+        ret = blist_repeat(self, n);
+        decref_flush();
+
+        return _ob(ret);
 }
 
 static PyBList *
 py_blist_inplace_repeat(PyBList *self, Py_ssize_t n)
 {
-        invariants(self, VALID_USER|VALID_RW|VALID_NEWREF);
+        invariants(self, VALID_USER|VALID_RW|VALID_NEWREF|VALID_DECREF);
         
         PyBList *tmp = (PyBList *) blist_repeat(self, n);
         if (tmp == NULL)
@@ -3266,6 +3280,8 @@ py_blist_inplace_repeat(PyBList *self, Py_ssize_t n)
         blist_become(self, tmp);
         Py_INCREF(self);
         SAFE_DECREF(tmp);
+
+        decref_flush();
 
         return _blist(self);
 }
@@ -3440,7 +3456,9 @@ py_blist_repr(PyBList *self)
                 goto Done;
         tmp = blist_get1(pieces, 0);
         PyString_Concat(&s, tmp);
+        DANGER_BEGIN
         py_blist_ass_item(pieces, 0, s);
+        DANGER_END
         Py_DECREF(s);
 
         s = PyString_FromString("])");
@@ -3449,7 +3467,9 @@ py_blist_repr(PyBList *self)
         tmp = blist_get1(pieces, pieces->n-1);
         Py_INCREF(tmp);
         PyString_ConcatAndDel(&tmp, s);
+        DANGER_BEGIN
         py_blist_ass_item(pieces, pieces->n-1, tmp);
+        DANGER_END
         Py_DECREF(tmp);
 
         s = PyString_FromString(", ");
