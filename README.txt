@@ -1,29 +1,45 @@
-BList: a list-like type with better asymptotic performance
-==========================================================
+BList: a list-like type with better performance
+===============================================
 
-The BList is a type that looks, acts, and quacks like a Python list(),
-but has better performance for many (but not all) use cases.  Below
-are some of the unique features of the BList:
+The BList is a type that looks, acts, and quacks like a Python list,
+but has better performance for many (but not all) use cases.  The use
+cases where the BList is slightly *slower* than Python's list are as
+follows (O(log n) vs. O(1)):
 
-- just as fast as a Python list() when the list is small
-- insertion or removal from the list takes O(log n) time
-- getslice runs in O(log n) time and uses O(log n) memory, regardless of slice size
-- making a shallow copy runs in O(1) time and uses O(1) memory
-- setslice runs in O(log n + log k) time if the inserted slice is a BList of length k
-- multipling a BList by k takes O(log k) time and O(log k) memory
+1. A large list that never changes length.
+2. A large lists where inserts and deletes are only at the end of the
+   list (FIFO).
 
-Example:
+With that disclaimer out of the way, here are some of the use cases
+where the BLists is dramatically faster than the built-in list:
+
+1. Insertion into or removal from a large list (O(log n) vs. O(n))
+2. Taking large slices of large lists (O(log n) vs O(n))
+3. Making shallow copies of large lists (O(1) vs. O(n))
+4. Changing large slices of large lists (O(log n + log k) vs. O(n + k))
+5. Multiplying a list to make a large, sparse list (O(log k) vs. O(kn))
+
+You've probably noticed that we keep referring to "large lists".  For
+small lists, BLists and the built-in list have very similar
+performance.
+
+So you can see the performance of the BList in more detail, several
+performance graphs available at the following link: http://stutzbachenterprises.com/blist/
+
+Example usage:
 
 >>> from blist import *
->>> x = blist([0])
->>> x *= 2**29
->>> x.append(5)
->>> y = x[4:-234234]
->>> del x[3:1024]
+>>> x = blist([0])             # x is a BList with one element
+>>> x *= 2**29                 # x is a BList with > 500 million elements
+>>> x.append(5)                # append to x
+>>> y = x[4:-234234]           # Take a 500 million element slice from x
+>>> del x[3:1024]              # Delete a few thousand elements from x
 
-None of the above operations have a noticeable delay, even though the
-lists have over 500 million elements due to line 3.  The BList has two
-key features that allow it to pull off this performance:
+For comparison, on most systems the built-in list just raises
+MemoryError and calls it a day.
+
+The BList has two key features that allow it to pull off this
+performance:
 
 1. Internally, a B+Tree is a wide, squat tree.  Each node has a
    maximum of 128 children.  If the entire list contains 128 or fewer
@@ -39,9 +55,6 @@ key features that allow it to pull off this performance:
    This is completely behind-the-scenes; from the user's point of view,
    the BList works just like a regular Python list.
 
-So you can see the performance of the BList in more detail, several
-performance graphs available at the following link: http://stutzbachenterprises.com/blist/
-
 BList addiction
 ---------------
 
@@ -52,8 +65,8 @@ Then, everywhere in your program that calls list() will create a BList
 instead.  List comprehensions, [], and built-ins will still return
 ordinary list objects, however.
 
-Installation instruction
-------------------------
+Installation instructions
+-------------------------
 
 Python 2.5 or 2.5.1 is required.  If building from the source
 distribution, the Python header files are also required.  In either
@@ -86,10 +99,6 @@ Known bugs and limitations
 --------------------------
 
 64-bit architectures should work in theory, but have not been tested.
-
-Objects with __del__ methods that modify the BList that triggered the
-__del__ may cause undefined behavior.  While we plan to fix this, we
-also suggest you rethink your code.
 
 Out-of-memory errors are not always handled correctly and may cause
 undefined behavior.  While we plan to fix this, we hope that it does
