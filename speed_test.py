@@ -3,6 +3,18 @@
 import os, sys, subprocess
 from math import *
 
+# Set these to match the options used to compile Python.  Otherwise,
+# you won't get a fair comparison with Python's built-in list type
+COPT = '-O3 -DLIMIT=%d -DNDEBUG=1'
+CC = 'gcc'
+
+# List of BList node sizes to try
+#limits = (8, 64, 128, 512, 2048)
+#limits = (8, 128)
+limits = (128, )
+
+# The tests to run are near the bottom
+
 MIN_REPS = 3
 MIN_TIME = 0.01
 MAX_TIME = 1.0
@@ -34,9 +46,9 @@ def make(limit):
     if limit in make_cache:
         os.system('cp .cache/blist.%s-%d blist.%s' % (extension, limit, extension))
         return
-    if os.system('make clean > /dev/null 2> /dev/null'):
+    if os.system('python2.5 setup.py clean -a > /dev/null 2> /dev/null'):
         raise 'Make failure'
-    if os.system('make "COPT=-O3 -DLIMIT=%d -DNDEBUG=1" > /dev/null 2> /dev/null' % limit):
+    if os.system('CC="%s" COPT="%s" python2.5 setup.py build --build-platlib . > /dev/null 2> /dev/null' % (CC, COPT % limit)):
         raise 'Make failure'
     os.system('cp blist.%s .cache/blist.%s-%d' % (extension, extension, limit))
     make_cache.add(limit)
@@ -46,9 +58,6 @@ setup = 'from blist import blist'
 types = ('blist', 'list')
 ns = range(1,10) + range(10, 100, 10) + range(100, 1000, 100) \
      + range(1000, 10001, 1000) 
-#limits = (8, 64, 128, 512, 2048)
-#limits = (8, 128)
-limits = (128, )
 
 def smart_timeit(stmt, setup, hint):
     n = hint
@@ -265,71 +274,42 @@ def run_all():
     for k in sorted(timing_d):
         run_timing(k)
 
-#add_timing('insert(0, 0)', False, """\
-#x = %(t)s()
-#for i in xrange(%(n)d):
-#    x.insert(0, 0)
-#""")
+########################################################################
+# Tests to run are below here.
+# The arguments to add_timing are as follows:
+#   1) name of the test
+#   2) setup code to run once.  "None" means x = TypeToTest(range(n))
+#   3) code to execute repeatedly in a loop
+#
+# The following symbols will autoamtically be defined:
+#   - blist
+#   - TypeToTest
+#   - n
 
 add_timing('FIFO', None, """\
 x.insert(0, 0)
 del x[0]
 """)
 
-#add_timing('append(0)', False, """\
-#x = %(t)s()
-#for i in xrange(%(n)d):
-#    x.append(0)
-#""")
-
 add_timing('LIFO', None, """\
 x.append(0)
 del x[-1]
 """)
 
-add_timing('add', None, """\
-x + x
-""")
-
-add_timing('contains', None, """\
-x.__contains__(-1)
-""")
-
-#add_timing('__delitem__(0)', False, """\
-#x = %(t)s(range(%(n)d))
-#for i in xrange(%(n)d):
-#    del x[0]
-#""")
-
-#add_timing('__delitem__(-1)', False, """\
-#x = %(t)s(range(%(n)d))
-#for i in xrange(%(n)d):
-#    del x[-1]
-#""")
-
-add_timing('getitem1', None, """\
-x[0]
-""")
-
-add_timing('getitem2', None, """\
-x.__getitem__(0)
-""")
-
-add_timing('getslice', None, """\
-x[1:-1]
-""")
-
+add_timing('add', None, "x + x")
+add_timing('contains', None, "x.__contains__(-1)")
+add_timing('getitem1', None, "x[0]")
+add_timing('getitem2', None, "x.__getitem__(0)")
+add_timing('getslice', None, "x[1:-1]")
 add_timing('forloop', None, "for i in x:\n    pass")
-#add_timing('len', None, "len(x)")
+add_timing('len', None, "len(x)")
 add_timing('eq', None, "x == x")
 add_timing('mul10', None, "x * 10")
-#add_timing('repr', None, "repr(x)")
 add_timing('setitem', None, 'x.__setitem__(0, 1)')
 add_timing('count', None, 'x.count(5)')
 add_timing('reverse', None, 'x.reverse()')
 add_timing('delslice', None, 'del x[len(x)//4:3*len(x)//4]\nx *= 2')
 add_timing('setslice', None, 'x[:] = x')
-#add_timing('index', None, 'x.index(-1)')
 
 add_timing('sort random', 'import random\nx = [random.random() for i in range(n)]', 'y = TypeToTest(x)\ny.sort()')
 add_timing('sort sorted', None, 'y = TypeToTest(x)\ny.sort()')
@@ -339,9 +319,6 @@ add_timing('init from list', 'x = range(n)', 'y = TypeToTest(x)')
 add_timing('init from tuple', 'x = tuple(range(n))', 'y = TypeToTest(x)')
 add_timing('init from iterable', 'x = xrange(n)', 'y = TypeToTest(x)')
 add_timing('init from same type', None, 'y = TypeToTest(x)')
-
-add_timing('convert to tuple', None, 'y = tuple(x)')
-add_timing('convert to list', None, 'y = list(x)')
 
 add_timing('shuffle', 'from random import shuffle\nx = TypeToTest(range(n))', 'shuffle(x)')
 
