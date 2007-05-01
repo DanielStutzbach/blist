@@ -5,8 +5,8 @@ from math import *
 
 # Set these to match the options used to compile Python.  Otherwise,
 # you won't get a fair comparison with Python's built-in list type
-COPT = '-O3 -DLIMIT=%d -DNDEBUG=1'
-CC = 'gcc'
+CFLAGS = '-O3 -DLIMIT=%d -DNDEBUG=1 -fno-strict-aliasing'
+CC = 'gcc-4.1'
 
 # List of BList node sizes to try
 #limits = (8, 64, 128, 512, 2048)
@@ -30,6 +30,12 @@ def makedir(x):
     except OSError:
         pass
 
+def rm(x):
+    try:
+        os.unlink(x)
+    except OSError:
+        pass
+
 makedir('fig')
 makedir('fig/relative')
 makedir('fig/absolute')
@@ -48,7 +54,9 @@ def make(limit):
         return
     if os.system('python2.5 setup.py clean -a > /dev/null 2> /dev/null'):
         raise 'Make failure'
-    if os.system('CC="%s" COPT="%s" python2.5 setup.py build --build-platlib . > /dev/null 2> /dev/null' % (CC, COPT % limit)):
+    rm('blist.%s' % extension)
+    rm('blist.o')
+    if os.system('CC="%s" CFLAGS="%s" python2.5 setup.py build --build-platlib . ' % (CC, CFLAGS % limit)):
         raise 'Make failure'
     os.system('cp blist.%s .cache/blist.%s-%d' % (extension, extension, limit))
     make_cache.add(limit)
