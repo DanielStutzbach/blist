@@ -8,7 +8,7 @@ follows (O(log n) vs. O(1)):
 
 1. A large list that never changes length.
 2. A large lists where inserts and deletes are only at the end of the
-   list (FIFO).
+   list (LIFO).
 
 With that disclaimer out of the way, here are some of the use cases
 where the BLists is dramatically faster than the built-in list:
