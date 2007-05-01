@@ -2330,7 +2330,7 @@ blist_repeat(PyBList *self, Py_ssize_t n)
                 copyref(rv, so_far, rv, 0, (fitn - so_far));
                 
                 rv->num_children = fitn;
-                blist_adjust_n(rv);
+                rv->n = self->n * fit;
 
                 if (fit == n)
                         return _ob((PyObject *) rv);
@@ -2339,13 +2339,13 @@ blist_repeat(PyBList *self, Py_ssize_t n)
                 n /= fit;
 
                 if (remainder_n) {
-                        remainder_n *= self->num_children;
                         remainder = blist_user_new();
                         if (remainder == NULL)
                                 goto error;
+                        remainder->n = self->n * remainder_n;
+                        remainder_n *= self->num_children;
                         copyref(remainder, 0, rv, 0, remainder_n);
                         remainder->num_children = remainder_n;
-                        blist_adjust_n(remainder);
                 }
         }
 
