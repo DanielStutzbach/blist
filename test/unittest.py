@@ -302,9 +302,9 @@ class TestCase:
                     total_finish = sys.gettotalrefcount()
                     ob_finish = gc.get_objects()
                     if len(ob_start) != len(ob_finish):
-                        for ob in ob_finish:
-                            if id(ob) not in ob_start and ob is not ob_start:
-                                print ob
+                        #for ob in ob_finish:
+                        #    if id(ob) not in ob_start and ob is not ob_start:
+                        #        print ob
                         raise ReferenceLeak(len(ob_finish)-len(ob_start))
                     if total_finish != total_start:
                         print total_start, total_finish
