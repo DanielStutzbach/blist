@@ -96,22 +96,27 @@ def timeit(stmt, setup, rep):
         return timeit_cache[key]
     try:
         p = subprocess.Popen([PYTHON, '/usr/lib/python2.5/timeit.py',
-                              '-r', '5', '-n', str(rep), '-s', setup, stmt],
+                              '-r', '5', '-n', str(rep), '-s', setup, '--', stmt],
                              stdout=subprocess.PIPE)
         so, se = p.communicate()
-        parts = so.split()
-        v = float(parts[-4])
-        units = parts[-3]
-        if units == 'usec':
-            v *= 10.0**-6
-        elif units == 'msec':
-            v *= 10.0**-3
-        elif units == 'sec':
-            pass
-        else:
-            raise 'Unknown units'
-        timeit_cache[key] = v
-        return v
+        try:
+            parts = so.split()
+            v = float(parts[-4])
+            units = parts[-3]
+            if units == 'usec':
+                v *= 10.0**-6
+            elif units == 'msec':
+                v *= 10.0**-3
+            elif units == 'sec':
+                pass
+            else:
+                raise 'Unknown units'
+            timeit_cache[key] = v
+            return v
+        except:
+            print so
+            print se
+            raise
     except:
         print stmt
         print setup
@@ -318,7 +323,7 @@ del x[-1]
 """)
 
 add_timing('add', None, "x + x")
-add_timing('contains', None, "x.__contains__(-1)")
+add_timing('contains', None, "-1 in x")
 add_timing('getitem1', None, "x[0]")
 add_timing('getitem2', None, "x.__getitem__(0)")
 add_timing('getslice', None, "x[1:-1]")
@@ -326,7 +331,7 @@ add_timing('forloop', None, "for i in x:\n    pass")
 add_timing('len', None, "len(x)")
 add_timing('eq', None, "x == x")
 add_timing('mul10', None, "x * 10")
-add_timing('setitem', None, 'x.__setitem__(0, 1)')
+add_timing('setitem', None, 'x[0] = 1')
 add_timing('count', None, 'x.count(5)')
 add_timing('reverse', None, 'x.reverse()')
 add_timing('delslice', None, 'del x[len(x)//4:3*len(x)//4]\nx *= 2')
