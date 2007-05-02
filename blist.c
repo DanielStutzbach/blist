@@ -56,7 +56,7 @@ typedef struct PyBList {
         Py_ssize_t n;              /* Total # of user-object descendents */
         unsigned num_children;     /* Number of immediate children */
         int leaf;                  /* Boolean value */
-        PyObject *children[LIMIT]; /* Immediate children */
+        PyObject **children;       /* Immediate children */
 } PyBList;
 
 typedef struct {
@@ -555,6 +555,11 @@ static PyBList *blist_new(void)
                 self = PyObject_GC_New(PyBList, &PyBList_Type);
                 if (self == NULL)
                         return NULL;
+                self->children = PyMem_New(PyObject *, LIMIT);
+                if (self->children == NULL) {
+                        PyObject_GC_Del(self);
+                        return NULL;
+                }                        
 
                 self->leaf = 1; /* True */
                 self->num_children = 0;
@@ -578,6 +583,11 @@ static PyBList *blist_user_new(void)
                 self = PyObject_GC_New(PyBList, &PyUserBList_Type);
                 if (self == NULL)
                         return NULL;
+                self->children = PyMem_New(PyObject *, LIMIT);
+                if (self->children == NULL) {
+                        PyObject_GC_Del(self);
+                        return NULL;
+                }                        
 
                 self->leaf = 1; /* True */
                 self->n = 0;
@@ -633,6 +643,32 @@ blist_become(PyBList *self, PyBList *other)
         copyref(self, 0, other, 0, other->num_children);
         self->num_children = other->num_children;
         self->leaf = other->leaf;
+
+        SAFE_DECREF(other);
+        _void();
+}
+
+static void
+blist_become_and_consume(PyBList *self, PyBList *other)
+{
+        PyObject **tmp;
+        
+        invariants(self, VALID_RW);
+        assert(self != other);
+        assert(other->ob_refcnt == 1 || PyUserBList_Check(other));
+
+        Py_INCREF(other);
+        blist_forget_children(self);
+        tmp = self->children;
+        self->children = other->children;
+        self->n = other->n;
+        self->num_children = other->num_children;
+        self->leaf = other->leaf;
+
+        other->children = tmp;
+        other->n = 0;
+        other->num_children = 0;
+        other->leaf = 1;
 
         SAFE_DECREF(other);
         _void();
@@ -912,7 +948,7 @@ blist_collapse(PyBList *self)
         }
 
         p = (PyBList *) self->children[0];
-        blist_become(self, p);
+        blist_become_and_consume(self, p);
         check_invariants(self);
         return _int(1);
 }
@@ -1068,8 +1104,8 @@ blist_overflow_root(PyBList *self, PyBList *overflow)
         invariants(self, VALID_RW);
         
         if (!overflow) return _int(0);
-        child = blist_copy(self);
-        blist_forget_children(self);
+        child = blist_new();
+        blist_become_and_consume(child, self);
         self->children[0] = (PyObject *)child;
         self->children[1] = (PyObject *)overflow;
         self->num_children = 2;
@@ -1273,15 +1309,16 @@ static int blist_extend_blist(PyBList *self, PyBList *other)
         }
 
         /* Make not-user-visible roots for the subtrees */
-        right = blist_copy(other); /* XXX ignoring return value */
-        left = blist_copy(self);
+        right = blist_copy(other); /* XXX not checking return values */
+        left = blist_new();
+        blist_become_and_consume(left, self);
 
         left_height = blist_get_height(left);
         right_height = blist_get_height(right);
 
         root = blist_concat_subtrees(left, -left_height,
-                                              right, -right_height, NULL);
-        blist_become(self, root);
+                                     right, -right_height, NULL);
+        blist_become_and_consume(self, root);
         SAFE_DECREF(root);
         return _int(0);
 }
@@ -1885,7 +1922,7 @@ blist_init_from_fast_seq(PyBList *self, PyObject *b)
         }
 
         final = forest_finish(&forest);
-        blist_become(self, final);
+        blist_become_and_consume(self, final);
 
         SAFE_DECREF(final);
         
@@ -1938,8 +1975,8 @@ blist_init_from_seq(PyBList *self, PyObject *b)
         /* No such luck, build bottom-up instead.  The sequence data
          * so far goes in a leaf node. */
 
-        cur = blist_copy(self);
-        blist_CLEAR(self);
+        cur = blist_new();
+        blist_become_and_consume(cur, self);
 
         forest_init(&forest);
         forest_append(&forest, cur);
@@ -1973,7 +2010,7 @@ blist_init_from_seq(PyBList *self, PyObject *b)
         }
 
         final = forest_finish(&forest);
-        blist_become(self, final);
+        blist_become_and_consume(self, final);
         SAFE_DECREF(final);
         
  done:
@@ -3042,6 +3079,11 @@ py_blist_user_tp_new(PyTypeObject *subtype, PyObject *args, PyObject *kwds)
         self = (PyBList *) subtype->tp_alloc(subtype, 0);
         if (self == NULL)
                 return NULL;
+        self->children = PyMem_New(PyObject *, LIMIT);
+        if (self->children == NULL) {
+                subtype->tp_free(self);
+                return NULL;
+        }
 
         self->leaf = 1;
         
@@ -3142,8 +3184,10 @@ py_blist_dealloc(PyBList *self)
         } else if (num_free_ulists < MAXFREELISTS
                    && (self->ob_type == &PyUserBList_Type)) {
                 free_ulists[num_free_ulists++] = self;
-        } else
+        } else {
+                PyMem_Free(self->children);
                 self->ob_type->tp_free((PyObject *)self);
+        }
 
         Py_TRASHCAN_SAFE_END(self);
 }
@@ -3362,7 +3406,7 @@ py_blist_inplace_repeat(PyBList *self, Py_ssize_t n)
         tmp = (PyBList *) blist_repeat(self, n);
         if (tmp == NULL)
                 return _blist(NULL);
-        blist_become(self, tmp);
+        blist_become_and_consume(self, tmp);
         Py_INCREF(self);
         SAFE_DECREF(tmp);
 
@@ -3650,6 +3694,7 @@ py_blist_sort(PyBList *self, PyObject *args, PyObject *kwds)
         int ret;
         PyBList saved;
         PyObject *result = Py_None;
+        PyObject *saved_children[LIMIT];
 
         invariants(self, VALID_USER|VALID_RW | VALID_DECREF);
         
@@ -3666,6 +3711,7 @@ py_blist_sort(PyBList *self, PyObject *args, PyObject *kwds)
         if (compare.keyfunc == Py_None)
                 compare.keyfunc = NULL;
 
+        saved.children = saved_children;
         saved.ob_type = &PyUserBList_Type; /* Make validator happy */
         saved.n = self->n;
         saved.num_children = self->num_children;
