@@ -3298,6 +3298,23 @@ py_blist_ass_subscript(PyBList *self, PyObject *item, PyObject *value)
                         return _int(-1);
                 if (i < 0)
                         i += self->n;
+
+                if (self->leaf && i >= 0 && i < self->n) {
+                        /* Speed up common cases */
+
+                        PyObject *old_value = self->children[i];
+                        if (value == NULL) {
+                                shift_left(self, i+1, 1);
+                                self->num_children--;
+                                self->n--;
+                        } else {
+                                self->children[i] = value;
+                                Py_INCREF(value);
+                        }
+                        Py_DECREF(old_value);
+                        return _int(0);
+                }
+                        
                 return _redir(py_blist_ass_item(self, i, value));
         } else if (PySlice_Check(item)) {
                 Py_ssize_t start, stop, step, slicelength;
