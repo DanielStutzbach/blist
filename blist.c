@@ -53,7 +53,7 @@
 
 typedef struct PyBList {
         PyObject_HEAD
-        unsigned n;                /* Total # of user-object descendents */
+        Py_ssize_t n;              /* Total # of user-object descendents */
         unsigned num_children;     /* Number of immediate children */
         int leaf;                  /* Boolean value */
         PyObject *children[LIMIT]; /* Immediate children */
@@ -124,6 +124,9 @@ shift_right(PyBList *self, int k, int n)
         register PyObject **dst = &self->children[self->num_children-1 + n];
         register PyObject **stop = &self->children[k];
 
+        if (self->num_children == 0 && src >= stop)
+                return;
+        
         assert(k >= 0);
         assert(k <= LIMIT);
         assert(n + self->num_children <= LIMIT);
@@ -341,7 +344,8 @@ static void check_invariants(PyBList *self)
                         assert(child->ob_refcnt > 0);
                 }
         } else {
-                int i, total = 0;
+                int i;
+                Py_ssize_t total = 0;
 
                 assert(self->num_children > 0);
 
