@@ -5,8 +5,15 @@ from math import *
 
 # Set these to match the options used to compile Python.  Otherwise,
 # you won't get a fair comparison with Python's built-in list type
-CFLAGS = '-O3 -DLIMIT=%d -DNDEBUG=1 -fno-strict-aliasing'
+#CFLAGS = '-g -O3 -DNDEBUG=1 -DLIMIT=%d -fno-strict-aliasing -I/usr/include/python2.5 -Winline'# --param inline-unit-growth=2000 --param max-inline-insns-single=2000 --param max-inline-insns-auto=2000' # --param inline-unit-growth=2000'
+#CFLAGS='-pg -O3 -DLIMIT=%d -fno-strict-aliasing -DNDEBUG=1 -I/usr/include/python2.5'
+CFLAGS='-c -fno-strict-aliasing -DNDEBUG -g -O3 -Wall -Wstrict-prototypes -I/usr/include/python2.5'
 CC = 'gcc-4.1'
+PYTHON='python2.5'
+LD = CC
+LDFLAGS='-g -shared'
+LOADLIBES='-lpython2.5'
+#PYTHON='/home/agthorr/mypython-2.5/python'
 
 # List of BList node sizes to try
 #limits = (8, 64, 128, 512, 2048)
@@ -56,16 +63,22 @@ def make(limit):
         raise 'Make failure'
     rm('blist.%s' % extension)
     rm('blist.o')
-    if os.system('CC="%s" CFLAGS="%s" python2.5 setup.py build --build-platlib . ' % (CC, CFLAGS % limit)):
+    if os.system('%s %s -DLIMIT=%d -c blist.c -o blist.o' % (CC, CFLAGS, limit)):
         raise 'Make failure'
+    if os.system('%s %s -o blist.so blist.o %s' % (LD, LDFLAGS, LOADLIBES)):
+        raise 'Make failure'
+    #if os.system('CC="%s" python2.5 setup.py build --build-platlib .' % (CC % limit)):
+    #    raise 'Make failure'
+    #if os.system('make CFLAGS="%s"' % (CFLAGS % limit)):
+    #    raise 'Make failure'
     os.system('cp blist.%s .cache/blist.%s-%d' % (extension, extension, limit))
     make_cache.add(limit)
 
 setup = 'from blist import blist'
 
 types = ('blist', 'list')
-ns = range(1,10) + range(10, 100, 10) + range(100, 1000, 100) \
-     + range(1000, 10001, 1000) 
+ns = (range(1,10) + range(10, 100, 10) + range(100, 1000, 100)
+      + range(1000, 10001, 1000))
 
 def smart_timeit(stmt, setup, hint):
     n = hint
@@ -82,7 +95,7 @@ def timeit(stmt, setup, rep):
     if key in timeit_cache:
         return timeit_cache[key]
     try:
-        p = subprocess.Popen(['python2.5', '/usr/lib/python2.5/timeit.py',
+        p = subprocess.Popen([PYTHON, '/usr/lib/python2.5/timeit.py',
                               '-r', '5', '-n', str(rep), '-s', setup, stmt],
                              stdout=subprocess.PIPE)
         so, se = p.communicate()
