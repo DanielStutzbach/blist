@@ -1395,18 +1395,18 @@ static int blist_delslice(PyBList *self, Py_ssize_t i, Py_ssize_t j)
         if (i == j)
                 return _int(0);
         
-        if (i == 0 && j >= self->n) {
-                /* Delete everything. */
-                blist_CLEAR(self);
-                return _int(0);
-        }
-
         if (self->leaf) {
                 blist_forget_children2(self, i, j);
                 self->n = self->num_children;
                 return _int(0);
         }
 
+        if (i == 0 && j >= self->n) {
+                /* Delete everything. */
+                blist_CLEAR(self);
+                return _int(0);
+        }
+        
         blist_locate(self, i, (PyObject **) &p, &k, &so_far);
         blist_locate(self, j-1, (PyObject **) &p2, &k2, &so_far2);
 
