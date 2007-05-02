@@ -32,7 +32,7 @@ speed:
 	python2.5 speed_test.py 
 	rsync -e ssh -r fig/* webadmin@stutzbachenterprises.com:stutzbachenterprises/html/fig/
 
-test: COPT=-DLIMIT=8 -DPy_DEBUG=1 -I/home/agthorr/src-other/Python-2.5.1/Include -I/home/agthorr/src-other/Python-2.5.1
-test: LOADLIBES=-L/home/agthorr/src-other/Python-2.5.1 -lpython2.5 -L/bin
+test: COPT=-DLIMIT=8 -DPy_DEBUG=1 
+test: LOADLIBES=-lpython2.5 -L/bin
 test: clean blist.so
-	~/src-other/Python-2.5.1/python.exe test_blist.py
+	python2.5-dbg test_blist.py
