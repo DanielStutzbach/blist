@@ -347,6 +347,8 @@ static void check_invariants(PyBList *self)
 
                 for (i = 0; i < self->num_children; i++) {
                         assert(PyBList_Check(self->children[i]));
+                        assert(!PyUserBList_Check(self->children[i]));
+
                         PyBList *child = (PyBList *) self->children[i];
                         assert(child != self);
                         total += child->n; 
@@ -2315,9 +2317,12 @@ blist_repeat(PyBList *self, Py_ssize_t n)
                 return _ob((PyObject *) rv);
         }
 
-        if (self->num_children <= HALF) {
+        if (self->num_children > HALF)
+                blist_become(rv, self);
+        else {
                 Py_ssize_t fit, fitn, so_far;
-                
+
+                rv->leaf = self->leaf;
                 fit = LIMIT / self->num_children;
                 if (fit > n) fit = n;
                 fitn = fit * self->num_children;
@@ -2331,8 +2336,9 @@ blist_repeat(PyBList *self, Py_ssize_t n)
                 
                 rv->num_children = fitn;
                 rv->n = self->n * fit;
+                check_invariants(rv);
 
-                if (fit == n)
+                if (fit == n) 
                         return _ob((PyObject *) rv);
 
                 remainder_n = n % fit;
@@ -2346,6 +2352,7 @@ blist_repeat(PyBList *self, Py_ssize_t n)
                         remainder_n *= self->num_children;
                         copyref(remainder, 0, rv, 0, remainder_n);
                         remainder->num_children = remainder_n;
+                        check_invariants(remainder);
                 }
         }
 
@@ -2377,7 +2384,8 @@ blist_repeat(PyBList *self, Py_ssize_t n)
                 blist_extend_blist(rv, remainder);
                 SAFE_DECREF(remainder);
         }
-        
+
+        check_invariants(rv);
         return _ob((PyObject *) rv);
 }
 

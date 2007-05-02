@@ -47,6 +47,12 @@ blist = blist.blist
 class BListTest(list_tests.CommonTest):
     type2test = blist
 
+    def test_delmul(self):
+        x = self.type2test(range(10000))
+        for i in range(100):
+            del x[len(x)//4:3*len(x)//4]
+            x *= 2
+
     def test_truth(self):
         super(BListTest, self).test_truth()
         self.assert_(not self.type2test())
@@ -100,6 +106,11 @@ class BListTest(list_tests.CommonTest):
     def test_mul3(self):
         lst = self.type2test(range(3))
         self.assertEqual(tuple(lst*3), tuple(range(3)*3))
+
+    def test_mul(self):
+        x = self.type2test(range(limit**2))
+        for i in range(10):
+            self.assertEqual(len(x*i), i*limit**2)
 
     def test_extendspam(self):
         a = self.type2test('spam')
