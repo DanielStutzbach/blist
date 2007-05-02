@@ -261,7 +261,7 @@ static PyObject **decref_list = NULL;
 static Py_ssize_t decref_max = 0;
 static Py_ssize_t decref_num = 0;
 
-#define DECREF_BASE (128)
+#define DECREF_BASE (2*128)
 
 static void decref_init(void)
 {
@@ -287,6 +287,53 @@ static void xdecref_later(PyObject *ob)
                 return;
 
         decref_later(ob);
+}
+
+static void shift_left_decref(PyBList *self, int k, int n)
+{
+        register PyObject **src = &self->children[k];
+        register PyObject **dst = &self->children[k - n];
+        register PyObject **stop = &self->children[self->num_children];
+        register PyObject **dec;
+        register PyObject **dst_stop = &self->children[k];
+
+        if (decref_num + n > decref_max) {
+                while (decref_num + n > decref_max)
+                        decref_max *= 2;
+                /* XXX Out of memory not handled */
+                PyMem_Resize(decref_list, PyObject *, decref_max);
+        }
+
+        dec = &decref_list[decref_num];
+
+        assert(n >= 0);
+        assert(k - n >= 0);
+        assert(k >= 0);
+        assert(k <= LIMIT);
+        assert(self->num_children - n >= 0);
+
+        while (src < stop && dst < dst_stop) {
+                if ((*dst)->ob_refcnt > 1) {
+                        Py_DECREF(*dst);
+                } else {
+                        *dec++ = *dst;
+                }
+                *dst++ = *src++;
+        }
+
+        while (src < stop)
+                *dst++ = *src++;
+
+        while (dst < dst_stop) {
+                if ((*dst)->ob_refcnt > 1) {
+                        Py_DECREF(*dst);
+                } else {
+                        *dec++ = *dst;
+                }
+                dst++;
+        }
+
+        decref_num += dec - &decref_list[decref_num];
 }
 
 static void _decref_flush(void)
@@ -602,14 +649,11 @@ static PyBList *blist_user_new(void)
 /* Remove links to some of our children, decrementing their refcounts */
 static void blist_forget_children2(PyBList *self, int i, int j)
 {
-        int k;
         int delta = j - i;
 
         invariants(self, VALID_RW);
 
-        for (k = i; k < j; k++)
-                decref_later(self->children[k]);
-        shift_left(self, j, delta);
+        shift_left_decref(self, j, delta);
         self->num_children -= delta;
 
         _void();
