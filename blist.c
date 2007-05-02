@@ -124,9 +124,9 @@ shift_right(PyBList *self, int k, int n)
         register PyObject **dst = &self->children[self->num_children-1 + n];
         register PyObject **stop = &self->children[k];
 
-        if (self->num_children == 0 && src >= stop)
+        if (self->num_children == 0)
                 return;
-        
+
         assert(k >= 0);
         assert(k <= LIMIT);
         assert(n + self->num_children <= LIMIT);
