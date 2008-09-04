@@ -17,3 +17,20 @@ Optimizations:
 
 Cleanup:
 
+
+C API:
+
+- PySequence_Fast must convert BLists to tuples
+- Over-allocation tricks in stringobject.c no longer work
+- PyList_Fini() commented out
+-             #self.assertRaises(MemoryError, list, xrange(sys.maxint // 2))
+
+
+test_descr - OK
+test_descrtut - OK
+test_iterlen - OK, modifying during iteration
+test_itertools - OK, modifying during iteration
+test_list - OK
+test_resource - also fails with listobject
+test_sort - doesn't always detect modifications during sort
+test_userlist - OK

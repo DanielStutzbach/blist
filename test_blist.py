@@ -250,6 +250,15 @@ class BListTest(list_tests.CommonTest):
         x.sort()
         self.assertEquals(x, range(n))
 
+    def test_big_extend(self):
+        x = self.type2test([1])
+        x.extend(xrange(n))
+        self.assertEqual(tuple(x), (1,) + tuple(xrange(n)))
+
+    def test_big_getslice(self):
+        x = self.type2test([0]) * 65536
+        self.assertEqual(len(x[256:512]), 256)
+
 def test_suite():
     suite = unittest.TestSuite()
     suite.addTest(unittest.makeSuite(BListTest))
