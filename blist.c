@@ -489,7 +489,7 @@ static void debug_setup(debug_t *debug)
         
         if (debug->options & VALID_RW) {
                 assert(debug->self->ob_refcnt == 1 
-                       || PyList_Check(debug->self));
+                       || PyUserBList_Check(debug->self));
         }
         
         if (debug->options & VALID_USER) {
@@ -2467,7 +2467,7 @@ blist_ass_item_return(PyBList *self, Py_ssize_t i, PyObject *v)
         return _ob(blist_ass_item_return(p, i - so_far, v));
 }
 
-#if 0
+#ifndef Py_BUILD_CORE
 static PyObject *
 blist_richcompare_list(PyBList *v, PyListObject *w, int op)
 {
@@ -3556,7 +3556,7 @@ py_blist_richcompare(PyObject *v, PyObject *w, int op)
         if (PyUserBList_Check(w))
                 return _ob(blist_richcompare_blist((PyBList *)v,
                                                    (PyBList *)w, op));
-#if 0
+#ifndef Py_BUILD_CORE
         if (PyList_Check(w))
                 return _ob(blist_richcompare_list((PyBList*)v,
                                                   (PyListObject*)w, op));
@@ -4071,7 +4071,11 @@ py_blist_repr(PyObject *oself)
         }
 
         if (self->n == 0) {
+#ifdef Py_BUILD_CORE
                 result = PyString_FromString("[]");
+#else
+                result = PyString_FromString("blist([])");
+#endif
                 goto Done;
         }
 
@@ -4082,7 +4086,11 @@ py_blist_repr(PyObject *oself)
         if (blist_repr_r(pieces) < 0)
                 goto Done;
 
+#ifdef Py_BUILD_CORE
         s = PyString_FromString("[");
+#else
+        s = PyString_FromString("blist([");
+#endif
         if (s == NULL)
                 goto Done;
         tmp = blist_get1(pieces, 0);
@@ -4092,7 +4100,11 @@ py_blist_repr(PyObject *oself)
         DANGER_END
         Py_DECREF(s);
 
+#ifdef Py_BUILD_CORE
         s = PyString_FromString("]");
+#else
+        s = PyString_FromString("])");
+#endif
         if (s == NULL)
                 goto Done;
         tmp = blist_get1(pieces, pieces->n-1);
