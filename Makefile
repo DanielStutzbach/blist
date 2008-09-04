@@ -1,9 +1,10 @@
-CFLAGS=-Wall -Winline -g -fno-strict-aliasing -Wstrict-prototypes -I/usr/include/python2.5 $(COPT) -Werror
+CFLAGS=-Wall -Winline -g -fno-strict-aliasing -Wstrict-prototypes $(COPT) -Werror $(INCLUDE)
+INCLUDE=-I/usr/include/python2.5#-I/home/agthorr/mypython-2.5/Include/ -I/home/agthorr/mypython-2.5/
 CC=gcc-4.1
 
-#COPT=-O3 -DLIMIT=128 -DNDEBUG=1 # For performance
+COPT=-O3 -DLIMIT=128 -DNDEBUG=1 # For performance
 #COPT=-pg -O3 -DLIMIT=128 -DNDEBUG=1# -ftest-coverage -fprofile-arcs # For profiling
-COPT=-DPy_DEBUG=1 -DLIMIT=8    # For debug mode
+#COPT=-DPy_DEBUG=1 -DLIMIT=8    # For debug mode
 
 LDFLAGS=-g -shared  $(COPT)
 LD=$(CC)

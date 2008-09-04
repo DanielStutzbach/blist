@@ -7,7 +7,7 @@ from math import *
 # you won't get a fair comparison with Python's built-in list type
 #CFLAGS = '-g -O3 -DNDEBUG=1 -DLIMIT=%d -fno-strict-aliasing -I/usr/include/python2.5 -Winline'# --param inline-unit-growth=2000 --param max-inline-insns-single=2000 --param max-inline-insns-auto=2000' # --param inline-unit-growth=2000'
 #CFLAGS='-pg -O3 -DLIMIT=%d -fno-strict-aliasing -DNDEBUG=1 -I/usr/include/python2.5'
-CFLAGS='-c -fno-strict-aliasing -DNDEBUG -g -O3 -Wall -Wstrict-prototypes -I/usr/include/python2.5'
+CFLAGS='-c -fno-strict-aliasing -DNDEBUG -g -O3 -Wall -Wstrict-prototypes -I/usr/include/python2.5 --std=gnu99'
 CC = 'gcc-4.1'
 PYTHON='python2.5'
 LD = CC
