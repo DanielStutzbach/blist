@@ -196,6 +196,15 @@ def html(label):
     print >>f, """
 <html>
 <body>
+<div style="width: 100%; background-color: #ccc;">
+<a href="/">Home</a>
+| <a href="/blist/">BList</a>
+| <a href="http://pokersleuth.com/">Poker Sleuth</a>
+| <a href="http://pokersleuth.com/poker-crunch.shtml">Poker Calculator</a>
+| <a href="http://pokersleuth.com/hand-converter.shtml">Hand Converter</a>
+
+</div>
+    
 <img src="absolute/%s.png"/>
 <img src="relative/%s.png"/>
 <p>

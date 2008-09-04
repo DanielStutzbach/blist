@@ -2228,12 +2228,11 @@ static PyBList *forest_finish(Forest *forest)
  */
 
 static int
-blist_init_from_tuple(PyBList *self, PyObject *b)
+blist_init_from_array(PyBList *self, PyObject **src, Py_ssize_t n)
 {
         int i;
-        Py_ssize_t n = PySequence_Fast_GET_SIZE(b);
         PyBList *final, *cur;
-        PyObject **dst, **src = ((PyTupleObject *) b)->ob_item;
+        PyObject **dst;
         PyObject **stop = &src[n];
         Forest forest;
         
@@ -2309,8 +2308,18 @@ blist_init_from_seq(PyBList *self, PyObject *b)
                 return _int(0);
         }
 
-        if (PyTuple_CheckExact(b))
-                return _int(blist_init_from_tuple(self, b));
+        if (PyTuple_CheckExact(b)) {
+                PyTupleObject *t = (PyTupleObject *) b;
+                return _int(blist_init_from_array(self, t->ob_item,
+                                                  t->ob_size));
+        }
+#ifndef Py_BUILD_CORE
+        if (PyList_CheckExact(b)) {
+                PyListObject *l = (PyListObject *) b;
+                return _int(blist_init_from_array(self, l->ob_item,
+                                                  l->ob_size));
+        }
+#endif
         
         it = PyObject_GetIter(b);
         if (it == NULL)
