@@ -69,7 +69,8 @@ def timeit(python, stmt, setup, rep):
             lines = so.split('\n')
 
             raw = lines[0]
-            times = [float(x) * 10.0**-6 for x in raw.split()[2:]]
+            number = int(lines[1].split()[0])
+            times = [float(x) / number for x in raw.split()[2:]]
             times.sort()
 
             v = (times[n//2+1], times[n//4+1], times[(3*n)//4+1])
@@ -252,7 +253,7 @@ set size noratio 1,1
         print >>f, 'set key top left'
         #print >>f, 'set mytics 10'
         print >>f, 'set logscale xy'
-        print >>f, 'set yrange [0.000001:10]'
+        print >>f, 'set yrange [0.0001:10]'
         print >>f, 'set ylabel "Execution Time"'
         print >>f, 'set ytics ("1 ns" 0.000001, "10 ns" 0.00001, "100 ns" 0.0001, "1 us" 0.001, "10 us" 0.01, "100 us" 0.1, "1 ms" 1.0, "10 ms" 10.0, "100 ms" 100.0)'
 
@@ -316,7 +317,8 @@ add_timing('forloop', None, "for i in x:\n    pass")
 add_timing('len', None, "len(x)")
 add_timing('eq', None, "x == x")
 add_timing('mul10', None, "x * 10")
-add_timing('setitem', None, 'x[0] = 1')
+add_timing('setitem1', None, 'x[0] = 1')
+add_timing('setitem3', 'x = range(n)\nm = n//2', 'x[m] = 1')
 add_timing('count', None, 'x.count(5)')
 add_timing('reverse', None, 'x.reverse()')
 add_timing('delslice', None, 'del x[len(x)//4:3*len(x)//4]\nx *= 2')
