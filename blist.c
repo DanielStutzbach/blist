@@ -3267,8 +3267,10 @@ blist_repeat(PyBList *self, Py_ssize_t n)
                 rv->n = self->n * fit;
                 check_invariants(rv);
 
-                if (fit == n) 
+                if (fit == n) {
+                        ext_mark(rv, 0, DIRTY);
                         return _ob((PyObject *) rv);
+                }
 
                 remainder_n = n % fit;
                 n /= fit;
