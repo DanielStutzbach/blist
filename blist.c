@@ -3936,7 +3936,7 @@ sort(PyBList *self, const compare_t *compare)
         PyBList *(*mergefunc)(PyBList *self, PyBList *other,
                               const compare_t *compare, int *err);
 
-        invariants(self, VALID_PARENT);
+        invariants(self, VALID_PARENT | VALID_RW);
 
         mergefunc = merge;
 
@@ -3946,11 +3946,10 @@ sort(PyBList *self, const compare_t *compare)
 
         for (i = 0; i < self->num_children; i++) {
                 blist_prepare_write(self, i);
+                if (ret < 0) continue;
                 ret = sort((PyBList *) self->children[i], compare);
-                if (ret < 0) {
+                if (ret < 0)
                         mergefunc = merge_no_compare;
-                        break;
-                }
         }
 
         while (self->num_children != 1) {
@@ -3976,6 +3975,7 @@ sort(PyBList *self, const compare_t *compare)
 
         blist_become_and_consume(self, (PyBList *) self->children[0]);
         check_invariants(self);
+        assert(self->ob_refcnt == 1 || PyUserBList_Check(self));
         
         return _int(ret);
 }
