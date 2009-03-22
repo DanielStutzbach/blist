@@ -226,13 +226,13 @@ void set_index_error(void)
 static int blist_unstable = 0;
 static int blist_in_code = 0;
 static int blist_danger = 0;
-#define DANGER_BEGIN { int _blist_unstable = blist_unstable, _blist_in_code = blist_in_code; blist_unstable = 0; blist_in_code = 0; blist_danger++;
-#define DANGER_END assert(!blist_unstable); assert(!blist_in_code); blist_unstable = _blist_unstable; blist_in_code = _blist_in_code; assert(blist_danger); blist_danger--; }
+#define DANGER_BEGIN { int _blist_unstable = blist_unstable, _blist_in_code = blist_in_code; blist_unstable = 0; blist_in_code = 0; blist_danger++
+#define DANGER_END assert(!blist_unstable); assert(!blist_in_code); blist_unstable = _blist_unstable; blist_in_code = _blist_in_code; assert(blist_danger); blist_danger--; } while (0)
 
 #else
 
-#define DANGER_BEGIN
-#define DANGER_END
+#define DANGER_BEGIN while(0)
+#define DANGER_END while(0)
 
 #endif
 
@@ -369,9 +369,9 @@ static void _decref_flush(void)
                  */
                 
                 decref_num--;
-                DANGER_BEGIN
+                DANGER_BEGIN;
                 Py_DECREF(decref_list[decref_num]);
-                DANGER_END
+                DANGER_END;
         }
 
         if (decref_max > DECREF_BASE) {
@@ -604,9 +604,9 @@ static void safe_decref(PyBList *self)
         assert(PyBList_Check((PyObject *) self));
         safe_decref_check(self);
 
-        DANGER_BEGIN
+        DANGER_BEGIN;
         Py_DECREF(self);
-        DANGER_END
+        DANGER_END;
 }
 
 #undef SAFE_DECREF
@@ -639,9 +639,9 @@ static PyBList *blist_new(void)
                 self = free_lists[--num_free_lists];
                 _Py_NewReference((PyObject *) self);
         } else {
-                DANGER_BEGIN
+                DANGER_BEGIN;
                 self = PyObject_GC_New(PyBList, &PyBList_Type);
-                DANGER_END
+                DANGER_END;
                 if (self == NULL)
                         return NULL;
                 self->children = PyMem_New(PyObject *, LIMIT);
@@ -670,9 +670,9 @@ static PyBList *blist_user_new(void)
                 self = free_ulists[--num_free_ulists];
                 _Py_NewReference((PyObject *) self);
         } else {
-                DANGER_BEGIN
+                DANGER_BEGIN;
                 self = (PyBList *) PyObject_GC_New(PyBListRoot, &PyUserBList_Type);
-                DANGER_END
+                DANGER_END;
                 if (self == NULL)
                         return NULL;
                 self->children = PyMem_New(PyObject *, LIMIT);
@@ -2116,9 +2116,9 @@ py_blist_iter(PyObject *oseq)
                 it = free_iters[--num_free_iters];
                 _Py_NewReference((PyObject *) it);
         } else {
-                DANGER_BEGIN
+                DANGER_BEGIN;
                 it = PyObject_GC_New(blistiterobject, &PyBListIter_Type);
-                DANGER_END
+                DANGER_END;
                 if (it == NULL)
                         return _ob(NULL);
         }
@@ -2333,10 +2333,10 @@ py_blist_reversed(PyBList *seq)
 
         invariants(seq, VALID_USER | VALID_NEWREF);
         
-        DANGER_BEGIN
+        DANGER_BEGIN;
         it = PyObject_GC_New(blistiterobject,
                              &PyBListReverseIter_Type);
-        DANGER_END
+        DANGER_END;
         if (it == NULL)
                 return _ob(NULL);
 
@@ -2750,9 +2750,9 @@ blist_init_from_seq(PyBList *self, PyObject *b)
              self->num_children++) {
                 PyObject *item;
 
-                DANGER_BEGIN
+                DANGER_BEGIN;
                 item = iternext(it);
-                DANGER_END
+                DANGER_END;
 
                 if (item == NULL) {
                         self->n = self->num_children;
@@ -2791,9 +2791,9 @@ blist_init_from_seq(PyBList *self, PyObject *b)
 
         while (1) {
                 PyObject *item;
-                DANGER_BEGIN
+                DANGER_BEGIN;
                 item = iternext(it);
-                DANGER_END
+                DANGER_END;
                 if (item == NULL) {
                         if (PyErr_Occurred()) {
                                 if (PyErr_ExceptionMatches(PyExc_StopIteration))
@@ -2831,14 +2831,14 @@ blist_init_from_seq(PyBList *self, PyObject *b)
         return _int(0);
         
  error2:
-        DANGER_BEGIN
+        DANGER_BEGIN;
         Py_XDECREF((PyObject *) cur);
         forest_delete_now(&forest);
-        DANGER_END
+        DANGER_END;
  error:
-        DANGER_BEGIN
+        DANGER_BEGIN;
         Py_DECREF(it);
-        DANGER_END
+        DANGER_END;
         blist_CLEAR(self);
         return _int(-1);
 }
@@ -3061,9 +3061,9 @@ blist_richcompare_item(int c, int op, PyObject *item1, PyObject *item2)
                         Py_INCREF(Py_True);
                         return Py_True;
                 }
-                DANGER_BEGIN
+                DANGER_BEGIN;
                 ret = PyObject_RichCompare(item1, item2, op);
-                DANGER_END
+                DANGER_END;
                 return ret;
         }
 
@@ -3125,9 +3125,9 @@ static PyObject *blist_richcompare_slow(PyBList *v, PyBList *w, int op)
                                 goto compare_len;
                 }
 
-                DANGER_BEGIN
+                DANGER_BEGIN;
                 c = PyObject_RichCompareBool(item1, item2, Py_EQ);
-                DANGER_END
+                DANGER_END;
         } while (c >= 1);
         
         iter_cleanup(&it1);
@@ -3155,10 +3155,10 @@ blist_richcompare_blist(PyBList *v, PyBList *w, int op)
                 return blist_richcompare_slow(v, w, op);
                 
         for (i = 0; i < v->num_children && i < w->num_children; i++) {
-                DANGER_BEGIN
+                DANGER_BEGIN;
                 c = PyObject_RichCompareBool(v->children[i],
                                              w->children[i],Py_EQ);
-                DANGER_END
+                DANGER_END;
                 if (c < 1)
                         return blist_richcompare_item(c, op, v->children[i],
                                                       w->children[i]);
@@ -3390,9 +3390,9 @@ static int
 _rich_compare_bool(PyObject *x, PyObject *y)
 {
         int ret;
-        DANGER_BEGIN
+        DANGER_BEGIN;
         ret = PyObject_RichCompareBool(x, y, Py_LT);
-        DANGER_END
+        DANGER_END;
         return ret;
 }
 
@@ -3421,17 +3421,17 @@ static int islt(PyObject *x, PyObject *y, const compare_t *compare)
         Py_ssize_t i;
 
         if (compare->keyfunc != NULL) {
-                DANGER_BEGIN
+                DANGER_BEGIN;
                 x = PyObject_CallFunctionObjArgs(compare->keyfunc, x, NULL);
-                DANGER_END
+                DANGER_END;
                 if (x == NULL) return -1;
-                DANGER_BEGIN
+                DANGER_BEGIN;
                 y = PyObject_CallFunctionObjArgs(compare->keyfunc, y, NULL);
-                DANGER_END
+                DANGER_END;
                 if (y == NULL) {
-                        DANGER_BEGIN
+                        DANGER_BEGIN;
                         Py_DECREF(x);
-                        DANGER_END
+                        DANGER_END;
                         return -1;
                 }
         } else {
@@ -3440,34 +3440,34 @@ static int islt(PyObject *x, PyObject *y, const compare_t *compare)
         }
 
         if (compare->compare == NULL) {
-                DANGER_BEGIN
+                DANGER_BEGIN;
                 i = PyObject_RichCompareBool(x, y, Py_LT);
                 Py_DECREF(x);
                 Py_DECREF(y);
-                DANGER_END
+                DANGER_END;
                 if (i < 0)
                         return -1;
                 return i;
         }
 
-        DANGER_BEGIN
+        DANGER_BEGIN;
         args = PyTuple_New(2);
-        DANGER_END
+        DANGER_END;
 
         if (args == NULL) {
-                DANGER_BEGIN
+                DANGER_BEGIN;
                 Py_DECREF(x);
                 Py_DECREF(y);
-                DANGER_END
+                DANGER_END;
                 return -1;
         }
 
         PyTuple_SET_ITEM(args, 0, x);
         PyTuple_SET_ITEM(args, 1, y);
-        DANGER_BEGIN
+        DANGER_BEGIN;
         res = PyObject_Call(compare->compare, args, NULL);
         Py_DECREF(args);
-        DANGER_END
+        DANGER_END;
         if (res == NULL)
                 return -1;
         if (!PyInt_CheckExact(res)) {
@@ -4027,9 +4027,9 @@ py_blist_init(PyObject *oself, PyObject *args, PyObject *kw)
         invariants(oself, VALID_USER|VALID_DECREF);
         self = (PyBList *) oself;
 
-        DANGER_BEGIN
+        DANGER_BEGIN;
         err = PyArg_ParseTupleAndKeywords(args, kw, "|O:list", kwlist, &arg);
-        DANGER_END
+        DANGER_END;
         if (!err)
                 return _int(-1);
 
@@ -4284,9 +4284,9 @@ py_blist_ass_subscript(PyObject *oself, PyObject *item, PyObject *value)
                                 self->children[i] = value;
                                 Py_INCREF(value);
                         }
-                        DANGER_BEGIN
+                        DANGER_BEGIN;
                         Py_DECREF(old_value);
-                        DANGER_END
+                        DANGER_END;
                         return _int(0);
                 }
                         
@@ -4299,9 +4299,9 @@ py_blist_ass_subscript(PyObject *oself, PyObject *item, PyObject *value)
 
                 Py_INCREF(value);
                 old_value = blist_ass_item_return2((PyBListRoot*)self,i,value);
-                DANGER_BEGIN
+                DANGER_BEGIN;
                 Py_DECREF(old_value);
-                DANGER_END
+                DANGER_END;
                 return _int(0);
         } else if (PySlice_Check(item)) {
                 Py_ssize_t start, stop, step, slicelength;
@@ -4343,10 +4343,10 @@ py_blist_ass_subscript(PyObject *oself, PyObject *item, PyObject *value)
                         PyObject *ins, *seq;
                         Py_ssize_t cur, i;
 
-                        DANGER_BEGIN
+                        DANGER_BEGIN;
                         seq = PySequence_Fast(value,
                                   "Must assign iterable to extended slice");
-                        DANGER_END
+                        DANGER_END;
                         if (!seq)
                                 return _int(-1);
 
@@ -4485,9 +4485,9 @@ py_blist_contains(PyObject *oself, PyObject *el)
         self = (PyBList *) oself;
 
         ITER(self, item, {
-                DANGER_BEGIN
+                DANGER_BEGIN;
                 c = PyObject_RichCompareBool(el, item, Py_EQ);
-                DANGER_END
+                DANGER_END;
                 if (c < 0) {
                         ret = -1;
                         break;
@@ -4651,9 +4651,9 @@ py_blist_repr(PyObject *oself)
         invariants(oself, VALID_USER);
         self = (PyBList *) oself;
 
-        DANGER_BEGIN
+        DANGER_BEGIN;
         i = Py_ReprEnter((PyObject *) self);
-        DANGER_END
+        DANGER_END;
         if (i) {
                 return i > 0 ? _ob(PyString_FromString("[...]")) : _ob(NULL);
         }
@@ -4683,9 +4683,9 @@ py_blist_repr(PyObject *oself)
                 goto Done;
         tmp = blist_get1(pieces, 0);
         PyString_Concat(&s, tmp);
-        DANGER_BEGIN
+        DANGER_BEGIN;
         py_blist_ass_item((PyObject *) pieces, 0, s);
-        DANGER_END
+        DANGER_END;
         Py_DECREF(s);
 
 #ifdef Py_BUILD_CORE
@@ -4698,9 +4698,9 @@ py_blist_repr(PyObject *oself)
         tmp = blist_get1(pieces, pieces->n-1);
         Py_INCREF(tmp);
         PyString_ConcatAndDel(&tmp, s);
-        DANGER_BEGIN
+        DANGER_BEGIN;
         py_blist_ass_item((PyObject *) pieces, pieces->n-1, tmp);
-        DANGER_END
+        DANGER_END;
         Py_DECREF(tmp);
 
         s = PyString_FromString(", ");
@@ -4710,14 +4710,14 @@ py_blist_repr(PyObject *oself)
         Py_DECREF(s);
         
  Done:
-        DANGER_BEGIN
+        DANGER_BEGIN;
         /* Only deallocating strings, so this is safe */
         Py_XDECREF(pieces);
-        DANGER_END
+        DANGER_END;
 
-        DANGER_BEGIN
+        DANGER_BEGIN;
         Py_ReprLeave((PyObject *) self);
-        DANGER_END
+        DANGER_END;
         return _ob(result);
 }
 
@@ -4797,12 +4797,12 @@ py_blist_sort(PyBList *self, PyObject *args, PyObject *kwds)
         
         if (args != NULL) {
                 int err;
-                DANGER_BEGIN
+                DANGER_BEGIN;
                 err = PyArg_ParseTupleAndKeywords(args, kwds, "|OOi:sort",
                                                   kwlist, &compare.compare,
                                                   &compare.keyfunc,
                                                   &reverse);
-                DANGER_END
+                DANGER_END;
                 if (!err) 
                         return _ob(NULL);
         }
@@ -4842,12 +4842,12 @@ py_blist_sort(PyBList *self, PyObject *args, PyObject *kwds)
                 result = NULL;
 
         if (self->n && saved.n) {
-                DANGER_BEGIN
+                DANGER_BEGIN;
                 /* An error may also have been raised by a comparison
                  * function.  Since may decref that traceback, it can
                  * execute arbitrary python code */
                 PyErr_SetString(PyExc_ValueError, "list modified during sort");
-                DANGER_END
+                DANGER_END;
                 result = NULL;
                 blist_CLEAR(self);
         }
@@ -4888,9 +4888,9 @@ py_blist_count(PyBList *self, PyObject *v)
         invariants(self, VALID_USER | VALID_DECREF);
 
         ITER(self, item, {
-                DANGER_BEGIN
+                DANGER_BEGIN;
                 c = PyObject_RichCompareBool(item, v, Py_EQ);
-                DANGER_END
+                DANGER_END;
                 if (c > 0)
                         count++;
                 else if (c < 0) {
@@ -4914,11 +4914,11 @@ py_blist_index(PyBList *self, PyObject *args)
         
         invariants(self, VALID_USER|VALID_DECREF);
 
-        DANGER_BEGIN
+        DANGER_BEGIN;
         err = PyArg_ParseTuple(args, "O|O&O&:index", &v,
                                _PyEval_SliceIndex, &start,
                                _PyEval_SliceIndex, &stop);
-        DANGER_END
+        DANGER_END;
         if (!err)
                 return _ob(NULL);
         if (start < 0) {
@@ -4934,9 +4934,9 @@ py_blist_index(PyBList *self, PyObject *args)
 
         i = start;
         ITER2(self, item, start, stop, {
-                DANGER_BEGIN
+                DANGER_BEGIN;
                 c = PyObject_RichCompareBool(item, v, Py_EQ);
-                DANGER_END
+                DANGER_END;
                 if (c > 0) {
                         ITER_CLEANUP();
                         decref_flush();
@@ -4965,9 +4965,9 @@ py_blist_remove(PyBList *self, PyObject *v)
 
         i = 0;
         ITER(self, item, {
-                DANGER_BEGIN
+                DANGER_BEGIN;
                 c = PyObject_RichCompareBool(item, v, Py_EQ);
-                DANGER_END
+                DANGER_END;
                 if (c > 0) {
                         ITER_CLEANUP();
                         blist_delitem(self, i);
@@ -4996,9 +4996,9 @@ py_blist_pop(PyBList *self, PyObject *args)
 
         invariants(self, VALID_USER|VALID_RW|VALID_DECREF);
 
-        DANGER_BEGIN
+        DANGER_BEGIN;
         err = PyArg_ParseTuple(args, "|n:pop", &i);
-        DANGER_END
+        DANGER_END;
         if (!err)
                 return _ob(NULL);
 
@@ -5032,9 +5032,9 @@ py_blist_insert(PyBList *self, PyObject *args)
         
         invariants(self, VALID_USER|VALID_RW);
 
-        DANGER_BEGIN
+        DANGER_BEGIN;
         err = PyArg_ParseTuple(args, "nO:insert", &i, &v);
-        DANGER_END
+        DANGER_END;
         if (!err)
                 return _ob(NULL);
 
@@ -5538,9 +5538,9 @@ PyObject *PyList_AsTuple(PyObject *ob)
 
         invariants(self, VALID_USER | VALID_DECREF);
 
-        DANGER_BEGIN
+        DANGER_BEGIN;
         tuple = (PyTupleObject *) PyTuple_New(self->n);
-        DANGER_END
+        DANGER_END;
         if (tuple == NULL)
                 return _ob(NULL);
 
