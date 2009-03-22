@@ -4050,20 +4050,26 @@ py_blist_init(PyObject *oself, PyObject *args, PyObject *kw)
 static PyObject *
 py_blist_richcompare(PyObject *v, PyObject *w, int op)
 {
+        PyObject *rv;
+        
         if (!PyUserBList_Check(v)) {
         not_implemented:
                 Py_INCREF(Py_NotImplemented);
                 return Py_NotImplemented;
         }
 
-        invariants((PyBList *) v, VALID_USER);
-        if (PyUserBList_Check(w))
-                return _ob(blist_richcompare_blist((PyBList *)v,
-                                                   (PyBList *)w, op));
+        invariants((PyBList *) v, VALID_USER|VALID_DECREF);
+        if (PyUserBList_Check(w)) {
+                rv = blist_richcompare_blist((PyBList *)v, (PyBList *)w, op);
+                decref_flush();
+                return _ob(rv);
+        }
 #ifndef Py_BUILD_CORE
-        if (PyList_Check(w))
-                return _ob(blist_richcompare_list((PyBList*)v,
-                                                  (PyListObject*)w, op));
+        if (PyList_Check(w)) {
+                rv = blist_richcompare_list((PyBList*)v, (PyListObject*)w, op);
+                decref_flush();
+                return _ob(rv);
+        }
 #endif
         _void();
         goto not_implemented;
