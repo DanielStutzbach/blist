@@ -2966,19 +2966,16 @@ blist_ass_item_return(PyBList *self, Py_ssize_t i, PyObject *v)
 static PyObject *
 blist_richcompare_list(PyBList *v, PyListObject *w, int op)
 {
-        Py_ssize_t i;
-        iter_t it;
         int cmp;
-        PyObject *ret;
+        PyObject *ret, *item;
+        Py_ssize_t i;
         int v_stopped = 0;
         int w_stopped = 0;
 
         invariants(v, VALID_RW);
         
-        iter_init(&it, v);
-
         if (v->n != w->ob_size && (op == Py_EQ || op == Py_NE)) {
-                /* Shortcut: if the lengths differe, the lists differ */
+                /* Shortcut: if the lengths differ, the lists differ */
                 PyObject *res;
                 if (op == Py_EQ) {
                 false:
@@ -2987,45 +2984,51 @@ blist_richcompare_list(PyBList *v, PyListObject *w, int op)
                 true:
                         res = Py_True;
                 }
-                iter_cleanup(&it);
                 Py_INCREF(res);
                 return _ob(res);
         }
 
         /* Search for the first index where items are different */
-        
-        for (i = 0 ;; i++) {
-                PyObject *item1 = iter_next(&it);
-                PyObject *item2;
-
-                if (item1 == NULL)
-                        v_stopped = 1;
-
-                if (i == w->ob_size)
+        i = 0;
+        ITER(v, item, {
+                if (i >= w->ob_size) {
                         w_stopped = 1;
-
-                if (v_stopped || w_stopped)
                         break;
+                }
 
-                item2 = w->ob_item[i];
-
-                DANGER_BEGIN
-                cmp = PyObject_RichCompareBool(item1, item2, Py_EQ);
-                DANGER_END
+                DANGER_BEGIN;
+                cmp = PyObject_RichCompareBool(item, w->ob_item[i], Py_EQ);
+                DANGER_END;
                 
                 if (cmp < 0) {
-                        goto error;
+                        ITER_CLEANUP();
+                        return _ob(NULL);
                 } else if (!cmp) {
-                        if (op == Py_EQ) goto false;
-                        if (op == Py_NE) goto true;
-                        iter_cleanup(&it);
-                        DANGER_BEGIN
-                        ret = PyObject_RichCompare(item1, item2, op);
-                        DANGER_END
+                        if (op == Py_EQ) { ITER_CLEANUP(); goto false; }
+                        if (op == Py_NE) { ITER_CLEANUP(); goto true; }
+
+                        /* Last RichComparebool may have modified the list */
+                        if (i >= w->ob_size) {
+                                w_stopped = 1;
+                                break;
+                        }
+
+                        DANGER_BEGIN;
+                        ret = PyObject_RichCompare(item, w->ob_item[i], op);
+                        DANGER_END;
+                        ITER_CLEANUP();
                         return ret;
                 }
+                i++;
+        });
+
+        if (!w_stopped) {
+                v_stopped = 1;
+                if (i >= w->ob_size)
+                        w_stopped = 1;
         }
 
+        /* No more items to compare -- compare sizes */
         switch (op) {
         case Py_LT: cmp = v_stopped && !w_stopped; break;
         case Py_LE: cmp = v_stopped; break;
@@ -3033,15 +3036,14 @@ blist_richcompare_list(PyBList *v, PyListObject *w, int op)
         case Py_NE: cmp = v_stopped != w_stopped; break;
         case Py_GT: cmp = !v_stopped && w_stopped; break;
         case Py_GE: cmp = w_stopped; break;
-        default: goto error; /* cannot happen */
+        default:
+                /* cannot happen */                
+                PyErr_BadInternalCall();
+                return _ob(NULL);
         }
 
         if (cmp) goto true;
         else goto false;
-
- error:
-        iter_cleanup(&it);
-        return _ob(NULL);
 }
 #endif
 
