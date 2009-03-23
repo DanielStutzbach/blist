@@ -1,10 +1,20 @@
 #!/usr/bin/python2.5
 
+import sys
+sys.path.append('/home/agthorr/Python-2.5/build/lib.linux-i686-2.5')
+
+
 from blist import blist
 import random, sys
 
-lobs = [[], []]
-blobs = [blist(), blist()]
+random.seed(3)
+
+type1 = list
+type2 = blist
+iterations = 100000
+
+lobs = [type1(), type1()]
+blobs = [type2(), type2()]
 
 methods = {
     '__add__': 1,
@@ -84,44 +94,63 @@ def call(f, args):
         return str(type(e))
 
 def smart_eq(a, b, d=None):
+    try:
+        return a == b
+    except RuntimeError:
+        pass
     if d is None:
         d = set()
     if id(a) in d and id(b) in d:
         return True
     d.add(id(a))
     d.add(id(b))
-    if hasattr(a, '__len__') and hasattr(b, '__len__'):
-        if len(a) != len(b):
-            return False
-        for i in range(len(a)):
-            if not smart_eq(a[i], b[i], d):
-                return False
+    if len(a) != len(b):
+        return False
+    print len(a),
+    sys.stdout.flush()
+    if len(a) > 100000:
+        print 'skipping',
+        sys.stdout.flush()
         return True
-    return a == b
+    for i in range(len(a)):
+        if not smart_eq(a[i], b[i], d):
+            return False
+    return True
 
 last = None
 
-while smart_eq(lobs, blobs):
+for _ in range(iterations):
+    if not smart_eq(lobs, blobs):
+        print
+        safe_print(last)
+        safe_print('Mismatched objects')
+        safe_print(lobs)
+        print
+        safe_print(blobs)
+        break
     print
     if random.random() < 0.5:
         lobs.reverse()
         blobs.reverse()
 
-    if random.random() < 0.01:
+    left, right = lobs[0], lobs[1]
+    length_left = len(left)
+    length_right = len(right)
+
+    if random.random() < 0.01 or length_left + length_right > 1000000:
         print '(%d,%d)' % (len(lobs[0]), len(lobs[1]))
         sys.stdout.flush()
-        lobs = [[], []]
-        blobs = [blist(), blist()]
+        lobs = [type1(), type1()]
+        blobs = [type2(), type2()]
+        left, right = lobs[0], lobs[1]
+        length_left = len(left)
+        length_right = len(right)
     else:
         #print '.',
         #sys.stdout.flush()
         pass
     
     method = random.sample(methods, 1)[0]
-
-    left, right = lobs[0], lobs[1]
-    length_left = len(left)
-    length_right = len(right)
 
     args = [gen_arg() for i in range(methods[method])]
 
@@ -142,7 +171,7 @@ while smart_eq(lobs, blobs):
             args2.append(blobs[1])
         else:
             args2.append(arg)
-    #print 'blist: %s%s' % (method, str(tuple(args2)))
+    #print 'type2: %s%s' % (method, str(tuple(args2)))
     f = getattr(left, method)
     rv2 = call(f, args2)
     print '.',
@@ -150,10 +179,13 @@ while smart_eq(lobs, blobs):
     if method in ('__repr__', '__str__'):
         continue
     if type(rv1) == type('') and 'MemoryError' in rv1:
+        if method.startswith('__i'):
+            lobs = [type1(), type1()]
+            blobs = [type2(), type2()]
         continue
     if type(rv2) == type(''):
         rv2 = rv2.replace('blist', 'list')
-    elif type(rv2) == blist and random.random() < 0.25:
+    elif type(rv2) == type2 and random.random() < 0.25:
         blobs[0] = rv2
         lobs[0] = rv1
 
@@ -172,9 +204,3 @@ while smart_eq(lobs, blobs):
         safe_print(rv2)
         sys.exit(0)
 
-print
-safe_print(last)
-safe_print('Mismatched objects')
-safe_print(lobs)
-print
-safe_print(blobs)

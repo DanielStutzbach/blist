@@ -8,7 +8,7 @@ from math import *
 #CFLAGS = '-g -O3 -DNDEBUG=1 -DLIMIT=%d -fno-strict-aliasing -I/usr/include/python2.5 -Winline'# --param inline-unit-growth=2000 --param max-inline-insns-single=2000 --param max-inline-insns-auto=2000' # --param inline-unit-growth=2000'
 #CFLAGS='-pg -O3 -DLIMIT=%d -fno-strict-aliasing -DNDEBUG=1 -I/usr/include/python2.5'
 CFLAGS='-c -fno-strict-aliasing -DNDEBUG -g -O3 -Wall -Wstrict-prototypes -I/usr/include/python2.5 --std=gnu99'
-CC = 'gcc-4.1'
+CC = 'gcc-4.3'
 PYTHON='python2.5'
 LD = CC
 LDFLAGS='-g -shared'
@@ -76,9 +76,9 @@ def make(limit):
 
 setup = 'from blist import blist'
 
-types = ('blist', 'list')
 ns = (range(1,10) + range(10, 100, 10) + range(100, 1000, 100)
-      + range(1000, 10001, 1000))
+      + range(1000, 10001, 1000)
+      + range(10000, 100001, 10000))
 
 def smart_timeit(stmt, setup, hint):
     n = hint
@@ -324,41 +324,46 @@ def run_all():
 #   - TypeToTest
 #   - n
 
-add_timing('FIFO', None, """\
-x.insert(0, 0)
-del x[0]
-""")
+#add_timing('eq list', 'x = TypeToTest(range(n))\ny=range(n)', 'x==y')
+add_timing('eq recursive', 'x = TypeToTest()\nx.append(x)\ny = TypeToTest()\ny.append(y)', 'try:\n  x==y\nexcept RuntimeError:\n  pass')
 
-add_timing('LIFO', None, """\
-x.append(0)
-del x[-1]
-""")
-
-add_timing('add', None, "x + x")
-add_timing('contains', None, "-1 in x")
+#add_timing('FIFO', None, """\
+#x.insert(0, 0)
+#del x[0]
+#""")
+#
+#add_timing('LIFO', None, """\
+#x.append(0)
+#del x[-1]
+#""")
+#
+#add_timing('add', None, "x + x")
+#add_timing('contains', None, "-1 in x")
 add_timing('getitem1', None, "x[0]")
 add_timing('getitem2', None, "x.__getitem__(0)")
-add_timing('getslice', None, "x[1:-1]")
-add_timing('forloop', None, "for i in x:\n    pass")
-add_timing('len', None, "len(x)")
-add_timing('eq', None, "x == x")
-add_timing('mul10', None, "x * 10")
-add_timing('setitem', None, 'x[0] = 1')
-add_timing('count', None, 'x.count(5)')
-add_timing('reverse', None, 'x.reverse()')
-add_timing('delslice', None, 'del x[len(x)//4:3*len(x)//4]\nx *= 2')
-add_timing('setslice', None, 'x[:] = x')
-
-add_timing('sort random', 'import random\nx = [random.random() for i in range(n)]', 'y = TypeToTest(x)\ny.sort()')
-add_timing('sort sorted', None, 'y = TypeToTest(x)\ny.sort()')
-add_timing('sort reversed', 'x = range(n)\nx.reverse()', 'y = TypeToTest(x)\ny.sort()')
-
-add_timing('init from list', 'x = range(n)', 'y = TypeToTest(x)')
-add_timing('init from tuple', 'x = tuple(range(n))', 'y = TypeToTest(x)')
-add_timing('init from iterable', 'x = xrange(n)', 'y = TypeToTest(x)')
-add_timing('init from same type', None, 'y = TypeToTest(x)')
-
-add_timing('shuffle', 'from random import shuffle\nx = TypeToTest(range(n))', 'shuffle(x)')
+add_timing('getitem3', 'x = TypeToTest(range(n))\nm = n//2', "x[m]")
+#add_timing('getslice', None, "x[1:-1]")
+#add_timing('forloop', None, "for i in x:\n    pass")
+#add_timing('len', None, "len(x)")
+#add_timing('eq', None, "x == x")
+#add_timing('mul10', None, "x * 10")
+add_timing('setitem1', None, 'x[0] = 1')
+add_timing('setitem3', 'x = TypeToTest(range(n))\nm = n//2', 'x[m] = 1')
+#add_timing('count', None, 'x.count(5)')
+#add_timing('reverse', None, 'x.reverse()')
+#add_timing('delslice', None, 'del x[len(x)//4:3*len(x)//4]\nx *= 2')
+#add_timing('setslice', None, 'x[:] = x')
+#
+#add_timing('sort random', 'import random\nx = [random.random() for i in range(n)]', 'y = TypeToTest(x)\ny.sort()')
+#add_timing('sort sorted', None, 'y = TypeToTest(x)\ny.sort()')
+#add_timing('sort reversed', 'x = range(n)\nx.reverse()', 'y = TypeToTest(x)\ny.sort()')
+#
+#add_timing('init from list', 'x = range(n)', 'y = TypeToTest(x)')
+#add_timing('init from tuple', 'x = tuple(range(n))', 'y = TypeToTest(x)')
+#add_timing('init from iterable', 'x = xrange(n)', 'y = TypeToTest(x)')
+#add_timing('init from same type', None, 'y = TypeToTest(x)')
+#
+#add_timing('shuffle', 'from random import shuffle\nx = TypeToTest(range(n))', 'shuffle(x)')
 
 if __name__ == '__main__':
     make(limits[0])

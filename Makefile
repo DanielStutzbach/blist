@@ -17,7 +17,7 @@ clean:
 	rm -f *.o *.so *.dll
 
 tarball:
-	cd .. ; tar -zcvf blist.tar.gz blist/blist.c blist/Makefile blist/test_blist.py blist/test/*.py blist/prototype/blist.py
+	cd .. ; tar -zcvf blist.tar.gz blist/blist.c blist/Makefile blist/test_blist.py blist/test/*.py blist/prototype/blist.py blist/fuzz.py blist/README.txt blist/blist.rst blist/listobject.h blist/LICENSE blist/CREDITS blist/setup.py
 
 egg:
 	python2.5 setup.py register
@@ -37,3 +37,6 @@ test: COPT=-DLIMIT=8 -DPy_DEBUG=1
 test: LOADLIBES=-lpython2.5 -L/bin
 test: clean blist.so
 	python2.5-dbg test_blist.py
+
+testing: test.o blist.o
+	$(LD) -pthread -pg -Xlinker -export-dynamic -I/home/agthorr/Python-2.5/Include -I/home/agthorr/Python-2.5/ test.o blist.o -L/home/agthorr/Python-2.5 -lpython2.5 -o testing -lpthread -ldl -lutil -lm
