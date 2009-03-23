@@ -13,6 +13,12 @@ inserted in the list.  Similarly, PyList_GetItem does not increment the
 returned item's reference count.
 */
 
+/**********************************************************************
+ *                                                                    * 
+ *        PLEASE READ blist.rst BEFORE MODIFYING THIS CODE            *
+ *                                                                    *
+ **********************************************************************/
+
 #ifndef Py_BLISTOBJECT_H
 #define Py_BLISTOBJECT_H
 #ifdef __cplusplus
@@ -59,20 +65,26 @@ typedef struct PyBListRoot {
         int dirty_root;
         int free_root;
 
-        int last_n; /* For debug */
+#ifdef Py_DEBUG
+        int last_n;                 /* For debug */
+#endif
 } PyBListRoot;
 
+/************************************************************************
+ * Code used when building BList into the interpreter
+ */
+        
 #ifdef Py_BUILD_CORE
 typedef PyBListRoot PyListObject;
         
 //PyAPI_DATA(PyTypeObject) PyList_Type;
 
 PyAPI_DATA(PyTypeObject) PyBList_Type;
-PyAPI_DATA(PyTypeObject) PyUserBList_Type;
-#define PyList_Type PyUserBList_Type
+PyAPI_DATA(PyTypeObject) PyRootBList_Type;
+#define PyList_Type PyRootBList_Type
 
-#define PyList_Check(op) PyObject_TypeCheck(op, &PyUserBList_Type)
-#define PyList_CheckExact(op) ((op)->ob_type == &PyUserBList_Type)
+#define PyList_Check(op) PyObject_TypeCheck(op, &PyRootBList_Type)
+#define PyList_CheckExact(op) ((op)->ob_type == &PyRootBList_Type)
 
 PyAPI_FUNC(PyObject *) PyList_New(Py_ssize_t size);
 PyAPI_FUNC(Py_ssize_t) PyList_Size(PyObject *);
@@ -145,7 +157,7 @@ _PyBList_GET_ITEM_FAST2(PyBListRoot *root, Py_ssize_t i)
 #define SET_BIT(setclean_list, i) (setclean_list[(i) >> SETCLEAN_SHIFT] |= (1u << ((i) & SETCLEAN_MASK)))
 #define CLEAR_BIT(setclean_list, i) (setclean_list[(i) >> SETCLEAN_SHIFT] &= ~(1u << ((i) & SETCLEAN_MASK)))
 #define GET_BIT(setclean_list, i) (setclean_list[(i) >> SETCLEAN_SHIFT] & (1u << ((i) & SETCLEAN_MASK)))
-
+        
 static inline PyObject *
 blist_ass_item_return2(PyBListRoot *root, Py_ssize_t i, PyObject *v)
 {

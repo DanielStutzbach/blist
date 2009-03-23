@@ -55,16 +55,6 @@ performance:
    This is completely behind-the-scenes; from the user's point of view,
    the BList works just like a regular Python list.
 
-BList addiction
----------------
-
-If you fall in love with the BList, you can even do this:
-    __builtins__.list = blist
-
-Then, everywhere in your program that calls list() will create a BList
-instead.  List comprehensions, [], and built-ins will still return
-ordinary list objects, however.
-
 Installation instructions
 -------------------------
 

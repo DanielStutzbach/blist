@@ -1,8 +1,4 @@
 - Breakage for 3rd party extension modules
-- graphs "need" error bars
-- Write PEP
-  - Raymond: extension module -> 2.6 -> reconsider for p3k if popular
-- reversed iterator not yet implemented
 - TimSort not implemented for large lists
 
 Known bugs:
