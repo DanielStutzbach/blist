@@ -7,3 +7,5 @@ include LICENSE
 include prototype/blist.py
 include ez_setup.py
 include speed_test.py
+include blist.rst
+include listobject.h
