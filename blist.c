@@ -52,6 +52,7 @@
 #define PyInt_FromSsize_t PyLong_FromSsize_t
 #define PyInt_CheckExact PyLong_CheckExact
 #define PyInt_AsLong PyLong_AsLong
+#define PyInt_AsSsize_t PyLong_AsSsize_t
 #define PyInt_FromLong PyLong_FromLong
 #endif
 
@@ -4359,10 +4360,20 @@ py_blist_ass_subscript(PyObject *oself, PyObject *item, PyObject *value)
         self = (PyBList *) oself;
 
         if (PyIndex_Check(item)) {
-                Py_ssize_t i = PyNumber_AsSsize_t(item, PyExc_IndexError);
+                Py_ssize_t i;
+                if (PyLong_CheckExact(item)) {
+                        i = PyInt_AsSsize_t(item);
+                        if (i == -1 && PyErr_Occurred()) {
+                                PyErr_Clear();
+                                goto number;
+                        }
+                } else {
+                number:
+                        i = PyNumber_AsSsize_t(item, PyExc_IndexError);
+                        if (i == -1 && PyErr_Occurred())
+                                return _int(-1);
+                }
                 PyObject *old_value;
-                if (i == -1 && PyErr_Occurred())
-                        return _int(-1);
                 if (i < 0)
                         i += self->n;
 
@@ -5214,10 +5225,20 @@ py_blist_subscript(PyObject *oself, PyObject *item)
         if (PyIndex_Check(item)) {
                 Py_ssize_t i;
                 PyObject *ret;
+
+                if (PyLong_CheckExact(item)) {
+                        i = PyInt_AsSsize_t(item);
+                        if (i == -1 && PyErr_Occurred()) {
+                                PyErr_Clear();
+                                goto number;
+                        }
+                } else {
+                number:
+                        i = PyNumber_AsSsize_t(item, PyExc_IndexError);
+                        if (i == -1 && PyErr_Occurred())
+                                return _ob(NULL);
+                }
                 
-                i = PyNumber_AsSsize_t(item, PyExc_IndexError);
-                if (i == -1 && PyErr_Occurred())
-                        return _ob(NULL);
                 if (i < 0)
                         i += self->n;
 
