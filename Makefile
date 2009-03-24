@@ -1,14 +1,18 @@
-CFLAGS=-Wall -Winline -g -fno-strict-aliasing -Wstrict-prototypes $(COPT) -Werror $(INCLUDE)
-INCLUDE=-I/usr/include/python2.5#-I/home/agthorr/mypython-2.5/Include/ -I/home/agthorr/mypython-2.5/
-CC=gcc-4.1
+PYTHON=python2.5
+PYPREFIX=/usr
 
-COPT=-O3 -DLIMIT=128 -DNDEBUG=1 # For performance
-#COPT=-pg -O3 -DLIMIT=128 -DNDEBUG=1# -ftest-coverage -fprofile-arcs # For profiling
-#COPT=-DPy_DEBUG=1 -DLIMIT=8    # For debug mode
+CFLAGS=-Wall -g -fno-strict-aliasing -Wstrict-prototypes $(COPT) -Werror $(INCLUDE)
+#INCLUDE=-I/home/agthorr/Python-3.0/Include -I/home/agthorr/Python-3.0/ #-I/home/agthorr/mypython-3.0/Include/ -I/home/agthorr/mypython-3.0/
+INCLUDE=-I$(PYPREFIX)/include/$(PYTHON)
+CC=gcc #-L/home/agthorr/Python-3.0
+
+#COPT=-O3 -DLIMIT=128 -DNDEBUG=1 # For performance
+#COPT=-fno-inline -pg -O3 -DLIMIT=128 -DNDEBUG=1# -ftest-coverage -fprofile-arcs # For profiling
+COPT=-DLIMIT=8 -DPy_DEBUG=1     # For debug mode
 
 LDFLAGS=-g -shared  $(COPT)
 LD=$(CC)
-LOADLIBES=-lpython2.5
+LOADLIBES=-l$(PYTHON)
 
 blist.so: blist.o
 	$(LD) $(LDFLAGS) -o $@ $< $(LOADLIBES)
@@ -17,26 +21,31 @@ clean:
 	rm -f *.o *.so *.dll
 
 tarball:
-	cd .. ; tar -zcvf blist.tar.gz blist/blist.c blist/Makefile blist/test_blist.py blist/test/*.py blist/prototype/blist.py blist/fuzz.py blist/README.txt blist/blist.rst blist/listobject.h blist/LICENSE blist/CREDITS blist/setup.py
+	cd .. ; tar -zcvf blist.tar.gz blist/blist.c blist/Makefile blist/test_blist.py blist/test/*.py blist/prototype/blist.py blist/fuzz.py blist/README.txt blist/blist.rst blist/blist.h blist/LICENSE blist/CREDITS blist/setup.py
 
 egg:
-	python2.5 setup.py register
-	CFLAGS='-O3 -fno-strict-aliasing' python2.5 setup.py build -f
+	$(PYTHON) setup.py register
+	CFLAGS='-O3 -fno-strict-aliasing' $(PYTHON) setup.py build -f
 	rm -f dist/*.asc
-	python2.5 setup.py sdist bdist_egg upload -s
+	$(PYTHON) setup.py sdist bdist_egg upload -s
 	rsync -e ssh dist/* webadmin@stutzbachenterprises.com:stutzbachenterprises/html/blist/
+
+bdist_egg:
+	CFLAGS='-O3 -fno-strict-aliasing' $(PYTHON) setup.py build -f
+	rm -f dist/*.asc
+	$(PYTHON) setup.py bdist_egg upload -s
 
 html:
 	rst2html README.txt
 
 speed:
-	python2.5 speed_test.py 
+	$(PYTHON) speed_test.py 
 	rsync -e ssh -r fig/* webadmin@stutzbachenterprises.com:stutzbachenterprises/html/fig/
 
 test: COPT=-DLIMIT=8 -DPy_DEBUG=1 
-test: LOADLIBES=-lpython2.5 -L/bin
+test: LOADLIBES=-l$(PYTHON) -L/bin
 test: clean blist.so
-	python2.5-dbg test_blist.py
+	$(PYTHON)-dbg test_blist.py
 
 testing: test.o blist.o
-	$(LD) -pthread -pg -Xlinker -export-dynamic -I/home/agthorr/Python-2.5/Include -I/home/agthorr/Python-2.5/ test.o blist.o -L/home/agthorr/Python-2.5 -lpython2.5 -o testing -lpthread -ldl -lutil -lm
+	$(LD) -pthread -pg -Xlinker -export-dynamic -I/home/agthorr/Python-3.0/Include -I/home/agthorr/Python-3.0/ test.o blist.o -L/home/agthorr/Python-3.0 -l$(PYTHON) -o testing -lpthread -ldl -lutil -lm
