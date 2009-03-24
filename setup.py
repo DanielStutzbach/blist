@@ -1,12 +1,15 @@
 #!/usr/bin/env
 
-import ez_setup
-ez_setup.use_setuptools()
-
-from setuptools import setup, Extension
+import sys
+if sys.version_info[0] <= 2:
+    import ez_setup
+    ez_setup.use_setuptools()
+    from setuptools import setup, Extension
+else:
+    from distutils.core import setup, Extension
 
 setup(name='blist',
-      version='0.9.9',
+      version='0.9.11',
       description='a list-like type with better asymptotic performance and similar performance on small lists',
       author='Stutzbach Enterprises, LLC',
       author_email='daniel@stutzbachenterprises.com',

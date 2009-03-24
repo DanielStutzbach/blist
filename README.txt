@@ -58,7 +58,7 @@ performance:
 Installation instructions
 -------------------------
 
-Python 2.5 or 2.5.1 is required.  If building from the source
+Python 2.5 or higher is required.  If building from the source
 distribution, the Python header files are also required.  In either
 case, just run:
 
@@ -81,8 +81,8 @@ Platforms
 ---------
 
 The BList was developed under Debian Linux.  Since it has no
-dependencies other Python 2.5, we expect it will work on other 32-bit
-gcc platforms without modification.  If you run into trouble building
+dependencies other Python, we expect it will work on other 32-bit gcc
+platforms without modification.  If you run into trouble building
 BList on your platform, please contact us.
 
 Known bugs and limitations
