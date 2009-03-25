@@ -8,7 +8,7 @@ from math import *
 #CFLAGS = '-g -O3 -DNDEBUG=1 -DLIMIT=%d -fno-strict-aliasing -I/usr/local/include/python2.5 -Winline'# --param inline-unit-growth=2000 --param max-inline-insns-single=2000 --param max-inline-insns-auto=2000' # --param inline-unit-growth=2000'
 #CFLAGS='-pg -O3 -DLIMIT=%d -fno-strict-aliasing -DNDEBUG=1 -I/usr/local/include/python2.5'
 CFLAGS='-c -fno-strict-aliasing -DNDEBUG -g -O3 -Wall -Wstrict-prototypes -I/usr/local/include/python3.0 --std=gnu99'
-CC = 'gcc-4.3'
+CC = 'gcc'
 PYTHON='python3.0'
 LD = CC
 LDFLAGS='-g -shared'

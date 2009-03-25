@@ -25,6 +25,24 @@ returned item's reference count.
 extern "C" {
 #endif
 
+//#define BLIST_IN_PYTHON  /* Define if building BList into Python */
+        
+/* pyport.h includes similar defines, but they're broken and never use
+ * "inline" except on Windows :-( */
+#if defined(_MSC_VER)
+/* ignore warnings if the compiler decides not to inline a function */
+#pragma warning(disable: 4710)
+/* fastest possible local call under MSVC */
+#define BLIST_LOCAL(type) static type __fastcall
+#define BLIST_LOCAL_INLINE(type) static __inline type __fastcall
+#elif defined(__GNUC__)
+#define BLIST_LOCAL(type) static type
+#define BLIST_LOCAL_INLINE(type) static inline type
+#else
+#define BLIST_LOCAL(type) static type
+#define BLIST_LOCAL_INLINE(type) static type
+#endif
+        
 #ifndef LIMIT
 #define LIMIT (128)     /* Good performance value */
 #if 0
@@ -44,7 +62,7 @@ extern "C" {
 typedef struct PyBList {
         PyObject_HEAD
         Py_ssize_t n;              /* Total # of user-object descendents */
-        unsigned num_children;     /* Number of immediate children */
+        int num_children;     /* Number of immediate children */
         int leaf;                  /* Boolean value */
         PyObject **children;       /* Immediate children */
 } PyBList;
@@ -52,7 +70,7 @@ typedef struct PyBList {
 typedef struct PyBListRoot {
         PyObject_HEAD
         Py_ssize_t n;              /* Total # of user-object descendents */
-        unsigned num_children;     /* Number of immediate children */
+        int num_children;     /* Number of immediate children */
         int leaf;                  /* Boolean value */
         PyObject **children;       /* Immediate children */
 
@@ -74,7 +92,7 @@ typedef struct PyBListRoot {
  * Code used when building BList into the interpreter
  */
         
-#ifdef Py_BUILD_CORE
+#ifdef BLIST_IN_PYTHON
 typedef PyBListRoot PyListObject;
         
 //PyAPI_DATA(PyTypeObject) PyList_Type;
@@ -112,28 +130,35 @@ PyAPI_FUNC(void) _PyList_SetItemFast(PyObject *, Py_ssize_t, PyObject *);
 
 #define PyList_IS_LEAF(op) ({ assert(PyList_Check(op)); (((PyBList *) (op))->leaf); })
 
-#endif
-
 PyAPI_FUNC(PyObject *) _PyBList_GetItemFast3(PyBListRoot *, Py_ssize_t);
 
 PyAPI_FUNC(PyObject *) blist_ass_item_return_slow(PyBListRoot *root, Py_ssize_t i, PyObject *v);
 PyAPI_FUNC(PyObject *) ext_make_clean_set(PyBListRoot *root, Py_ssize_t i, PyObject *v);
+#else
+PyObject *_PyBList_GetItemFast3(PyBListRoot *, Py_ssize_t);
+PyObject *blist_ass_item_return_slow(PyBListRoot *root, Py_ssize_t i, PyObject *v);
+PyObject *ext_make_clean_set(PyBListRoot *root, Py_ssize_t i, PyObject *v);
+#endif
 
 #define INDEX_FACTOR (HALF)
 
 /* This should only be called if we know the root is not a leaf */
 /* inlining a common case for speed */
-static inline PyObject *
+BLIST_LOCAL_INLINE(PyObject *)
 _PyBList_GET_ITEM_FAST2(PyBListRoot *root, Py_ssize_t i)
 {
+        int ioffset;
+        Py_ssize_t offset;
+        PyBList *p;
+        
         assert(!root->leaf);
 
         if (root->dirty_root != -1 /* "CLEAN" */)
                 return _PyBList_GetItemFast3(root, i);
 
-        int ioffset = i / INDEX_FACTOR;
-        Py_ssize_t offset = root->offset_list[ioffset];
-        PyBList *p = root->index_list[ioffset];
+        ioffset = i / INDEX_FACTOR;
+        offset = root->offset_list[ioffset];
+        p = root->index_list[ioffset];
 
         if (i < offset + p->n)
                 return p->children[i - offset];
@@ -158,10 +183,12 @@ _PyBList_GET_ITEM_FAST2(PyBListRoot *root, Py_ssize_t i)
 #define CLEAR_BIT(setclean_list, i) (setclean_list[(i) >> SETCLEAN_SHIFT] &= ~(1u << ((i) & SETCLEAN_MASK)))
 #define GET_BIT(setclean_list, i) (setclean_list[(i) >> SETCLEAN_SHIFT] & (1u << ((i) & SETCLEAN_MASK)))
         
-static inline PyObject *
+BLIST_LOCAL_INLINE(PyObject *)
 blist_ass_item_return2(PyBListRoot *root, Py_ssize_t i, PyObject *v)
 {
         PyObject *rv;
+        Py_ssize_t offset;
+        PyBList *p;
         int ioffset = i / INDEX_FACTOR;
 
         assert(i >= 0);
@@ -172,8 +199,8 @@ blist_ass_item_return2(PyBListRoot *root, Py_ssize_t i, PyObject *v)
             || !GET_BIT(root->setclean_list, ioffset))
                 return blist_ass_item_return_slow(root, i, v);
         
-        Py_ssize_t offset = root->offset_list[ioffset];
-        PyBList *p = root->index_list[ioffset];
+        offset = root->offset_list[ioffset];
+        p = root->index_list[ioffset];
         assert(i >= offset);
         assert(p);
         assert(p->leaf);

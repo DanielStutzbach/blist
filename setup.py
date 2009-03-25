@@ -9,7 +9,7 @@ else:
     from distutils.core import setup, Extension
 
 setup(name='blist',
-      version='0.9.11',
+      version='0.9.12',
       description='a list-like type with better asymptotic performance and similar performance on small lists',
       author='Stutzbach Enterprises, LLC',
       author_email='daniel@stutzbachenterprises.com',

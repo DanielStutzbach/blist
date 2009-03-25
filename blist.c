@@ -56,7 +56,7 @@
 #define PyInt_FromLong PyLong_FromLong
 #endif
 
-#ifndef Py_BUILD_CORE
+#ifndef BLIST_IN_PYTHON
 #include "listobject.h"
 #endif
 
@@ -1041,6 +1041,8 @@ static void ext_dealloc(PyBListRoot *root)
 /* amortized O(1) */
 static int ext_alloc(PyBListRoot *root)
 {
+        int i, parent;
+        
         if (root->free_root < 0) {
                 int newl;
                 int i;
@@ -1051,9 +1053,11 @@ static int ext_alloc(PyBListRoot *root)
                         root->dirty_root = DIRTY;
                         if (!root->dirty) return -1;
                 } else {
+                        void *tmp;
+                        
                         assert(root->dirty_length > 0);
                         newl = root->dirty_length*2;
-                        void *tmp = root->dirty;
+                        tmp = root->dirty;
                         PyMem_Resize(tmp, int, newl);
                         if (!tmp) {
                                 PyMem_Free(root->dirty);
@@ -1080,8 +1084,8 @@ static int ext_alloc(PyBListRoot *root)
          * will suffice.
          */
 
-        int i = root->free_root;
-        int parent = -1;
+        i = root->free_root;
+        parent = -1;
         assert(i >= 0);
         assert(i+1 < root->dirty_length);
         while (root->dirty[i] >= 0 && root->dirty[i+1] >= 0) {
@@ -1141,7 +1145,7 @@ static void ext_free(PyBListRoot *root, int loc)
 static void
 ext_mark_r(PyBListRoot *root, int offset, int i, int bit, int value)
 {
-        int next;
+        int j, next;
         
         if (!(offset & bit)) {
                 /* Take left fork */
@@ -1161,7 +1165,7 @@ ext_mark_r(PyBListRoot *root, int offset, int i, int bit, int value)
 
         assert(next >= 0 && next < root->dirty_length);
 
-        int j = root->dirty[next];
+        j = root->dirty[next];
         
         if (j == value)
                 return;
@@ -1200,6 +1204,8 @@ ext_mark_r(PyBListRoot *root, int offset, int i, int bit, int value)
 
 static void ext_mark(PyBList *broot, int offset, int value)
 {
+        int bit;
+        
         PyBListRoot *root = (PyBListRoot*) broot;
         if (!root->n) {
 #ifdef Py_DEBUG
@@ -1235,7 +1241,7 @@ static void ext_mark(PyBList *broot, int offset, int value)
         }
         offset /= INDEX_FACTOR;
 
-        int bit = highest_set_bit((root->n-1) / INDEX_FACTOR);
+        bit = highest_set_bit((root->n-1) / INDEX_FACTOR);
         ext_mark_r(root, offset, root->dirty_root, bit, value);
         if (root->dirty &&
             (root->dirty[root->dirty_root] ==root->dirty[root->dirty_root+1])){
@@ -1292,6 +1298,8 @@ static int ext_find_dirty(PyBListRoot *root, int offset, int bit, int i)
 /* O(log n) */
 static int ext_is_dirty(PyBListRoot *root, int offset, int *dirty_offset)
 {
+        int i, parent, bit;
+        
         if (root->dirty == NULL) {
                 *dirty_offset = -1;
                 return 1; /* Everything is dirty */
@@ -1300,10 +1308,10 @@ static int ext_is_dirty(PyBListRoot *root, int offset, int *dirty_offset)
                 *dirty_offset = -1;
                 return root->dirty_root == DIRTY;
         }
-        int i = root->dirty_root;
-        int parent = -1;
+        i = root->dirty_root;
+        parent = -1;
         offset /= INDEX_FACTOR;
-        int bit = highest_set_bit((root->n-1) / INDEX_FACTOR);
+        bit = highest_set_bit((root->n-1) / INDEX_FACTOR);
 
         assert(root->last_n == root->n);
 
@@ -1357,10 +1365,12 @@ static int ext_grow_index(PyBListRoot *root)
                         = PyMem_New(unsigned,SETCLEAN_LEN(root->index_length));
                 if (!root->setclean_list) goto fail;
         } else {
+                void *tmp;
+                
                 do {
                         root->index_length *= 2;
                 } while (root->n / INDEX_FACTOR + 1 > root->index_length);
-                void *tmp = root->index_list;
+                tmp = root->index_list;
                 PyMem_Resize(tmp, PyBList *, root->index_length);
                 if (!tmp) goto fail;
                 root->index_list = tmp;
@@ -2282,7 +2292,7 @@ static PyMethodDef blistiter_methods[] = {
 };
 
 PyTypeObject PyBListIter_Type = {
-        PyVarObject_HEAD_INIT(&PyType_Type, 0)
+        PyVarObject_HEAD_INIT(NULL, 0)
         "blistiterator",                        /* tp_name */
         sizeof(blistiterobject),                /* tp_basicsize */
         0,                                      /* tp_itemsize */
@@ -2457,7 +2467,7 @@ static PyObject *blistiter_prev(PyObject *oit)
 }
 
 PyTypeObject PyBListReverseIter_Type = {
-        PyVarObject_HEAD_INIT(&PyType_Type, 0)
+        PyVarObject_HEAD_INIT(NULL, 0)
         "blistreverseiterator",                 /* tp_name */
         sizeof(blistiterobject),                /* tp_basicsize */
         0,                                      /* tp_itemsize */
@@ -2501,9 +2511,9 @@ PyTypeObject PyBListReverseIter_Type = {
 
 typedef struct Forest
 {
-        unsigned num_leafs;
-        unsigned num_trees;
-        unsigned max_trees;
+        int num_leafs;
+        int num_trees;
+        int max_trees;
         PyBList **list;        
 } Forest;
 
@@ -2996,11 +3006,11 @@ ext_make_clean_set(PyBListRoot *root, Py_ssize_t i, PyObject *v)
 PyObject *
 blist_ass_item_return_slow(PyBListRoot *root, Py_ssize_t i, PyObject *v)
 {
-        int dirty_offset;
+        int dirty_offset, ioffset;
+        PyObject *rv;
         assert(i >= 0);
         invariants(root, VALID_RW);
-        PyObject *rv;
-        int ioffset = i / INDEX_FACTOR;
+        ioffset = i / INDEX_FACTOR;
 
         if (root->leaf || ext_is_dirty(root, i, &dirty_offset)
             || !GET_BIT(root->setclean_list, ioffset)) {
@@ -3036,7 +3046,7 @@ blist_ass_item_return_slow(PyBListRoot *root, Py_ssize_t i, PyObject *v)
         return _ob(rv);
 }
 
-static inline PyObject *
+BLIST_LOCAL_INLINE(PyObject *)
 blist_ass_item_return(PyBList *self, Py_ssize_t i, PyObject *v)
 {
         Py_INCREF(v);
@@ -4361,6 +4371,8 @@ py_blist_ass_subscript(PyObject *oself, PyObject *item, PyObject *value)
 
         if (PyIndex_Check(item)) {
                 Py_ssize_t i;
+                PyObject *old_value;
+
                 if (PyLong_CheckExact(item)) {
                         i = PyInt_AsSsize_t(item);
                         if (i == -1 && PyErr_Occurred()) {
@@ -4373,7 +4385,6 @@ py_blist_ass_subscript(PyObject *oself, PyObject *item, PyObject *value)
                         if (i == -1 && PyErr_Occurred())
                                 return _int(-1);
                 }
-                PyObject *old_value;
                 if (i < 0)
                         i += self->n;
 
@@ -5359,7 +5370,7 @@ static PyMappingMethods blist_as_mapping = {
 };
 
 PyTypeObject PyBList_Type = {
-        PyVarObject_HEAD_INIT(&PyType_Type, 0)
+        PyVarObject_HEAD_INIT(NULL, 0)
         "blist",
         sizeof(PyBList),
         0,
@@ -5401,7 +5412,7 @@ PyTypeObject PyBList_Type = {
 };        
 
 PyTypeObject PyRootBList_Type = {
-        PyVarObject_HEAD_INIT(&PyType_Type, 0)
+        PyVarObject_HEAD_INIT(NULL, 0)
         "list",
         sizeof(PyBListRoot),
         0,

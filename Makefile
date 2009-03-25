@@ -10,9 +10,13 @@ CC=gcc #-L/home/agthorr/Python-3.0
 #COPT=-fno-inline -pg -O3 -DLIMIT=128 -DNDEBUG=1# -ftest-coverage -fprofile-arcs # For profiling
 COPT=-DLIMIT=8 -DPy_DEBUG=1     # For debug mode
 
-LDFLAGS=-g -shared  $(COPT)
+LDFLAGS=-g -shared $(COPT)
+DLLFLAGS=-Wl,--enable-auto-image-base 
 LD=$(CC)
-LOADLIBES=-l$(PYTHON)
+LOADLIBES=-L$(PYPREFIX)/lib -L$(PYPREFIX)/lib/$(PYTHON)/config/ -l$(PYTHON)
+
+blist.dll: blist.o
+	$(LD) $(LDFLAGS) $(DLLFLAGS) -o $@ $< $(LOADLIBES)
 
 blist.so: blist.o
 	$(LD) $(LDFLAGS) -o $@ $< $(LOADLIBES)
@@ -49,3 +53,8 @@ test: clean blist.so
 
 testing: test.o blist.o
 	$(LD) -pthread -pg -Xlinker -export-dynamic -I/home/agthorr/Python-3.0/Include -I/home/agthorr/Python-3.0/ test.o blist.o -L/home/agthorr/Python-3.0 -l$(PYTHON) -o testing -lpthread -ldl -lutil -lm
+
+win:
+	/cygdrive/c/Python25/python.exe setup.py bdist_wininst
+	/cygdrive/c/Python26/python.exe setup.py bdist_wininst
+	/cygdrive/c/Python30/python.exe setup.py bdist_wininst
