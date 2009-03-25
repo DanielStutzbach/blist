@@ -9,7 +9,7 @@ else:
     from distutils.core import setup, Extension
 
 setup(name='blist',
-      version='0.9.12',
+      version='0.9.13',
       description='a list-like type with better asymptotic performance and similar performance on small lists',
       author='Stutzbach Enterprises, LLC',
       author_email='daniel@stutzbachenterprises.com',
@@ -37,9 +37,12 @@ but has better performance for many (but not all) use cases.  The use
 cases where the BList is slightly *slower* than Python's list are as
 follows (O(log n) vs. O(1)):
 
-1. A large list that never changes length.
-2. A large lists where inserts and deletes are only at the end of the
+1. A large lists where inserts and deletes are only at the end of the
    list (LIFO).
+
+Earlier versions of BList were also slower for large lists that never
+change length, but this is no longer true as of version 0.9.6, which
+features amortized worst-case O(1) getitem and setitem operations.
 
 With that disclaimer out of the way, here are some of the use cases
 where the BLists is dramatically faster than the built-in list:
