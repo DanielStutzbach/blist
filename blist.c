@@ -1455,7 +1455,11 @@ ext_index_all_r(PyBListRoot *root, PyBList *self, int i, int set_ok)
 }
 
 /* Make everything clean in O(n) time.  Any operation that alters the
- * list and already takes Omega(n) time should call this. */
+ * list and already takes Omega(n) time should call this.
+ *
+ * The caller may have just permuted the list, so assume that the
+ * entire cache is currently dirty even if not marked as such.
+ */
 void _ext_index_all(PyBListRoot *root)
 {
         int i, j, ioffset_max = root->n / INDEX_FACTOR;
@@ -2775,7 +2779,7 @@ forest_delete_now(Forest *forest)
                 PyMem_Free(forest->list);
 }
 
-/* Combine the forest into a final BList
+/* Combine the forest into a final BList and delete the forest.
  *
  * forest_finish() assumes that only leaf nodes were passed to forest_append()
  */
@@ -4005,16 +4009,23 @@ merge(PyBList *self, PyBList *other, const compare_t *compare, int *err)
 
         *err = 0;
 
-#if 0
+#if 1
         c = ISLT(blist_get1(self, self->n-1), blist_get1(other, 0), compare);
-        if (c < 0) {
-                /* XXX */
-                return NULL;
-        }
-        if (c > 0) {
+        if (c) {
                 blist_extend_blist(self, other);
                 Py_DECREF(other);
+                if (c < 0)
+                        *err = 1;
                 return self;
+        }
+
+        c = ISLT(blist_get1(other, other->n-1), blist_get1(self, 0), compare);
+        if (c) {
+                blist_extend_blist(other, self);
+                Py_DECREF(self);
+                if (c < 0)
+                        *err = 1;
+                return other;
         }
 #endif
 
@@ -4124,6 +4135,9 @@ merge_no_compare(PyBList *self, PyBList *other, const compare_t *compare,
         SAFE_DECREF(other);
         return self;
 }
+
+/* XXX We could speed up sort+merge by keeping everything as a forest
+ * of leaf nodes until the very, very end.*/
 
 static int
 sort(PyBList *self, const compare_t *compare)
