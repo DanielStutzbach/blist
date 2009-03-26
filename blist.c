@@ -3997,7 +3997,13 @@ is_default_cmp(PyObject *cmpfunc)
         return 1;
 }
 #else
-#define is_default_cmp(cmpfunc) (0)
+static int
+is_default_cmp(PyObject *cmpfunc)
+{
+        if (cmpfunc == NULL || cmpfunc == Py_None)
+                return 1;
+        return 0;
+}
 #endif
 
 static PyBList *
