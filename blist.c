@@ -1434,6 +1434,7 @@ ext_index_all_r(PyBListRoot *root, PyBList *self, int i, int set_ok)
 {
         if (self->leaf) {
                 int ioffset = i / INDEX_FACTOR;
+                if (ioffset * INDEX_FACTOR < i) ioffset++;
                 do {
                         assert(ioffset < root->index_length);
                         root->index_list[ioffset] = self;
