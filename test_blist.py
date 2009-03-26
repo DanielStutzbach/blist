@@ -259,6 +259,24 @@ class BListTest(list_tests.CommonTest):
         x = self.type2test([0]) * 65536
         self.assertEqual(len(x[256:512]), 256)
 
+    def test_modify_original(self):
+        x = self.type2test(range(1024))
+        y = x[:]
+        x[5] = 'z'
+        self.assertEqual(tuple(y), tuple(range(1024)))
+        self.assertEqual(x[5], 'z')
+        self.assertEqual(tuple(x[:5]), tuple(range(5)))
+        self.assertEqual(tuple(x[6:]), tuple(range(6, 1024)))
+
+    def test_modify_copy(self):
+        x = self.type2test(range(1024))
+        y = x[:]
+        y[5] = 'z'
+        self.assertEqual(tuple(x), tuple(range(1024)))
+        self.assertEqual(y[5], 'z')
+        self.assertEqual(tuple(y[:5]), tuple(range(5)))
+        self.assertEqual(tuple(y[6:]), tuple(range(6, 1024)))
+
 def test_suite():
     suite = unittest.TestSuite()
     suite.addTest(unittest.makeSuite(BListTest))

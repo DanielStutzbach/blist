@@ -55,6 +55,7 @@ testing: test.o blist.o
 	$(LD) -pthread -pg -Xlinker -export-dynamic -I/home/agthorr/Python-3.0/Include -I/home/agthorr/Python-3.0/ test.o blist.o -L/home/agthorr/Python-3.0 -l$(PYTHON) -o testing -lpthread -ldl -lutil -lm
 
 win:
-	/cygdrive/c/Python25/python.exe setup.py bdist_wininst
 	/cygdrive/c/Python26/python.exe setup.py bdist_wininst
 	/cygdrive/c/Python30/python.exe setup.py bdist_wininst
+	gpg --detach-sign -a dist/blist-$(VERSION).win32-py2.6.exe
+	gpg --detach-sign -a dist/blist-$(VERSION).win32-py3.0.exe

@@ -251,10 +251,18 @@ VALID_PARENT:
     "self" must maintain all the invariants, both when the function
     stars and it when it returns.
 
+VALID_ROOT:
+    "self" must be a root node.  The function must maintain all
+    invariants.
+
+    Implies VALID_PARENT.
+
 VALID_USER:
     This is a user-called function.  "self" is a root node.  "self"
-    must maintain all the invariants, both when the function stars and
+    must maintain all the invariants, both when the function starts and
     it when it returns.
+
+    Implies VALID_ROOT.
 
 VALID_OVERFLOW:
     The function may cause "self" to overflow.  If so, the function
@@ -269,6 +277,8 @@ VALID_COLLAPSE:
 VALID_DECREF:
     The function may call decref_flush().  It must not be called by
     any other BList functions.
+
+    Requires VALID_USER.
 
 Whenever BList code calls a function that might execute arbitrary
 code, the call must be surrounded by the macros DANGER_BEGIN and
