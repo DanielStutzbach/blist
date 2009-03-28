@@ -5273,12 +5273,14 @@ blist_debug(PyBList *self, PyObject *indent)
         return _ob(result);
 }
 
+#ifdef Py_DEBUG
 static PyObject *
 py_blist_debug(PyBList *self)
 {
         invariants(self, VALID_USER);
         return _ob(blist_debug(self, NULL));
 }
+#endif
 
 static PyObject *
 py_blist_sort(PyBList *self, PyObject *args, PyObject *kwds)
@@ -5716,7 +5718,9 @@ static PyMethodDef blist_methods[] = {
         {"count",       (PyCFunction)py_blist_count,   METH_O, count_doc},
         {"reverse",     (PyCFunction)py_blist_reverse, METH_NOARGS, reverse_doc},
         {"sort",        (PyCFunction)py_blist_sort,    METH_VARARGS | METH_KEYWORDS, sort_doc},
+#ifdef Py_DEBUG
         {"debug",       (PyCFunction)py_blist_debug,   METH_NOARGS, NULL},
+#endif
         {NULL,          NULL}           /* sentinel */
 };
 
