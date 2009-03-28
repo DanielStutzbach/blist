@@ -5196,6 +5196,7 @@ py_blist_repr(PyObject *oself)
         return _ob(result);
 }
 
+#ifdef Py_DEBUG
 /* Return a string that shows the internal structure of the BList */
 static PyObject *
 blist_debug(PyBList *self, PyObject *indent)
@@ -5273,7 +5274,6 @@ blist_debug(PyBList *self, PyObject *indent)
         return _ob(result);
 }
 
-#ifdef Py_DEBUG
 static PyObject *
 py_blist_debug(PyBList *self)
 {
