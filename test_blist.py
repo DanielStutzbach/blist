@@ -277,6 +277,17 @@ class BListTest(list_tests.CommonTest):
         self.assertEqual(tuple(y[:5]), tuple(range(5)))
         self.assertEqual(tuple(y[6:]), tuple(range(6, 1024)))
 
+    def test_bigsort(self):
+        x = self.type2test(range(100000))
+        x.sort()
+
+    def test_sort_twice(self):
+        y = blist(range(limit+1))
+        for i in range(2):
+            x = blist(y)
+            x.sort()
+            self.assertEqual(tuple(x), tuple(range(9)))
+
 def test_suite():
     suite = unittest.TestSuite()
     suite.addTest(unittest.makeSuite(BListTest))

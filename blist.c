@@ -98,7 +98,7 @@ static int num_free_iters = 0;
  * Utility functions for copying and moving children.
  */
 
-/* copy n children from index k of self to index k2 of other */
+/* copy n children from index k2 of other to index k of self */
 static void
 copy(PyBList *self, int k, PyBList *other, int k2, int n)
 {
@@ -790,7 +790,7 @@ blist_become(PyBList *self, PyBList *other)
         _void();
 }
 
-/* Make self into a copy of other and destroy other */
+/* Make self into a copy of other and empty other */
 static void
 blist_become_and_consume(PyBList *self, PyBList *other)
 {
@@ -2181,12 +2181,30 @@ blist_get1(PyBList *self, Py_ssize_t i)
 
 static void blist_delitem(PyBList *self, Py_ssize_t i)
 {
+        if (i == self->n-1) {
+                PyBList *p;
+                for (p = self; !p->leaf; p = blist_prepare_write(p, p->num_children-1))
+                        p->n--;
+                if (p->num_children == HALF) {
+                        for (p = self; !p->leaf; p = blist_prepare_write(p, p->num_children-1))
+                                p->n++;
+                        goto slow;
+                }
+                p->n--;
+                p->num_children--;
+                decref_later(p->children[p->num_children]);
+                return;
+        }
+
+ slow:        
         blist_delslice(self, i, i+1);
 }
 
 static PyObject *blist_delitem_return(PyBList *self, Py_ssize_t i)
 {
-        PyObject *rv = blist_get1(self, i);
+        PyObject *rv;
+
+        rv = blist_get1(self, i);
         Py_INCREF(rv);
         blist_delitem(self, i);
         return rv;
@@ -2613,7 +2631,10 @@ typedef struct Forest
 } Forest;
 
 /* Remove the right-most element.  If it's a leaf, return it.
- * Otherwise, add all of its childrent to the forest and try again. */
+ * Otherwise, add all of its childrent to the forest *in reverse
+ * order* and try again.  Assuming only one BList was added to the
+ * forest, the effect is to return all of the leafs one-at-a-time
+ * left-to-right. */
 static PyBList *
 forest_get_leaf(Forest *forest)
 {
@@ -2635,7 +2656,7 @@ forest_get_leaf(Forest *forest)
 
                 for (i = node->num_children - 1; i >= 0; i--)
                         forest->list[forest->num_trees++]
-                                = (PyBList *) node->children[i];
+                                = blist_prepare_write(node, i);
 
                 node->num_children = 0;
                 SAFE_DECREF(node);
@@ -2645,7 +2666,7 @@ forest_get_leaf(Forest *forest)
         return node;
 }
 
-#define MAX_FREE_FORESTS 4
+#define MAX_FREE_FORESTS 20
 static PyBList **forest_saved[MAX_FREE_FORESTS];
 static unsigned forest_max_trees[MAX_FREE_FORESTS];
 static unsigned num_free_forests = 0;
@@ -2667,7 +2688,29 @@ forest_init(Forest *forest)
         return forest;
 }
 
-/* Append a tree to the forest */
+static Forest *
+forest_new(void)
+{
+        Forest *forest = PyMem_New(Forest, 1);
+        Forest *rv;
+        if (forest == NULL)
+                return (Forest *) PyErr_NoMemory();
+        rv = forest_init(forest);
+        if (rv == NULL)
+                PyMem_Free(forest);
+        return rv;
+}
+
+static void
+forest_grow(Forest *forest, int new_max)
+{
+        if (forest->max_trees > new_max) return;
+        /* XXX Check return value */
+        PyMem_Resize(forest->list, PyBList *, new_max);
+        forest->max_trees = new_max;
+}
+
+/* Append a tree to the forest.  Steals the reference to "leaf" */
 static int
 forest_append(Forest *forest, PyBList *leaf)
 {
@@ -2719,6 +2762,7 @@ forest_append(Forest *forest, PyBList *leaf)
         return 0;
 }
 
+#if 0
 /* Like forest_append(), but handles the case where the previously
  * added leaf is in an underflow state. */
 static int
@@ -2752,9 +2796,10 @@ forest_append_safe(Forest *forest, PyBList *leaf)
  append:
         return forest_append(forest, leaf);
 }
+#endif
 
 static void
-forest_delete(Forest *forest)
+forest_uninit(Forest *forest)
 {
         int i;
         for (i = 0; i < forest->num_trees; i++)
@@ -2767,7 +2812,7 @@ forest_delete(Forest *forest)
 }
 
 static void
-forest_delete_now(Forest *forest)
+forest_uninit_now(Forest *forest)
 {
         int i;
         for (i = 0; i < forest->num_trees; i++)
@@ -2777,6 +2822,13 @@ forest_delete_now(Forest *forest)
                 forest_max_trees[num_free_forests++] = forest->max_trees;
         } else
                 PyMem_Free(forest->list);
+}
+
+static void
+forest_delete(Forest *forest)
+{
+        forest_uninit(forest);
+        PyMem_Free(forest);
 }
 
 /* Combine the forest into a final BList and delete the forest.
@@ -2804,7 +2856,7 @@ static PyBList *forest_finish(Forest *forest)
                  */
                 group = blist_new();
                 if (group == NULL) {
-                        forest_delete(forest);
+                        forest_uninit(forest);
                         xdecref_later((PyObject *) out_tree);
                         return NULL;
                 }
@@ -2825,7 +2877,7 @@ static PyBList *forest_finish(Forest *forest)
                 }
         }
 
-        forest_delete(forest);
+        forest_uninit(forest);
 
         return out_tree;
 }
@@ -2887,7 +2939,7 @@ blist_init_from_array(PyBList *self, PyObject **src, Py_ssize_t n)
                 error:
                         Py_DECREF(cur);
                 error2:
-                        forest_delete(&forest);
+                        forest_uninit(&forest);
                         return _int(-1);
                 }
         } else {
@@ -3028,7 +3080,7 @@ blist_init_from_seq(PyBList *self, PyObject *b)
  error2:
         DANGER_BEGIN;
         Py_XDECREF((PyObject *) cur);
-        forest_delete_now(&forest);
+        forest_uninit_now(&forest);
         DANGER_END;
  error:
         DANGER_BEGIN;
@@ -3545,8 +3597,9 @@ static int
 blist_append(PyBList *self, PyObject *v)
 {
         PyBList *overflow;
+        PyBList *p;
 
-        invariants(self, VALID_PARENT|VALID_RW);
+        invariants(self, VALID_ROOT|VALID_RW);
 
         if (self->n == PY_SSIZE_T_MAX) {
                 PyErr_SetString(PyExc_OverflowError,
@@ -3554,6 +3607,23 @@ blist_append(PyBList *self, PyObject *v)
                 return _int(-1);
         }
 
+        for (p = self; !p->leaf; p = blist_prepare_write(p, p->num_children-1))
+                p->n++;
+
+        if (p->num_children == LIMIT) {
+                for (p = self; !p->leaf; p=(PyBList*)p->children[p->num_children-1])
+                        p->n--;
+                goto slow;
+        }
+        
+        p->children[p->num_children++] = v;
+        p->n++;
+        Py_INCREF(v);
+        
+        ext_mark(self, 0, DIRTY);
+        return _int(0);
+        
+ slow:
         overflow = ins1(self, self->n, v);
         if (overflow)
                 blist_overflow_root(self, overflow);
@@ -4006,72 +4076,159 @@ is_default_cmp(PyObject *cmpfunc)
 }
 #endif
 
-static PyBList *
-merge(PyBList *self, PyBList *other, const compare_t *compare, int *err)
+static void
+balance_leafs(PyBList *leaf1, PyBList *leaf2)
 {
-        int c, i, j;
-        Forest forest1, forest2, forest_out;
-        PyBList *leaf1, *leaf2, *output, *ret;
+        assert(leaf1->leaf);
+        assert(leaf2->leaf);
+        if (leaf1->num_children + leaf2->num_children <= LIMIT) {
+                copy(leaf1, leaf1->num_children, leaf2, 0,leaf2->num_children);
+                leaf1->num_children += leaf2->num_children;
+                leaf1->n += leaf2->num_children;
+                leaf2->num_children = 0;
+                leaf2->n = 0;
+        } else if (leaf1->num_children < HALF) {
+                int needed = HALF - leaf1->num_children;
 
-        *err = 0;
+                copy(leaf1, leaf1->num_children, leaf2, 0, needed);
+                leaf1->num_children += needed;
+                leaf1->n += needed;
+                shift_left(leaf2, needed, needed);
+                leaf2->num_children -= needed;
+                leaf2->n -= needed;
+        } else if (leaf2->num_children < HALF) {
+                int needed = HALF - leaf2->num_children;
 
-#if 1
-        c = ISLT(blist_get1(self, self->n-1), blist_get1(other, 0), compare);
-        if (c) {
-                blist_extend_blist(self, other);
-                Py_DECREF(other);
-                if (c < 0)
-                        *err = 1;
-                return self;
+                shift_right(leaf2, 0, needed);
+                copy(leaf2, 0, leaf1, leaf1->num_children-needed, needed);
+                leaf1->num_children -= needed;
+                leaf1->n -= needed;
+                leaf2->num_children += needed;
+                leaf2->n += needed;
+        }
+}
+
+static void
+balance_last_2(Forest *forest)
+{
+        PyBList *last;
+
+        if (forest->num_trees >= 2)
+                balance_leafs(forest->list[forest->num_trees-2],
+                              forest->list[forest->num_trees-1]);
+        if (forest->num_trees >= 1) {
+                last = forest->list[forest->num_trees-1];
+                if (!last->num_children) {
+                        SAFE_DECREF(last);
+                        forest->num_trees--;
+                }
+        }
+}
+
+static void
+do_fast_merge(Forest *forest_out, Forest *left, Forest *right)
+{
+        Forest tmp;
+        memcpy(&tmp, forest_out, sizeof(Forest));
+        memcpy(forest_out, left, sizeof(Forest));
+        memcpy(left, &tmp, sizeof(Forest));
+        forest_grow(forest_out, forest_out->num_trees+right->num_trees);
+        memcpy(&forest_out->list[forest_out->num_trees],
+               right->list, sizeof(PyBList *) * right->num_trees);
+        forest_out->num_trees += right->num_trees;
+        right->num_trees = 0;
+}
+
+static int
+try_fast_merge(Forest *forest_out, Forest *forest1, Forest *forest2,
+               const compare_t *compare, int *err)
+{
+        int c;
+        PyBList *end;
+
+        end = forest1->list[forest1->num_trees-1];
+
+        c = ISLT(forest2->list[0]->children[0],
+                 end->children[end->num_children-1], compare);
+
+        if (c < 0) {
+        error:
+                *err = -1;
+                do_fast_merge(forest_out, forest1, forest2);
+                return 1;
+        } else if (c == 0) {
+                do_fast_merge(forest_out, forest1, forest2);
+                return 1;
         }
 
-        c = ISLT(blist_get1(other, other->n-1), blist_get1(self, 0), compare);
-        if (c) {
-                blist_extend_blist(other, self);
-                Py_DECREF(self);
-                if (c < 0)
-                        *err = 1;
-                return other;
+        end = forest2->list[forest2->num_trees-1];
+        
+        c = ISLT(forest1->list[0]->children[0],
+                 end->children[end->num_children-1], compare);
+        if (c < 0)
+                goto error;
+        else if (c == 0) {
+                do_fast_merge(forest_out, forest2, forest1);
+                return 1;
         }
-#endif
 
-        forest_init(&forest1);
-        forest_init(&forest2);
-        forest_init(&forest_out);
+        return 0;                
+}
 
-        /* XXX: Check return values */
-        forest_append(&forest1, self);
-        forest_append(&forest2, other);
+/* Merge two sorted forests.  Each forest must contain on leafs.  The
+ * forests will be deleted at the end. */
+static void
+forest_merge(Forest *forest_out, Forest *forest1, Forest *forest2,
+             const compare_t *compare, int *err)
+{
+        int c, i, j, z;
+        PyBList *leaf1, *leaf2, *output;
+        int leaf1_i = 0, leaf2_i = 0;
 
-        leaf1 = forest_get_leaf(&forest1);
-        leaf2 = forest_get_leaf(&forest2);
+        if (try_fast_merge(forest_out, forest1, forest2, compare, err)) {
+                forest_uninit(forest1);
+                forest_uninit(forest2);
+                return;
+        }                
+        
+        forest_grow(forest_out, forest1->num_trees + forest2->num_trees + 1);
+
+        assert(forest1->num_trees > 0);
+        assert(forest2->num_trees > 0);
+
+        leaf1 = forest1->list[leaf1_i++];
+        leaf2 = forest2->list[leaf2_i++];
 
         i = 0; /* Index into leaf 1 */
         j = 0; /* Index into leaf 2 */
 
         output = blist_new();
 
-        while ((forest1.num_trees || i < leaf1->num_children)
-               && (forest2.num_trees || j < leaf2->num_children)) {
+        while ((leaf1_i < forest1->num_trees || i < leaf1->num_children)
+               && (leaf2_i < forest2->num_trees || j < leaf2->num_children)) {
 
                 /* Check if we need to get a new input leaf node */
                 if (i == leaf1->num_children) {
                         leaf1->num_children = 0;
                         SAFE_DECREF(leaf1);
-                        leaf1 = forest_get_leaf(&forest1);
+                        leaf1 = forest1->list[leaf1_i++];
                         i = 0;
                 }
 
                 if (j == leaf2->num_children) {
                         leaf2->num_children = 0;
                         SAFE_DECREF(leaf2);
-                        leaf2 = forest_get_leaf(&forest2);
+                        leaf2 = forest2->list[leaf2_i++];
                         j = 0;
                 }
 
+                assert (i < leaf1->num_children);
+                assert (j < leaf2->num_children);
+                
                 /* Check if we have filled up an output leaf node */
                 if (output->n == LIMIT) {
-                        forest_append(&forest_out, output);
+                        assert(forest_out->num_trees < forest_out->max_trees);
+                        forest_out->list[forest_out->num_trees++] = output;
                         output = blist_new();
                 }
 
@@ -4092,109 +4249,180 @@ merge(PyBList *self, PyBList *other, const compare_t *compare, int *err)
                 output->n++;
         }
 
+        for (z = 0; z < forest_out->num_trees; z++)
+                assert(forest_out->list[z]->num_children);
+
  done:
         /* Append our partially-complete output leaf node to the forest */
-        forest_append(&forest_out, output);
+        assert(forest_out->num_trees < forest_out->max_trees);
+        forest_out->list[forest_out->num_trees++] = output;
+        balance_last_2(forest_out);
+
 
         /* Append a partially-consumed input leaf node, if one exists */
-        if (i < leaf1->num_children) {
-                shift_left(leaf1, i, i);
-                leaf1->num_children -= i;
-                forest_append_safe(&forest_out, leaf1);
-        } else {
-                leaf1->num_children = 0;
-                SAFE_DECREF(leaf1);
+        if (leaf1_i <= forest1->num_trees) {
+                if (i < leaf1->num_children) {
+                        shift_left(leaf1, i, i);
+                        leaf1->num_children -= i;
+                        assert(forest_out->num_trees < forest_out->max_trees);
+                        forest_out->list[forest_out->num_trees++] = leaf1;
+                        balance_last_2(forest_out);
+                } else {
+                        leaf1->num_children = 0;
+                        SAFE_DECREF(leaf1);
+                }
+                /* Append the rest of any input forests still has nodes. */
+                assert(forest_out->num_trees + forest1->num_trees - leaf1_i
+                       <= forest_out->max_trees);
+                memcpy(&forest_out->list[forest_out->num_trees],
+                       &forest1->list[leaf1_i],
+                       sizeof(PyBList *) * (forest1->num_trees - leaf1_i));
+                forest_out->num_trees += forest1->num_trees - leaf1_i;
+                forest1->num_trees = 0;
+                balance_last_2(forest_out);
+        }
+        
+        if (leaf2_i <= forest2->num_trees) {
+                if (j < leaf2->num_children) {
+                        shift_left(leaf2, j, j);
+                        leaf2->num_children -= j;
+                        assert(forest_out->num_trees < forest_out->max_trees);
+                        forest_out->list[forest_out->num_trees++] = leaf2;
+                        balance_last_2(forest_out);
+                } else {
+                        leaf2->num_children = 0;
+                        SAFE_DECREF(leaf2);
+                }
+                
+                assert(forest_out->num_trees + forest2->num_trees - leaf2_i
+                       <= forest_out->max_trees);
+                memcpy(&forest_out->list[forest_out->num_trees],
+                       &forest2->list[leaf2_i],
+                       sizeof(PyBList *) * (forest2->num_trees - leaf2_i));
+                forest_out->num_trees += forest2->num_trees - leaf2_i;
+                forest2->num_trees = 0;
+                balance_last_2(forest_out);
         }
 
-        if (j < leaf2->num_children) {
-                shift_left(leaf2, j, j);
-                leaf2->num_children -= j;
-                forest_append_safe(&forest_out, leaf2);
-        } else {
-                leaf2->num_children = 0;
-                SAFE_DECREF(leaf2);
+        forest_uninit(forest1);
+        forest_uninit(forest2);
+
+        for (i = 0; i < forest_out->num_trees; i++) {
+                assert(forest_out->list[i]->num_children);
+                forest_out->list[i]->n = forest_out->list[i]->num_children;
+                check_invariants(forest_out->list[i]);
         }
-
-        /* Append the rest of whichever input forest still has nodes. */
-
-        ret = forest_finish(&forest_out);
-        while (forest1.num_trees) {
-                PyBList *tree = forest1.list[--forest1.num_trees];
-                ret = blist_concat_unknown_roots(ret, tree);
-        }
-        while (forest2.num_trees) {
-                PyBList *tree = forest2.list[--forest2.num_trees];
-                ret = blist_concat_unknown_roots(ret, tree);
-        }
-
-        forest_delete(&forest1);
-        forest_delete(&forest2);
-
-        return ret;
 }
 
-static PyBList *
-merge_no_compare(PyBList *self, PyBList *other, const compare_t *compare,
-                 int *err)
+static void
+merge_no_compare(Forest *forest_out, Forest *forest1, Forest *forest2,
+                 const compare_t *compare, int *err)
 {
-        blist_extend_blist(self, other);
-        SAFE_DECREF(other);
-        return self;
+        forest_init(forest_out);
+        forest_grow(forest_out, forest1->num_trees + forest2->num_trees);
+
+        assert(forest_out->num_trees + forest1->num_trees
+               <= forest_out->max_trees);
+        memcpy(&forest_out->list[forest_out->num_trees],
+               &forest1->list[0],
+               sizeof(PyBList *) * forest1->num_trees);
+        forest_out->num_trees += forest1->num_trees;
+        forest1->num_trees = 0;
+        balance_last_2(forest_out);
+        
+        assert(forest_out->num_trees + forest2->num_trees
+               <= forest_out->max_trees);
+        memcpy(&forest_out->list[forest_out->num_trees],
+               &forest2->list[0],
+               sizeof(PyBList *) * forest2->num_trees);
+        forest_out->num_trees += forest2->num_trees;
+        forest2->num_trees = 0;
+        balance_last_2(forest_out);
+
+        forest_uninit(forest1);
+        forest_uninit(forest2);
 }
 
-/* XXX We could speed up sort+merge by keeping everything as a forest
- * of leaf nodes until the very, very end.*/
+static void
+forest_sort(Forest *out, Forest *forest, const compare_t *compare,
+            int start, int end, int *err)
+{
+        Forest forest1, forest2;
+        int width;
+        void (*mergefunc)(Forest *out, Forest *forest2, Forest *forest1,
+                          const compare_t *compare, int *err);
+
+        mergefunc = forest_merge;
+
+        forest_init(out);
+        
+        if (start == end) {
+                return;
+        }
+        
+        if (start+1 == end) {
+                PyBList *self = forest->list[start];
+                if (!*err)
+                        *err = gallop_sort(self->children,self->num_children,
+                                           compare);
+                assert(out->num_trees < out->max_trees);
+                out->list[out->num_trees++] = self;
+                return;
+        }
+
+        width = (end - start) / 2;
+
+        forest_sort(&forest1, forest, compare, start, start+width, err);
+        forest_sort(&forest2, forest, compare, start+width, end, err);
+        if (*err)
+                mergefunc = merge_no_compare;
+
+        forest_merge(out, &forest1, &forest2, compare, err);
+}
 
 static int
 sort(PyBList *self, const compare_t *compare)
 {
-        int i, ret = 0;
-        PyBList *s;
-        PyBList *(*mergefunc)(PyBList *self, PyBList *other,
-                              const compare_t *compare, int *err);
-
-        invariants(self, VALID_PARENT | VALID_RW);
-
-        mergefunc = merge;
+        Forest *forest_in;
+        Forest forest_out;
+        Forest builder, forest_tmp;
+        PyBList *other, *leaf;
+        int err=0, i;
 
         if (self->leaf)
-                return _int(gallop_sort(self->children, self->num_children,
-                                        compare));
-
-        for (i = 0; i < self->num_children; i++) {
-                blist_prepare_write(self, i);
-                if (ret < 0) continue;
-                ret = sort((PyBList *) self->children[i], compare);
-                if (ret < 0)
-                        mergefunc = merge_no_compare;
+                return gallop_sort(self->children,self->num_children, compare);
+        
+        forest_in = forest_new();
+        forest_grow(forest_in, self->n / HALF + 1);
+        forest_init(&forest_tmp);
+        Py_INCREF(self); /* forest_append steals a reference */
+        forest_append(&forest_tmp, self);
+        while (forest_tmp.num_trees) {
+                leaf = forest_get_leaf(&forest_tmp);
+                assert(forest_in->num_trees < forest_in->max_trees);
+                forest_in->list[forest_in->num_trees++] = leaf;
         }
+        forest_uninit(&forest_tmp);
+        forest_init(&forest_out);
+        
+        forest_sort(&forest_out, forest_in, compare, 0, forest_in->num_trees,
+                    &err);
+        
+        forest_in->num_trees = 0;
+        forest_delete(forest_in);
 
-        while (self->num_children != 1) {
-                for (i = 0; i < self->num_children/2; i++) {
-                        s = mergefunc((PyBList *) self->children[2*i],
-                                      (PyBList *) self->children[2*i+1],
-                                      compare, &ret);
-                        /* Necessary in case GC traversal occurs in merge() */
-                        self->children[2*i] = NULL;
-                        self->children[2*i+1] = NULL;
-
-                        self->children[i] = (PyObject *) s;
-
-                        if (ret < 0)
-                                mergefunc = merge_no_compare;
-                }
-
-                if (self->num_children & 1)
-                        self->children[i]
-                                = self->children[self->num_children - 1];
-                self->num_children = (self->num_children+1)/2;
+        forest_init(&builder);
+        for (i = 0; i < forest_out.num_trees; i++) {
+                forest_out.list[i]->n = forest_out.list[i]->num_children;
+                forest_append(&builder, forest_out.list[i]);
         }
-
-        blist_become_and_consume(self, (PyBList *) self->children[0]);
-        check_invariants(self);
-        assert(Py_REFCNT(self) == 1 || PyRootBList_Check(self));
-
-        return _int(ret);
+        forest_out.num_trees = 0;
+        forest_uninit(&forest_out);
+        other = forest_finish(&builder);
+        assert(self->num_children == 0);
+        blist_become_and_consume(self, other);
+        SAFE_DECREF(other);
+        return err;
 }
 
 /************************************************************************
@@ -5276,6 +5504,21 @@ py_blist_pop(PyBList *self, PyObject *args)
                 PyErr_SetString(PyExc_IndexError, "pop from empty list");
                 return _ob(NULL);
         }
+
+        if (i == -1 || i == self->n-1) {
+                PyBList *p;
+                for (p = self; !p->leaf; p = blist_prepare_write(p, p->num_children-1))
+                        p->n--;
+                if (p->num_children == HALF && self != p) {
+                        for (p = self; !p->leaf; p = blist_prepare_write(p, p->num_children-1))
+                                p->n++;
+                        goto slow;
+                }
+                p->n--;
+                p->num_children--;
+                return _ob(p->children[p->num_children]);
+        }
+
         if (i < 0)
                 i += self->n;
         if (i < 0 || i >= self->n) {
@@ -5283,6 +5526,7 @@ py_blist_pop(PyBList *self, PyObject *args)
                 return _ob(NULL);
         }
 
+ slow:
         v = blist_delitem_return(self, i);
         ext_mark(self, 0, DIRTY);
 
