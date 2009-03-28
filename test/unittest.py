@@ -55,11 +55,12 @@ import os
 import types
 
 class ReferenceLeak(Exception):
-    def __init__(self, n):
+    def __init__(self, s, n):
         self.n = n
+        self.s = s
 
     def __str__(self):
-        return repr(self.n)
+        return '%s: %d' % (self.s, self.n)
 
 ##############################################################################
 # Exported classes and functions
@@ -305,10 +306,10 @@ class TestCase:
                         #for ob in ob_finish:
                         #    if id(ob) not in ob_start and ob is not ob_start:
                         #        print ob
-                        raise ReferenceLeak(len(ob_finish)-len(ob_start))
+                        raise ReferenceLeak('more objects', len(ob_finish)-len(ob_start))
                     if total_finish != total_start:
                         print total_start, total_finish
-                        raise ReferenceLeak(total_finish - total_start)
+                        raise ReferenceLeak('more references', total_finish - total_start)
             except KeyboardInterrupt:
                 raise
             except:

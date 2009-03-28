@@ -424,33 +424,33 @@ class CommonTest(seq_tests.CommonTest):
         u = self.type2test([2,1,0,-1,-2])
         u.sort()
         self.assertEqual(u, self.type2test([-2,-1,0,1,2]))
-
+        
         self.assertRaises(TypeError, u.sort, 42, 42)
-
+        
         a = self.type2test(reversed(range(512)))
         a.sort()
         self.assertEqual(a, self.type2test(range(512)))
-
+        
         def revcmp(a, b):
             return cmp(b, a)
         u.sort(revcmp)
         self.assertEqual(u, self.type2test([2,1,0,-1,-2]))
-
+        
         # The following dumps core in unpatched Python 1.5:
         def myComparison(x,y):
             return cmp(x%3, y%7)
         z = self.type2test(range(12))
         z.sort(myComparison)
-
+        
         self.assertRaises(TypeError, z.sort, 2)
-
+        
         def selfmodifyingComparison(x,y):
             z.append(1)
             return cmp(x, y)
         self.assertRaises(ValueError, z.sort, selfmodifyingComparison)
-
+        
         self.assertRaises(TypeError, z.sort, lambda x, y: 's')
-
+        
         self.assertRaises(TypeError, z.sort, 42, 42, 42, 42)
 
     def test_slice(self):
