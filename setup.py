@@ -9,7 +9,7 @@ else:
     from distutils.core import setup, Extension
 
 setup(name='blist',
-      version='0.9.13',
+      version='0.9.14',
       description='a list-like type with better asymptotic performance and similar performance on small lists',
       author='Stutzbach Enterprises, LLC',
       author_email='daniel@stutzbachenterprises.com',
@@ -33,12 +33,7 @@ BList: a list-like type with better performance
 ===============================================
 
 The BList is a type that looks, acts, and quacks like a Python list,
-but has better performance for many (but not all) use cases.  The use
-cases where the BList is slightly *slower* than Python's list are as
-follows (O(log n) vs. O(1)):
-
-1. A large lists where inserts and deletes are only at the end of the
-   list (LIFO).
+but has better performance for for modifying large lists.  
 
 Earlier versions of BList were also slower for large lists that never
 change length, but this is no longer true as of version 0.9.6, which
@@ -71,23 +66,6 @@ Example usage:
 
 For comparison, on most systems the built-in list just raises
 MemoryError and calls it a day.
-
-The BList has two key features that allow it to pull off this
-performance:
-
-1. Internally, a B+Tree is a wide, squat tree.  Each node has a
-   maximum of 128 children.  If the entire list contains 128 or fewer
-   objects, then there is only one node, which simply contains an array
-   of the objects.  In other words, for short lists, a BList works just
-   like Python's array-based list() type.  Thus, it has the same good
-   performance on small lists.
-
-2. The BList type features transparent copy-on-write.  If a non-root
-   node needs to be copied (as part of a getslice, copy, setslice, etc.),
-   the node is shared between multiple parents instead of being copied.
-   If it needs to be modified later, it will be copied at that time.
-   This is completely behind-the-scenes; from the user's point of view,
-   the BList works just like a regular Python list.
 """,
             
       )
