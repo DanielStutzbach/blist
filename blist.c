@@ -3750,13 +3750,9 @@ blist_append(PyBList *self, PyObject *v)
  */
 
 #ifndef Py_DEBUG
-#if PY_MAJOR_VERSION >= 3
-#define ISLT(X, Y, COMPARE) PyObject_RichCompareBool(X, Y, Py_LT)
-#else
 #define ISLT(X, Y, COMPARE) ((COMPARE) == NULL ?                        \
                              PyObject_RichCompareBool(X, Y, Py_LT) :    \
                              islt(X, Y, COMPARE))
-#endif
 #else
 static int
 _rich_compare_bool(PyObject *x, PyObject *y)
@@ -3768,13 +3764,9 @@ _rich_compare_bool(PyObject *x, PyObject *y)
         return ret;
 }
 
-#if PY_MAJOR_VERSION >= 3
-#define ISLT(X, Y, COMPARE) _rich_compare_bool(X, Y)
-#else
 #define ISLT(X, Y, COMPARE) ((COMPARE) == NULL ?                        \
                              _rich_compare_bool(X, Y) :    \
                              islt(X, Y, COMPARE))
-#endif
 #endif
 
 typedef struct {
@@ -3789,7 +3781,6 @@ typedef struct {
    We can also skip all the INCREF/DECREF stuff then and just borrow
    references
 */
-#if PY_MAJOR_VERSION < 3
 static int islt(PyObject *x, PyObject *y, const compare_t *compare)
 {
         PyObject *res;
@@ -3857,7 +3848,6 @@ static int islt(PyObject *x, PyObject *y, const compare_t *compare)
         Py_DECREF(res);
         return i < 0;
 }
-#endif
 
 #define INSERTION_THRESH 0
 #define BINARY_THRESH 10
@@ -5387,8 +5377,12 @@ py_blist_debug(PyBList *self)
 static PyObject *
 py_blist_sort(PyBList *self, PyObject *args, PyObject *kwds)
 {
-        static char *kwlist[] = {"cmp", "key", "reverse", 0};
         compare_t compare = {NULL, NULL};
+#if PY_MAJOR_VERSION < 3
+        static char *kwlist[] = {"cmp", "key", "reverse", 0};
+#else
+        static char *kwlist[] = {"key", "reverse", 0};
+#endif
         int reverse = 0;
         int ret;
         PyBListRoot saved;
@@ -5422,9 +5416,9 @@ py_blist_sort(PyBList *self, PyObject *args, PyObject *kwds)
 #if PY_MAJOR_VERSION < 3
         if (is_default_cmp(compare.compare))
                 compare.compare = NULL;
+#endif
         if (compare.keyfunc == Py_None)
                 compare.keyfunc = NULL;
-#endif
 
         saved.children = self->children;
         Py_TYPE(&saved) = &PyRootBList_Type; /* Make validations happy */
