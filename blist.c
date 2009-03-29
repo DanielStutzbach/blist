@@ -2987,6 +2987,7 @@ blist_init_from_array(PyBList *self, PyObject **src, Py_ssize_t n)
         PyBList *final, *cur;
         PyObject **dst;
         PyObject **stop = &src[n];
+        PyObject **next;
         Forest forest;
 
         invariants(self, VALID_ROOT|VALID_RW);
@@ -3008,24 +3009,27 @@ blist_init_from_array(PyBList *self, PyObject **src, Py_ssize_t n)
         if (cur == NULL)
                 goto error2;
         dst = cur->children;
-        i = 0;
 
         while (src < stop) {
-                if (i == LIMIT) {
-                        cur->num_children = LIMIT;
-                        if (forest_append(&forest, cur) < 0)
-                                goto error;
-                        cur = blist_new();
-                        if (cur == NULL)
-                                goto error2;
-                        dst = cur->children;
-                        i = 0;
+                next = &src[LIMIT];
+                if (next > stop) next = stop;
+                while (src < next) {
+                        Py_INCREF(*src);
+                        *dst++ = *src++;
                 }
-
-                Py_INCREF(*src);
-                dst[i++] = *src++;
+                if (src == stop) break;
+                
+                cur->num_children = LIMIT;
+                if (forest_append(&forest, cur) < 0)
+                        goto error;
+                cur = blist_new();
+                if (cur == NULL)
+                        goto error2;
+                dst = cur->children;
         }
 
+        i = dst - cur->children;
+        
         if (i) {
                 cur->num_children = i;
                 if (forest_append(&forest, cur) < 0) {
@@ -4670,7 +4674,7 @@ py_blist_dealloc(PyObject *oself)
         Py_TRASHCAN_SAFE_BEGIN(self)
 
         for (i = 0; i < self->num_children; i++)
-                Py_XDECREF(self->children[i]);
+                Py_DECREF(self->children[i]);
 
         if (PyRootBList_Check(self)) {
                 ext_dealloc((PyBListRoot *) self);
