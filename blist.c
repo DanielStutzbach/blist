@@ -2412,10 +2412,13 @@ blistiter_len(blistiterobject *it)
         
         for (depth = iter->depth-2; depth >= 0; depth--) {
                 point_t point = iter->stack[depth];
+                int j;
                 assert(!point.lst->leaf);
                 assert(point.i > 0);
-                PyBList *child = (PyBList *) point.lst->children[point.i-1];
-                total += point.lst->n - child->n;
+                for (j = point.i; j < point.lst->num_children; j++) {
+                        PyBList *child = (PyBList *) point.lst->children[j];
+                        total += child->n;
+                }
         }
         return PyInt_FromLong(total); 
 }
@@ -2596,6 +2599,32 @@ static PyObject *blistiter_prev(PyObject *oit)
         return obj;
 }
 
+static PyObject *
+blistriter_len(blistiterobject *it)
+{
+        iter_t *iter = &it->iter;
+        int depth;
+        Py_ssize_t total = 0;
+
+        total += iter->i + 1;
+        
+        for (depth = iter->depth-2; depth >= 0; depth--) {
+                point_t point = iter->stack[depth];
+                int j;
+                assert(!point.lst->leaf);
+                for (j = 0; j <= point.i; j++) {
+                        PyBList *child = (PyBList *) point.lst->children[j];
+                        total += child->n;
+                }
+        }
+        return PyInt_FromLong(total); 
+}
+
+static PyMethodDef blistriter_methods[] = {
+        {"__length_hint__", (PyCFunction)blistriter_len, METH_NOARGS, length_hint_doc},
+        {NULL,          NULL}           /* sentinel */
+};
+
 PyTypeObject PyBListReverseIter_Type = {
         PyVarObject_HEAD_INIT(NULL, 0)
         "blistreverseiterator",                 /* tp_name */
@@ -2625,7 +2654,7 @@ PyTypeObject PyBListReverseIter_Type = {
         0,                                      /* tp_weaklistoffset */
         PyObject_SelfIter,                      /* tp_iter */
         blistiter_prev,                         /* tp_iternext */
-        blistiter_methods,                      /* tp_methods */
+        blistriter_methods,                      /* tp_methods */
         0,                                      /* tp_members */
 };
 
