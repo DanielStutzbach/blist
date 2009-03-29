@@ -90,6 +90,7 @@ static int num_free_iters = 0;
 
 #define PyBList_Check(op) (PyObject_TypeCheck((op), &PyBList_Type) || (PyObject_TypeCheck((op), &PyRootBList_Type)))
 #define PyRootBList_Check(op) (PyObject_TypeCheck((op), &PyRootBList_Type))
+#define PyRootBList_CheckExact(op) (Py_TYPE((op)) == &PyRootBList_Type)
 #define PyBList_CheckExact(op) ((op)->ob_type == &PyBList_Type || (op)->ob_type == &PyRootBList_Type)
 #define PyBListIter_Check(op) (PyObject_TypeCheck((op), &PyBListIter_Type) || (PyObject_TypeCheck((op), &PyBListReverseIter_Type)))
 
@@ -697,14 +698,14 @@ static PyBList *blist_new(void)
                         PyErr_NoMemory();
                         return NULL;
                 }
-
-                self->leaf = 1; /* True */
-                self->num_children = 0;
-                self->n = 0;
         }
 
+        self->leaf = 1; /* True */
+        self->num_children = 0;
+        self->n = 0;
+        
         PyObject_GC_Track(self);
-
+                
         return self;
 }
 
@@ -728,11 +729,11 @@ static PyBList *blist_root_new(void)
                         PyErr_NoMemory();
                         return NULL;
                 }
-
-                self->leaf = 1; /* True */
-                self->n = 0;
-                self->num_children = 0;
         }
+        
+        self->leaf = 1; /* True */
+        self->n = 0;
+        self->num_children = 0;
 
         ext_init((PyBListRoot *) self);
 
@@ -3712,8 +3713,13 @@ blist_append(PyBList *self, PyObject *v)
         p->children[p->num_children++] = v;
         p->n++;
         Py_INCREF(v);
-        
-        ext_mark(self, 0, DIRTY);
+
+        if (self->n % INDEX_FACTOR == 0) 
+                ext_mark(self, 0, DIRTY);
+#ifdef Py_DEBUG
+        else
+                ((PyBListRoot*)self)->last_n++;
+#endif
         return _int(0);
         
  slow:
@@ -3744,9 +3750,13 @@ blist_append(PyBList *self, PyObject *v)
  */
 
 #ifndef Py_DEBUG
+#if PY_MAJOR_VERSION >= 3
+#define ISLT(X, Y, COMPARE) PyObject_RichCompareBool(X, Y, Py_LT)
+#else
 #define ISLT(X, Y, COMPARE) ((COMPARE) == NULL ?                        \
                              PyObject_RichCompareBool(X, Y, Py_LT) :    \
                              islt(X, Y, COMPARE))
+#endif
 #else
 static int
 _rich_compare_bool(PyObject *x, PyObject *y)
@@ -3758,9 +3768,13 @@ _rich_compare_bool(PyObject *x, PyObject *y)
         return ret;
 }
 
+#if PY_MAJOR_VERSION >= 3
+#define ISLT(X, Y, COMPARE) _rich_compare_bool(X, Y)
+#else
 #define ISLT(X, Y, COMPARE) ((COMPARE) == NULL ?                        \
                              _rich_compare_bool(X, Y) :    \
                              islt(X, Y, COMPARE))
+#endif
 #endif
 
 typedef struct {
@@ -3775,7 +3789,7 @@ typedef struct {
    We can also skip all the INCREF/DECREF stuff then and just borrow
    references
 */
-
+#if PY_MAJOR_VERSION < 3
 static int islt(PyObject *x, PyObject *y, const compare_t *compare)
 {
         PyObject *res;
@@ -3843,6 +3857,7 @@ static int islt(PyObject *x, PyObject *y, const compare_t *compare)
         Py_DECREF(res);
         return i < 0;
 }
+#endif
 
 #define INSERTION_THRESH 0
 #define BINARY_THRESH 10
@@ -4158,14 +4173,6 @@ is_default_cmp(PyObject *cmpfunc)
         if (strcmp(f->m_ml->ml_name, "cmp") != 0)
                 return 0;
         return 1;
-}
-#else
-static int
-is_default_cmp(PyObject *cmpfunc)
-{
-        if (cmpfunc == NULL || cmpfunc == Py_None)
-                return 1;
-        return 0;
 }
 #endif
 
@@ -4675,20 +4682,18 @@ py_blist_dealloc(PyObject *oself)
         for (i = 0; i < self->num_children; i++)
                 Py_XDECREF(self->children[i]);
 
-        self->num_children = 0;
-        self->n = 0;
-        self->leaf = 1;
-
-        if (Py_TYPE(self) == &PyRootBList_Type)
+        if (PyRootBList_Check(self)) {
                 ext_dealloc((PyBListRoot *) self);
-
-        if (num_free_lists < MAXFREELISTS
-            && (Py_TYPE(self) == &PyBList_Type)) {
+                if (PyRootBList_CheckExact(self)
+                    && num_free_ulists < MAXFREELISTS)
+                        free_ulists[num_free_ulists++] = self;
+                else
+                        goto free_blist;
+        } else if (Py_TYPE(self) == &PyBList_Type
+                   && num_free_lists < MAXFREELISTS)
                 free_lists[num_free_lists++] = self;
-        } else if (num_free_ulists < MAXFREELISTS
-                   && (Py_TYPE(self) == &PyRootBList_Type)) {
-                free_ulists[num_free_ulists++] = self;
-        } else {
+        else {
+        free_blist:
                 PyMem_Free(self->children);
                 Py_TYPE(self)->tp_free((PyObject *)self);
         }
@@ -5394,19 +5399,32 @@ py_blist_sort(PyBList *self, PyObject *args, PyObject *kwds)
         if (args != NULL) {
                 int err;
                 DANGER_BEGIN;
+#if PY_MAJOR_VERSION < 3
                 err = PyArg_ParseTupleAndKeywords(args, kwds, "|OOi:sort",
                                                   kwlist, &compare.compare,
                                                   &compare.keyfunc,
                                                   &reverse);
+#else
+                err = PyArg_ParseTupleAndKeywords(args, kwds, "|Oi:sort",
+                                                  kwlist, &compare.keyfunc,
+                                                  &reverse);
+                if (Py_SIZE(args) > 0) {
+                        PyErr_SetString(PyExc_TypeError,
+                                "must use keyword argument for key function");
+                        return NULL;
+                }
+#endif
                 DANGER_END;
                 if (!err)
                         return _ob(NULL);
         }
 
+#if PY_MAJOR_VERSION < 3
         if (is_default_cmp(compare.compare))
                 compare.compare = NULL;
         if (compare.keyfunc == Py_None)
                 compare.keyfunc = NULL;
+#endif
 
         saved.children = self->children;
         Py_TYPE(&saved) = &PyRootBList_Type; /* Make validations happy */
@@ -5620,6 +5638,13 @@ py_blist_pop(PyBList *self, PyObject *args)
                 }
                 p->n--;
                 p->num_children--;
+
+                if ((self->n+1) % INDEX_FACTOR)
+                        ext_mark(self, 0, DIRTY);
+#ifdef Py_DEBUG
+                else
+                        ((PyBListRoot*)self)->last_n--;
+#endif
                 return _ob(p->children[p->num_children]);
         }
 
@@ -5694,7 +5719,6 @@ py_blist_append(PyBList *self, PyObject *v)
         invariants(self, VALID_USER|VALID_RW);
 
         err = blist_append(self, v);
-        ext_mark(self, 0, DIRTY);
 
         if (err < 0)
                 return _ob(NULL);
