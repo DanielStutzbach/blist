@@ -1432,12 +1432,18 @@ static int ext_grow_index(PyBListRoot *root)
         return 0;
 }
 
+#define SET_OK_NO 0
+#define SET_OK_YES 1
+#define SET_OK_ALL 2
+
 static void
 ext_index_all_r(PyBListRoot *root, PyBList *self, int i, int set_ok)
 {
         int j;
-        if (self != (PyBList *)root)
+        if (self != (PyBList *)root) {
+                assert(!(set_ok == SET_OK_YES && Py_REFCNT(self) != 1));
                 set_ok = set_ok && (Py_REFCNT(self) == 1);
+        }
 
         if (((PyBList*)self->children[0])->leaf) {
                 for (j = 0; j < self->num_children; j++) {
@@ -1448,10 +1454,12 @@ ext_index_all_r(PyBListRoot *root, PyBList *self, int i, int set_ok)
                                 assert(ioffset < root->index_length);
                                 root->index_list[ioffset] = child;
                                 root->offset_list[ioffset] = i;
-                                if (Py_REFCNT(child) > 1 || !set_ok)
-                                        CLEAR_BIT(root->setclean_list,ioffset);
-                                else
-                                        SET_BIT(root->setclean_list, ioffset);
+                                if (set_ok != SET_OK_ALL) {
+                                        if (Py_REFCNT(child) > 1 || !set_ok)
+                                                CLEAR_BIT(root->setclean_list,ioffset);
+                                        else
+                                                SET_BIT(root->setclean_list, ioffset);
+                                }
                         } while (++ioffset * INDEX_FACTOR < i + child->n);
                         i += child->n;
                 }
@@ -1471,12 +1479,20 @@ ext_index_all_r(PyBListRoot *root, PyBList *self, int i, int set_ok)
  * The caller may have just permuted the list, so assume that the
  * entire cache is currently dirty even if not marked as such.
  */
-void _ext_index_all(PyBListRoot *root)
+void _ext_index_all(PyBListRoot *root, int set_ok_all)
 {
         int ioffset_max = root->n / INDEX_FACTOR;
+        int set_ok;
 
         if (root->index_length < ioffset_max)
                 ext_grow_index(root);
+        if (set_ok_all) {
+                set_ok = SET_OK_ALL;
+                memset(root->setclean_list, 255,
+                       SETCLEAN_LEN(root->index_length));
+        } else
+                set_ok = SET_OK_YES;
+
 #ifdef Py_DEBUG
         root->last_n = root->n;
 #endif
@@ -1484,9 +1500,10 @@ void _ext_index_all(PyBListRoot *root)
                 ext_free(root, root->dirty_root);
         root->dirty_root = CLEAN;
 
-        ext_index_all_r(root, (PyBList*)root, 0, 1);
+        ext_index_all_r(root, (PyBList*)root, 0, set_ok);
 }
-#define ext_index_all(root) do { if (!(root)->leaf) _ext_index_all((root)); } while (0)
+#define ext_index_all(root) do { if (!(root)->leaf) _ext_index_all((root), 0); } while (0)
+#define ext_index_set_all(root) do { if (!(root)->leaf) _ext_index_all((root), 1); } while (0)
 
 /* We found a particular node at a certain offset.  Add it to the
  * index and mark it clean. */
@@ -3633,15 +3650,13 @@ blist_reverse(PyBList *self)
 {
         invariants(self, VALID_PARENT|VALID_RW);
 
-        if (self->num_children > 1) {
-                reverse_slice(self->children,
-                              &self->children[self->num_children]);
-                if (!self->leaf) {
-                        int i;
-                        for (i = 0; i < self->num_children; i++) {
-                                PyBList *p = blist_PREPARE_WRITE(self, i);
-                                blist_reverse(p);
-                        }
+        reverse_slice(self->children,
+                      &self->children[self->num_children]);
+        if (!self->leaf) {
+                int i;
+                for (i = 0; i < self->num_children; i++) {
+                        PyBList *p = blist_PREPARE_WRITE(self, i);
+                        blist_reverse(p);
                 }
         }
 
@@ -5417,7 +5432,7 @@ py_blist_sort(PyBList *self, PyObject *args, PyObject *kwds)
 
         decref_flush();
 
-        ext_index_all((PyBListRoot *) self);
+        ext_index_set_all((PyBListRoot *) self);
         return _ob(result);
 }
 
@@ -5427,7 +5442,7 @@ py_blist_reverse(PyBList *self)
         invariants(self, VALID_USER|VALID_RW);
 
         blist_reverse(self);
-        ext_index_all((PyBListRoot *)self);
+        ext_index_set_all((PyBListRoot *)self);
 
         Py_RETURN_NONE;
 }
@@ -6144,7 +6159,7 @@ int PyList_Reverse(PyObject *ob)
         invariants((PyBList *) ob, VALID_USER|VALID_RW);
 
         blist_reverse((PyBList *) ob);
-        ext_index_all((PyBList *) ob);
+        ext_index_set_all((PyBList *) ob);
 
         return _int(0);
 }
