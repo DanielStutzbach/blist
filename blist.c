@@ -69,7 +69,6 @@ typedef struct {
         int depth;
         PyBList *leaf;
         int i;
-        Py_ssize_t remaining;
         point_t stack[MAX_HEIGHT];
 } iter_t;
 
@@ -187,7 +186,7 @@ shift_left(PyBList *self, int k, int n)
 
 /* Iteration over part of the list */
 #define ITER2(lst, item, start, stop, block) {\
-        iter_t _it; int _use_iter;\
+        iter_t _it; int _use_iter; \
         if (lst->leaf) { \
                 int _i; _use_iter = 0; \
                 for (_i = (start); _i < lst->num_children && _i < (stop); _i++) { \
@@ -195,13 +194,12 @@ shift_left(PyBList *self, int k, int n)
                         block; \
                 } \
         } else { \
+                int _remaining = (stop) - (start);\
                 PyBList *_p; _use_iter = 1;\
-                iter_init2(&_it, (lst), (start), (stop)); \
+                iter_init2(&_it, (lst), (start)); \
                 _p = _it.leaf; \
-                while (1) { \
+                while (_p != NULL && _remaining--) { \
                         if (_it.i < _p->num_children) { \
-                                if (_it.remaining == 0) break; \
-                                _it.remaining--; \
                                 item = _p->children[_it.i++]; \
                         } else { \
                                 item = iter_next(&_it); \
@@ -216,19 +214,20 @@ shift_left(PyBList *self, int k, int n)
 
 /* Iteration over the whole list */
 #define ITER(lst, item, block) {\
-        iter_t _it; int _use_iter;\
         if ((lst)->leaf) { \
-                int _i; _use_iter = 0;\
+                iter_t _it; \
+                int _i; const int _use_iter = 0;\
                 for (_i = 0; _i < (lst)->num_children; _i++) { \
                         item = (lst)->children[_i]; \
                         block; \
-                } \
+                } ITER_CLEANUP(); \
         } else { \
+                iter_t _it; \
                 PyBList *_p; \
-                _use_iter = 1; \
+                const int _use_iter = 1; \
                 iter_init(&_it, (lst)); \
                 _p = _it.leaf; \
-                while (1) { \
+                while (_p) { \
                         if (_it.i < _p->num_children) { \
                                 item = _p->children[_it.i++]; \
                         } else { \
@@ -238,7 +237,7 @@ shift_left(PyBList *self, int k, int n)
                         } \
                         block; \
                 } \
-                iter_cleanup(&_it); \
+                ITER_CLEANUP(); \
         } \
 }
 
@@ -2214,13 +2213,30 @@ static PyObject *blist_delitem_return(PyBList *self, Py_ssize_t i)
  * BList iterator
  */
 
-static iter_t *iter_init2(iter_t *iter, PyBList *lst, Py_ssize_t start, Py_ssize_t stop)
+static iter_t *iter_init(iter_t *iter, PyBList *lst)
 {
         iter->depth = 0;
 
-        assert(stop >= 0);
+        while(!lst->leaf) {
+                iter->stack[iter->depth].lst = lst;
+                iter->stack[iter->depth++].i = 1;
+                Py_INCREF(lst);
+                lst = (PyBList *) lst->children[0];
+        }
+
+        iter->leaf = lst;
+        iter->i = 0;
+        iter->depth++;
+        Py_INCREF(lst);
+
+        return iter;
+}
+
+static iter_t *iter_init2(iter_t *iter, PyBList *lst, Py_ssize_t start)
+{
+        iter->depth = 0;
+
         assert(start >= 0);
-        iter->remaining = stop - start;
         while (!lst->leaf) {
                 PyBList *p;
                 int k;
@@ -2241,7 +2257,6 @@ static iter_t *iter_init2(iter_t *iter, PyBList *lst, Py_ssize_t start, Py_ssize
 
         return iter;
 }
-#define iter_init(iter, lst) (iter_init2((iter), (lst), 0, (lst)->n))
 
 static PyObject *iter_next(iter_t *iter)
 {
@@ -2249,10 +2264,8 @@ static PyObject *iter_next(iter_t *iter)
         int i;
 
         p = iter->leaf;
-        if (iter->remaining == 0)
+        if (p == NULL)
                 return NULL;
-
-        iter->remaining--;
         if (iter->i < p->num_children)
                 return p->children[iter->i++];
 
@@ -2260,7 +2273,6 @@ static PyObject *iter_next(iter_t *iter)
         do {
                 decref_later((PyObject *) p);
                 if (!iter->depth) {
-                        iter->remaining = 0;
                         iter->leaf = NULL;
                         return NULL;
                 }
@@ -2325,7 +2337,6 @@ py_blist_iter(PyObject *oseq)
                 it->iter.leaf = seq;
                 it->iter.i = 0;
                 it->iter.depth = 1;
-                it->iter.remaining = seq->n;
                 Py_INCREF(seq);
         } else
                 iter_init(&it->iter, seq);
@@ -2374,10 +2385,9 @@ static PyObject *blistiter_next(PyObject *oit)
         /* Speed up common case */
         PyBList *p;
         p = it->iter.leaf;
-        if (it->iter.remaining == 0)
+        if (p == NULL)
                 return NULL;
         if (it->iter.i < p->num_children) {
-                it->iter.remaining--;
                 obj = p->children[it->iter.i++];
                 Py_INCREF(obj);
                 return obj;
@@ -2394,7 +2404,20 @@ static PyObject *blistiter_next(PyObject *oit)
 static PyObject *
 blistiter_len(blistiterobject *it)
 {
-        return PyInt_FromSsize_t(it->iter.remaining);
+        iter_t *iter = &it->iter;
+        int depth;
+        Py_ssize_t total = 0;
+
+        total += iter->leaf->n - iter->i;
+        
+        for (depth = iter->depth-2; depth >= 0; depth--) {
+                point_t point = iter->stack[depth];
+                assert(!point.lst->leaf);
+                assert(point.i > 0);
+                PyBList *child = (PyBList *) point.lst->children[point.i-1];
+                total += point.lst->n - child->n;
+        }
+        return PyInt_FromLong(total); 
 }
 
 PyDoc_STRVAR(length_hint_doc, "Private method returning an estimate of len(list(it)).");
@@ -2449,7 +2472,6 @@ riter_init2(iter_t *iter, PyBList *lst, Py_ssize_t start, Py_ssize_t stop)
         assert(stop >= 0);
         assert(start >= 0);
         assert(start >= stop);
-        iter->remaining = start - stop;
         while (!lst->leaf) {
                 PyBList *p;
                 int k;
@@ -2479,10 +2501,8 @@ iter_prev(iter_t *iter)
         int i;
 
         p = iter->leaf;
-        if (iter->remaining == 0)
+        if (p == NULL)
                 return NULL;
-
-        iter->remaining--;
 
         if (iter->i >= p->num_children && iter->i >= 0)
                 iter->i = p->num_children - 1;
@@ -2494,7 +2514,6 @@ iter_prev(iter_t *iter)
         do {
                 decref_later((PyObject *) p);
                 if (!iter->depth) {
-                        iter->remaining = 0;
                         iter->leaf = NULL;
                         return NULL;
                 }
@@ -2541,7 +2560,6 @@ py_blist_reversed(PyBList *seq)
                 it->iter.leaf = seq;
                 it->iter.i = seq->n-1;
                 it->iter.depth = 1;
-                it->iter.remaining = seq->n;
                 Py_INCREF(seq);
         } else
                 riter_init(&it->iter, seq);
@@ -2558,14 +2576,13 @@ static PyObject *blistiter_prev(PyObject *oit)
         /* Speed up common case */
         PyBList *p;
         p = it->iter.leaf;
-        if (it->iter.remaining == 0)
+        if (p == NULL)
                 return NULL;
 
         if (it->iter.i >= p->num_children && it->iter.i >= 0)
                 it->iter.i = p->num_children - 1;
 
         if (it->iter.i >= 0) {
-                it->iter.remaining--;
                 obj = p->children[it->iter.i--];
                 Py_INCREF(obj);
                 return obj;
