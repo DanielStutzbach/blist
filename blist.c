@@ -931,10 +931,11 @@ static PyBList *blist_prepare_write(PyBList *self, int pt)
          */
 
         invariants(self, VALID_RW);
+        assert(!self->leaf);
 
         if (pt < 0)
                 pt += self->num_children;
-        if (!self->leaf && Py_REFCNT(self->children[pt]) > 1) {
+        if (Py_REFCNT(self->children[pt]) > 1) {
                 PyBList *new_copy = blist_new();
                 blist_become(new_copy, (PyBList *) self->children[pt]);
                 SAFE_DECREF(self->children[pt]);
@@ -943,6 +944,9 @@ static PyBList *blist_prepare_write(PyBList *self, int pt)
 
         return (PyBList *) _ob(self->children[pt]);
 }
+
+/* Macro version assumes that pt is non-negative */
+#define blist_PREPARE_WRITE(self, pt) (Py_REFCNT((self)->children[(pt)]) > 1 ? blist_prepare_write((self), (pt)) : (PyBList *) (self)->children[(pt)])
 
 /* Recompute self->n */
 static void
@@ -1431,26 +1435,34 @@ static int ext_grow_index(PyBListRoot *root)
 static void
 ext_index_all_r(PyBListRoot *root, PyBList *self, int i, int set_ok)
 {
-        if (self->leaf) {
-                int ioffset = i / INDEX_FACTOR;
-                if (ioffset * INDEX_FACTOR < i) ioffset++;
-                do {
-                        assert(ioffset < root->index_length);
-                        root->index_list[ioffset] = self;
-                        root->offset_list[ioffset] = i;
-                        if (Py_REFCNT(self) > 1 || !set_ok)
-                                CLEAR_BIT(root->setclean_list, ioffset);
-                        else
-                                SET_BIT(root->setclean_list, ioffset);
-                } while (++ioffset * INDEX_FACTOR < i + self->n);
-        } else {
-                int j;
+        int j;
+        if (self != (PyBList *)root)
+                set_ok = set_ok && (Py_REFCNT(self) == 1);
+
+        if (((PyBList*)self->children[0])->leaf) {
                 for (j = 0; j < self->num_children; j++) {
-                        ext_index_all_r(root, (PyBList *)self->children[j], i,
-                                        set_ok && (Py_REFCNT(self) == 1));
-                        i += ((PyBList *)self->children[j])->n;
+                        PyBList *child = (PyBList *) self->children[j];
+                        int ioffset = i / INDEX_FACTOR;
+                        if (ioffset * INDEX_FACTOR < i) ioffset++;
+                        do {
+                                assert(ioffset < root->index_length);
+                                root->index_list[ioffset] = child;
+                                root->offset_list[ioffset] = i;
+                                if (Py_REFCNT(child) > 1 || !set_ok)
+                                        CLEAR_BIT(root->setclean_list,ioffset);
+                                else
+                                        SET_BIT(root->setclean_list, ioffset);
+                        } while (++ioffset * INDEX_FACTOR < i + child->n);
+                        i += child->n;
+                }
+        } else {
+                for (j = 0; j < self->num_children; j++) {
+                        PyBList *child = (PyBList *) self->children[j];
+                        ext_index_all_r(root, child, i, set_ok);
+                        i += child->n;
                 }
         }
+                        
 }
 
 /* Make everything clean in O(n) time.  Any operation that alters the
@@ -1461,7 +1473,7 @@ ext_index_all_r(PyBListRoot *root, PyBList *self, int i, int set_ok)
  */
 void _ext_index_all(PyBListRoot *root)
 {
-        int i, j, ioffset_max = root->n / INDEX_FACTOR;
+        int ioffset_max = root->n / INDEX_FACTOR;
 
         if (root->index_length < ioffset_max)
                 ext_grow_index(root);
@@ -1472,10 +1484,7 @@ void _ext_index_all(PyBListRoot *root)
                 ext_free(root, root->dirty_root);
         root->dirty_root = CLEAN;
 
-        for (i = j = 0; j < root->num_children; j++) {
-                ext_index_all_r(root, (PyBList *)root->children[j], i, 1);
-                i += ((PyBList *)root->children[j])->n;
-        }
+        ext_index_all_r(root, (PyBList*)root, 0, 1);
 }
 #define ext_index_all(root) do { if (!(root)->leaf) _ext_index_all((root)); } while (0)
 
@@ -1645,7 +1654,7 @@ blist_collapse(PyBList *self)
                 return _int(0);
         }
 
-        p = blist_prepare_write(self, 0);
+        p = blist_PREPARE_WRITE(self, 0);
         blist_become_and_consume(self, p);
         check_invariants(self);
         return _int(1);
@@ -2182,10 +2191,10 @@ static void blist_delitem(PyBList *self, Py_ssize_t i)
 {
         if (i == self->n-1) {
                 PyBList *p;
-                for (p = self; !p->leaf; p = blist_prepare_write(p, p->num_children-1))
+                for (p = self; !p->leaf; p = blist_PREPARE_WRITE(p, p->num_children-1))
                         p->n--;
                 if (p->num_children == HALF) {
-                        for (p = self; !p->leaf; p = blist_prepare_write(p, p->num_children-1))
+                        for (p = self; !p->leaf; p = blist_PREPARE_WRITE(p, p->num_children-1))
                                 p->n++;
                         goto slow;
                 }
@@ -2702,7 +2711,7 @@ forest_get_leaf(Forest *forest)
 
                 for (i = node->num_children - 1; i >= 0; i--)
                         forest->list[forest->num_trees++]
-                                = blist_prepare_write(node, i);
+                                = blist_PREPARE_WRITE(node, i);
 
                 node->num_children = 0;
                 SAFE_DECREF(node);
@@ -3155,7 +3164,7 @@ blist_repr_r(PyBList *self)
                 }
         } else {
                 for (i = 0; i < self->num_children; i++) {
-                        PyBList *child = blist_prepare_write(self, i);
+                        PyBList *child = blist_PREPARE_WRITE(self, i);
                         int status = blist_repr_r(child);
                         if (status < 0)
                                 return _int(status);
@@ -3180,7 +3189,7 @@ ext_make_clean_set(PyBListRoot *root, Py_ssize_t i, PyObject *v)
                 if (Py_REFCNT(next) <= 1)
                         p = next;
                 else {
-                        p = blist_prepare_write(p, k);
+                        p = blist_PREPARE_WRITE(p, k);
                         if (!did_mark) {
                                 ext_mark((PyBList *) root, offset, DIRTY);
                                 did_mark = 1;
@@ -3630,7 +3639,7 @@ blist_reverse(PyBList *self)
                 if (!self->leaf) {
                         int i;
                         for (i = 0; i < self->num_children; i++) {
-                                PyBList *p = blist_prepare_write(self, i);
+                                PyBList *p = blist_PREPARE_WRITE(self, i);
                                 blist_reverse(p);
                         }
                 }
@@ -3653,7 +3662,7 @@ blist_append(PyBList *self, PyObject *v)
                 return _int(-1);
         }
 
-        for (p = self; !p->leaf; p = blist_prepare_write(p, p->num_children-1))
+        for (p = self; !p->leaf; p = blist_PREPARE_WRITE(p, p->num_children-1))
                 p->n++;
 
         if (p->num_children == LIMIT) {
@@ -5555,10 +5564,10 @@ py_blist_pop(PyBList *self, PyObject *args)
 
         if (i == -1 || i == self->n-1) {
                 PyBList *p;
-                for (p = self; !p->leaf; p = blist_prepare_write(p, p->num_children-1))
+                for (p = self; !p->leaf; p = blist_PREPARE_WRITE(p, p->num_children-1))
                         p->n--;
                 if (p->num_children == HALF && self != p) {
-                        for (p = self; !p->leaf; p = blist_prepare_write(p, p->num_children-1))
+                        for (p = self; !p->leaf; p = blist_PREPARE_WRITE(p, p->num_children-1))
                                 p->n++;
                         goto slow;
                 }
