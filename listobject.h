@@ -25,7 +25,7 @@ returned item's reference count.
 extern "C" {
 #endif
 
-//#define BLIST_IN_PYTHON  /* Define if building BList into Python */
+#undef BLIST_IN_PYTHON  /* Define if building BList into Python */
         
 /* pyport.h includes similar defines, but they're broken and never use
  * "inline" except on Windows :-( */
@@ -93,6 +93,7 @@ typedef struct PyBListRoot {
  */
         
 #ifdef BLIST_IN_PYTHON
+void PyList_Init(void);
 typedef PyBListRoot PyListObject;
         
 //PyAPI_DATA(PyTypeObject) PyList_Type;
@@ -101,7 +102,8 @@ PyAPI_DATA(PyTypeObject) PyBList_Type;
 PyAPI_DATA(PyTypeObject) PyRootBList_Type;
 #define PyList_Type PyRootBList_Type
 
-#define PyList_Check(op) PyObject_TypeCheck(op, &PyRootBList_Type)
+#define PyList_Check(op) \
+    PyType_FastSubclass(Py_TYPE(op), Py_TPFLAGS_LIST_SUBCLASS)
 #define PyList_CheckExact(op) ((op)->ob_type == &PyRootBList_Type)
 
 PyAPI_FUNC(PyObject *) PyList_New(Py_ssize_t size);
