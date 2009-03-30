@@ -3718,7 +3718,7 @@ blist_append(PyBList *self, PyObject *v)
         p->n++;
         Py_INCREF(v);
 
-        if (self->n % INDEX_FACTOR == 0) 
+        if ((self->n-1) % INDEX_FACTOR == 0) 
                 ext_mark(self, 0, DIRTY);
 #ifdef Py_DEBUG
         else
@@ -5637,7 +5637,7 @@ py_blist_pop(PyBList *self, PyObject *args)
                 p->n--;
                 p->num_children--;
 
-                if ((self->n+1) % INDEX_FACTOR)
+                if ((self->n) % INDEX_FACTOR == 0)
                         ext_mark(self, 0, DIRTY);
 #ifdef Py_DEBUG
                 else
