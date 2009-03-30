@@ -307,10 +307,13 @@ static Py_ssize_t decref_num = 0;
 
 #define DECREF_BASE (2*128)
 
-void decref_init(void)
+int decref_init(void)
 {
         decref_max = DECREF_BASE;
         decref_list = (PyObject **) PyMem_New(PyObject *, decref_max);
+        if (decref_list == NULL)
+                return -1;
+        return 0;
 }
 
 static void _decref_later(PyObject *ob)
@@ -822,6 +825,7 @@ static PyBList *blist_copy(PyBList *self)
         PyBList *copy;
 
         copy = blist_new();
+        if (!copy) return NULL;
         blist_become(copy, self);
         return copy;
 }
@@ -832,6 +836,7 @@ static PyBList *blist_root_copy(PyBList *self)
         PyBList *copy;
 
         copy = blist_root_new();
+        if (!copy) return NULL;
         blist_become(copy, self);
         ext_mark(copy, 0, DIRTY);
         ext_mark_set_dirty_all(self);
@@ -937,6 +942,7 @@ static PyBList *blist_prepare_write(PyBList *self, int pt)
                 pt += self->num_children;
         if (Py_REFCNT(self->children[pt]) > 1) {
                 PyBList *new_copy = blist_new();
+                if (!new_copy) return NULL;
                 blist_become(new_copy, (PyBList *) self->children[pt]);
                 SAFE_DECREF(self->children[pt]);
                 self->children[pt] = (PyObject *) new_copy;
@@ -975,6 +981,7 @@ blist_adjust_n(PyBList *self)
 static PyBList *blist_new_sibling(PyBList *sibling)
 {
         PyBList *self = blist_new();
+        if (!self) return NULL;
         assert(sibling->num_children == LIMIT);
         copy(self, 0, sibling, HALF, HALF);
         self->leaf = sibling->leaf;
@@ -1831,6 +1838,10 @@ blist_overflow_root(PyBList *self, PyBList *overflow)
 
         if (!overflow) return _int(0);
         child = blist_new();
+        if (!child) {
+                decref_later((PyObject*)overflow);
+                return _int(0);
+        }
         blist_become_and_consume(child, self);
         self->children[0] = (PyObject *)child;
         self->children[1] = (PyObject *)overflow;
@@ -1866,6 +1877,11 @@ blist_concat_blist(PyBList *left_subtree, PyBList *right_subtree,
                 int collapse;
 
                 root = blist_new();
+                if (!root) {
+                        decref_later((PyObject*)left_subtree);
+                        decref_later((PyObject*)right_subtree);
+                        return NULL;
+                }
                 root->children[0] = (PyObject *) left_subtree;
                 root->children[1] = (PyObject *) right_subtree;
                 root->leaf = 0;
@@ -2036,6 +2052,8 @@ static int blist_extend_blist(PyBList *self, PyBList *other)
         /* Make not-user-visible roots for the subtrees */
         right = blist_copy(other); /* XXX not checking return values */
         left = blist_new();
+        if (left == NULL)
+                return _int(-1);
         blist_become_and_consume(left, self);
 
         root = blist_concat_unknown_roots(left, right);
@@ -3173,7 +3191,10 @@ blist_repr_r(PyBList *self)
 
         if (self->leaf) {
                 for (i = 0; i < self->num_children; i++) {
+                        if (Py_EnterRecursiveCall(" while getting the repr of a list"))
+                                return _int(-1);
                         s = PyObject_Repr(self->children[i]);
+                        Py_LeaveRecursiveCall();
                         if (s == NULL)
                                 return _int(-1);
                         Py_DECREF(self->children[i]);
@@ -4625,12 +4646,16 @@ py_blist_clear(PyObject *oself)
         return _int(0);
 }
 
+#if PY_MAJOR_VERSION < 3
 static long
 py_blist_nohash(PyObject *self)
 {
         PyErr_SetString(PyExc_TypeError, "list objects are unhashable");
         return -1;
 }
+#else
+#define py_blist_nohash PyObject_HashNotImplemented
+#endif
 
 static void
 py_blist_dealloc(PyObject *oself)
@@ -5360,7 +5385,7 @@ py_blist_sort(PyBList *self, PyObject *args, PyObject *kwds)
         int reverse = 0;
         int ret;
         PyBListRoot saved;
-        PyObject *result = Py_None;
+        PyObject *result = NULL;
 
         invariants(self, VALID_USER|VALID_RW | VALID_DECREF);
 
@@ -5390,6 +5415,10 @@ py_blist_sort(PyBList *self, PyObject *args, PyObject *kwds)
         ext_init(&saved);
 
         self->children = PyMem_New(PyObject *, LIMIT);
+        if (self->children == NULL) {
+                PyErr_NoMemory();
+                goto err;
+        }
         self->n = 0;
         self->num_children = 0;
         self->leaf = 1;
@@ -5407,8 +5436,8 @@ py_blist_sort(PyBList *self, PyObject *args, PyObject *kwds)
         if (reverse)
                 blist_reverse((PyBList*)&saved);
 
-        if (ret < 0)
-                result = NULL;
+        if (ret >= 0)
+                result = Py_None;
 
         if (self->n && saved.n) {
                 DANGER_BEGIN;
@@ -5423,6 +5452,7 @@ py_blist_sort(PyBList *self, PyObject *args, PyObject *kwds)
 
         PyMem_Free(self->children);
         assert(!self->n);
+ err:
         self->n = saved.n;
         self->num_children = saved.num_children;
         self->leaf = saved.leaf;
@@ -5880,7 +5910,11 @@ PyTypeObject PyRootBList_Type = {
         0,                                      /* tp_setattro */
         0,                                      /* tp_as_buffer */
         Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC |
-                Py_TPFLAGS_BASETYPE,            /* tp_flags */
+                Py_TPFLAGS_BASETYPE             /* tp_flags */
+#if PY_MAJOR_VERSION >= 3
+        | Py_TPFLAGS_LIST_SUBCLASS
+#endif
+        ,
         blist_doc,                              /* tp_doc */
         py_blist_traverse,                      /* tp_traverse */
         py_blist_clear,                         /* tp_clear */
@@ -5904,6 +5938,27 @@ PyTypeObject PyRootBList_Type = {
 
 static PyMethodDef module_methods[] = { { NULL } };
 
+static int
+init_blist_types(void)
+{
+        Py_TYPE(&PyBList_Type) = &PyType_Type;
+        Py_TYPE(&PyRootBList_Type) = &PyType_Type;
+        Py_TYPE(&PyBListIter_Type) = &PyType_Type;
+        Py_TYPE(&PyBListReverseIter_Type) = &PyType_Type;
+
+        Py_INCREF(&PyBList_Type);
+        Py_INCREF(&PyRootBList_Type);
+        Py_INCREF(&PyBListIter_Type);
+        Py_INCREF(&PyBListReverseIter_Type);
+
+        if (PyType_Ready(&PyRootBList_Type) < 0) return -1;
+        if (PyType_Ready(&PyBList_Type) < 0) return -1;
+        if (PyType_Ready(&PyBListIter_Type) < 0) return -1;
+        if (PyType_Ready(&PyBListReverseIter_Type) < 0) return -1;
+
+        return 0;
+}
+
 #if PY_MAJOR_VERSION < 3
 PyMODINIT_FUNC
 initblist(void)
@@ -5913,18 +5968,7 @@ initblist(void)
 
         decref_init();
         highest_set_bit_init();
-
-        Py_TYPE(&PyBList_Type) = &PyType_Type;
-        Py_TYPE(&PyRootBList_Type) = &PyType_Type;
-        Py_TYPE(&PyBListIter_Type) = &PyType_Type;
-
-        Py_INCREF(&PyBList_Type);
-        Py_INCREF(&PyRootBList_Type);
-        Py_INCREF(&PyBListIter_Type);
-
-        if (PyType_Ready(&PyRootBList_Type) < 0) return;
-        if (PyType_Ready(&PyBList_Type) < 0) return;
-        if (PyType_Ready(&PyBListIter_Type) < 0) return;
+        init_blist_types();
 
         m = Py_InitModule3("blist", module_methods, "blist");
 
@@ -5951,21 +5995,13 @@ PyInit_blist(void)
         PyObject *m;
         PyObject *limit = PyInt_FromLong(LIMIT);
 
-        decref_init();
+        if (decref_init() < 0)
+                return NULL;
         highest_set_bit_init();
 
-        Py_TYPE(&PyBList_Type) = &PyType_Type;
-        Py_TYPE(&PyRootBList_Type) = &PyType_Type;
-        Py_TYPE(&PyBListIter_Type) = &PyType_Type;
-
-        Py_INCREF(&PyBList_Type);
-        Py_INCREF(&PyRootBList_Type);
-        Py_INCREF(&PyBListIter_Type);
-
-        if (PyType_Ready(&PyRootBList_Type) < 0) return NULL;
-        if (PyType_Ready(&PyBList_Type) < 0) return NULL;
-        if (PyType_Ready(&PyBListIter_Type) < 0) return NULL;
-
+        if (init_blist_types() < 0)
+                return NULL;
+        
         m = PyModule_Create(&blist_module);
 
         PyModule_AddObject(m, "blist", (PyObject *) &PyRootBList_Type);
@@ -5980,6 +6016,16 @@ PyInit_blist(void)
  */
 
 #ifdef Py_BUILD_CORE
+int
+PyList_Init(void)
+{
+        if (decref_init() < 0)
+                return -1;
+        highest_set_bit_init();
+        init_blist_types();
+        return 0;
+}
+
 PyObject *PyList_New(Py_ssize_t size)
 {
         PyBList *self = blist_root_new();
@@ -6159,7 +6205,7 @@ int PyList_Reverse(PyObject *ob)
         invariants((PyBList *) ob, VALID_USER|VALID_RW);
 
         blist_reverse((PyBList *) ob);
-        ext_index_set_all((PyBList *) ob);
+        ext_index_set_all((PyBListRoot *) ob);
 
         return _int(0);
 }
@@ -6208,4 +6254,13 @@ _PyList_Extend(PyBListRoot *ob, PyObject *b)
 
         return py_blist_extend((PyBList *) ob, b);
 }
+
+#if PY_MAJOR_VERSION == 3
+void
+PyList_Fini(void)
+{
+        /* XXX free statically allocated memory here */
+}
+#endif
+
 #endif
