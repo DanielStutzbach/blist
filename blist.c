@@ -1201,11 +1201,13 @@ ext_mark_r(PyBListRoot *root, int offset, int i, int bit, int value)
 
         if (j < 0) {
                 int nvalue = j;
-                root->dirty[next] = ext_alloc(root);
-                if (root->dirty[next] < 0) {
+                int tmp;
+                tmp = ext_alloc(root);
+                if (tmp < 0) {
                         ext_dealloc(root);
                         return;
                 }
+                root->dirty[next] = tmp;
                 j = root->dirty[next];
                 assert(j >= 0);
                 assert(j+1 < root->dirty_length);
