@@ -170,7 +170,7 @@ _PyBList_GET_ITEM_FAST2(PyBListRoot *root, Py_ssize_t i)
         return p->children[i - offset];
 }
 
-#define SETCLEAN_LEN(index_length) ((((index_length)-1) / sizeof(unsigned))+1)
+#define SETCLEAN_LEN(index_length) ((((index_length)-1) >> SETCLEAN_SHIFT)+1)
 #if SIZEOF_INT == 4
 #define SETCLEAN_SHIFT (5u)
 #define SETCLEAN_MASK (0x1fu)
