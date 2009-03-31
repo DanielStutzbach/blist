@@ -4602,11 +4602,7 @@ py_blist_internal_tp_new(PyTypeObject *subtype, PyObject *args, PyObject *kwds)
 static int
 py_blist_internal_init(PyObject *oself, PyObject *args, PyObject *kw)
 {
-        PyBList *self = (PyBList *) oself;
-
-        invariants(self, VALID_PARENT);
-        assert(!self->n);
-        return _int(0);
+        return 0;
 }
 
 static int
