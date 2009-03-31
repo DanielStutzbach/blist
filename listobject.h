@@ -154,6 +154,8 @@ _PyBList_GET_ITEM_FAST2(PyBListRoot *root, Py_ssize_t i)
         PyBList *p;
         
         assert(!root->leaf);
+        assert(i >= 0);
+        assert(i < root->n);
 
         if (root->dirty_root != -1 /* "CLEAN" */)
                 return _PyBList_GetItemFast3(root, i);
