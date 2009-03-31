@@ -5935,7 +5935,7 @@ PyTypeObject PyRootBList_Type = {
         0,                                      /* tp_as_buffer */
         Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC |
                 Py_TPFLAGS_BASETYPE             /* tp_flags */
-#if PY_MAJOR_VERSION >= 3
+#if PY_MAJOR_VERSION >= 3 && defined(BLIST_IN_PYTHON)
         | Py_TPFLAGS_LIST_SUBCLASS
 #endif
         ,
