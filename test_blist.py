@@ -321,6 +321,11 @@ class BListTest(list_tests.CommonTest):
     def test_cPickle(self):
         self.pickle_tests(cPickle)
 
+    def test_types(self):
+        type(blist())
+        type(iter(blist()))
+        type(iter(reversed(blist())))
+
 def test_suite():
     suite = unittest.TestSuite()
     suite.addTest(unittest.makeSuite(BListTest))

@@ -2228,9 +2228,10 @@ blist_get1(PyBList *self, Py_ssize_t i)
 static PyObject *
 blist_pop_last_fast(PyBList *self)
 {
+        PyBList *p;
+
         invariants(self, VALID_ROOT|VALID_RW);
 
-        PyBList *p;
         for (p = self; !p->leaf;
              p = (PyBList*)p->children[p->num_children-1]) {
                 if (p != self && Py_REFCNT(p) > 1)
