@@ -36,7 +36,7 @@ import sys
 import os
 
 import unittest
-import blist
+import blist, pickle, cPickle
 #BList = list
 from test import test_support, list_tests
 
@@ -287,6 +287,39 @@ class BListTest(list_tests.CommonTest):
             x = blist(y)
             x.sort()
             self.assertEqual(tuple(x), tuple(range(9)))
+
+    def test_LIFO(self):
+        x = blist()
+        for i in range(1000):
+            x.append(i)
+        for j in range(1000-1,-1,-1):
+            self.assertEqual(x.pop(), j)
+
+    def pickle_test(self, pickler, x):
+        y = pickler.dumps(x)
+        z = pickler.loads(y)
+        self.assertEqual(x, z)
+        self.assertEqual(repr(x), repr(z))
+
+    def pickle_tests(self, pickler):
+        self.pickle_test(pickler, blist())
+        self.pickle_test(pickler, blist(range(limit)))
+        self.pickle_test(pickler, blist(range(limit+1)))
+        self.pickle_test(pickler, blist(range(n)))
+
+        x = blist([0])
+        x *= n
+        self.pickle_test(pickler, x)
+        y = blist(x)
+        y[5] = 'x'
+        self.pickle_test(pickler, x)
+        self.pickle_test(pickler, y)
+
+    def test_pickle(self):
+        self.pickle_tests(pickle)
+
+    def test_cPickle(self):
+        self.pickle_tests(cPickle)
 
 def test_suite():
     suite = unittest.TestSuite()
