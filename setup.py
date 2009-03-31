@@ -9,7 +9,7 @@ else:
     from distutils.core import setup, Extension
 
 setup(name='blist',
-      version='0.9.16',
+      version='0.9.17',
       description='a list-like type with better asymptotic performance and similar performance on small lists',
       author='Stutzbach Enterprises, LLC',
       author_email='daniel@stutzbachenterprises.com',
@@ -26,6 +26,11 @@ setup(name='blist',
             'Intended Audience :: Science/Research',
             'License :: OSI Approved :: BSD License',
             'Programming Language :: C',
+            'Programming Language :: Python :: 2.5',
+            'Programming Language :: Python :: 2.6',
+            'Programming Language :: Python :: 2.7',
+            'Programming Language :: Python :: 3.0',
+            'Programming Language :: Python :: 3.1',
             ],
 
       long_description="""
