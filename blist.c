@@ -37,6 +37,10 @@
 
 #include <Python.h>
 
+#if !defined(__GNUC__)
+#define restrict
+#endif
+
 #if PY_MAJOR_VERSION == 2 && PY_MINOR_VERSION < 6
 /* Backward compatibility with Python 2.5 */
 #define PyUnicode_FromString PyString_FromString
@@ -102,8 +106,8 @@ static int num_free_iters = 0;
 BLIST_LOCAL(void)
 copy(PyBList *self, int k, PyBList *other, int k2, int n)
 {
-        PyObject **src = &other->children[k2];
-        PyObject **dst = &self->children[k];
+        PyObject **restrict src = &other->children[k2];
+        PyObject **restrict dst = &self->children[k];
         PyObject **stop = &other->children[k2+n];
 
         assert(self != other);
@@ -114,9 +118,9 @@ copy(PyBList *self, int k, PyBList *other, int k2, int n)
 
 /* like copy(), but incrementing references */
 BLIST_LOCAL(void)
-copyref(PyBList *self, int k, PyBList *other, int k2, int n) {
-        PyObject **src = &other->children[k2];
-        PyObject **dst = &self->children[k];
+copyref(PyBList *self, int k, PyBList *other, int k2,int n) {
+        PyObject **restrict src = &other->children[k2];
+        PyObject **restrict dst = &self->children[k];
         PyObject **stop = &src[n];
 
         while (src < stop) {
@@ -127,9 +131,9 @@ copyref(PyBList *self, int k, PyBList *other, int k2, int n) {
 
 /* like copy(), but incrementing references but check for NULL */
 BLIST_LOCAL(void)
-xcopyref(PyBList *self, int k, PyBList *other, int k2, int n) {
-        PyObject **src = &other->children[k2];
-        PyObject **dst = &self->children[k];
+xcopyref(PyBList *self, int k, PyBList *other,int k2,int n) {
+        PyObject **restrict src = &other->children[k2];
+        PyObject **restrict dst = &self->children[k];
         PyObject **stop = &src[n];
 
         while (src < stop) {
@@ -774,7 +778,7 @@ static int blist_CLEAR(PyBList *self)
 
 /* Make self into a copy of other */
 BLIST_LOCAL(void)
-blist_become(PyBList *self, PyBList *other)
+blist_become(PyBList *restrict self, PyBList *restrict other)
 {
         invariants(self, VALID_RW);
         assert(self != other);
@@ -792,7 +796,7 @@ blist_become(PyBList *self, PyBList *other)
 
 /* Make self into a copy of other and empty other */
 BLIST_LOCAL(void)
-blist_become_and_consume(PyBList *self, PyBList *other)
+blist_become_and_consume(PyBList *restrict self, PyBList *restrict other)
 {
         PyObject **tmp;
 
@@ -818,7 +822,7 @@ blist_become_and_consume(PyBList *self, PyBList *other)
 }
 
 /* Create a copy of self */
-static PyBList *blist_copy(PyBList *self)
+static PyBList *blist_copy(PyBList *restrict self)
 {
         PyBList *copy;
 
@@ -829,7 +833,7 @@ static PyBList *blist_copy(PyBList *self)
 }
 
 /* Create a copy of self, which is a root node */
-static PyBList *blist_root_copy(PyBList *self)
+static PyBList *blist_root_copy(PyBList *restrict self)
 {
         PyBList *copy;
 
@@ -954,7 +958,7 @@ static PyBList *blist_prepare_write(PyBList *self, int pt)
 
 /* Recompute self->n */
 BLIST_LOCAL(void)
-blist_adjust_n(PyBList *self)
+blist_adjust_n(PyBList *restrict self)
 {
         int i;
 
@@ -978,7 +982,7 @@ blist_adjust_n(PyBList *self)
  */
 static PyBList *blist_new_sibling(PyBList *sibling)
 {
-        PyBList *self = blist_new();
+        PyBList *restrict self = blist_new();
         if (!self) return NULL;
         assert(sibling->num_children == LIMIT);
         copy(self, 0, sibling, HALF, HALF);
@@ -1575,8 +1579,8 @@ static PyObject *ext_make_clean(PyBListRoot *root, Py_ssize_t i)
 /* Child k has underflowed.  Borrow from k+1 */
 static void blist_borrow_right(PyBList *self, int k)
 {
-        PyBList *p = (PyBList *) self->children[k];
-        PyBList *right;
+        PyBList *restrict p = (PyBList *) self->children[k];
+        PyBList *restrict right;
         unsigned total;
         unsigned split;
         unsigned migrate;
@@ -1604,8 +1608,8 @@ static void blist_borrow_right(PyBList *self, int k)
 /* Child k has underflowed.  Borrow from k-1 */
 static void blist_borrow_left(PyBList *self, int k)
 {
-        PyBList *p = (PyBList *) self->children[k];
-        PyBList *left;
+        PyBList *restrict p = (PyBList *) self->children[k];
+        PyBList *restrict left;
         unsigned total;
         unsigned split;
         unsigned migrate;
@@ -1634,8 +1638,8 @@ static void blist_borrow_left(PyBList *self, int k)
 static void blist_merge_right(PyBList *self, int k)
 {
         int i;
-        PyBList *p = (PyBList *) self->children[k];
-        PyBList *p2 = (PyBList *) self->children[k+1];
+        PyBList *restrict p = (PyBList *) self->children[k];
+        PyBList *restrict p2 = (PyBList *) self->children[k+1];
 
         invariants(self, VALID_RW);
 
@@ -1653,8 +1657,8 @@ static void blist_merge_right(PyBList *self, int k)
 static void blist_merge_left(PyBList *self, int k)
 {
         int i;
-        PyBList *p = (PyBList *) self->children[k];
-        PyBList *p2 = (PyBList *) self->children[k-1];
+        PyBList *restrict p = (PyBList *) self->children[k];
+        PyBList *restrict p2 = (PyBList *) self->children[k-1];
 
         invariants(self, VALID_RW);
 
@@ -1694,7 +1698,8 @@ blist_collapse(PyBList *self)
  *
  * Always calls self._adjust_n() (often via self.__collapse()).
  */
-static int blist_underflow(PyBList *self, int k)
+BLIST_LOCAL(int)
+blist_underflow(PyBList *self, int k)
 {
         invariants(self, VALID_RW|VALID_COLLAPSE);
 
@@ -1704,7 +1709,7 @@ static int blist_underflow(PyBList *self, int k)
         }
 
         if (k < self->num_children) {
-                PyBList *p = blist_prepare_write(self, k);
+                PyBList *restrict p = blist_prepare_write(self, k);
                 int shrt = HALF - p->num_children;
 
                 while (shrt > 0) {
@@ -1742,7 +1747,8 @@ static int blist_underflow(PyBList *self, int k)
 }
 
 /* Insert 'item', which may be a subtree, at index k. */
-static PyBList *blist_insert_here(PyBList *self, int k, PyObject *item)
+BLIST_LOCAL(PyBList *)
+blist_insert_here(PyBList *self, int k, PyObject *item)
 {
         /* Since the subtree may have fewer than half elements, we may
          * need to merge it after insertion.
@@ -1755,7 +1761,7 @@ static PyBList *blist_insert_here(PyBList *self, int k, PyObject *item)
          * Otherwise, it returns None.
          */
 
-        PyBList *sibling;
+        PyBList *restrict sibling;
 
         invariants(self, VALID_RW|VALID_OVERFLOW);
         assert(k >= 0);
@@ -1814,7 +1820,7 @@ blist_insert_subtree(PyBList *self, int side, PyBList *subtree, int depth)
         self->n += subtree->n;
 
         if (depth) {
-                PyBList *p = blist_prepare_write(self, side);
+                PyBList *restrict p = blist_prepare_write(self, side);
                 PyBList *overflow = blist_insert_subtree(p, side,
                                                          subtree, depth-1);
                 if (!overflow) return _blist(NULL);
@@ -1912,11 +1918,9 @@ blist_concat_blist(PyBList *left_subtree, PyBList *right_subtree,
 }
 
 /* Concatenate two subtrees of potentially different heights. */
-static PyBList *blist_concat_subtrees(PyBList *left_subtree,
-                                      int left_depth,
-                                      PyBList *right_subtree,
-                                      int right_depth,
-                                      int *pdepth)
+BLIST_LOCAL(PyBList *)
+blist_concat_subtrees(PyBList *left_subtree, int left_depth,
+                      PyBList *right_subtree, int right_depth, int *pdepth)
 {
         /* Returns a tuple of the new, combined subtree and its depth.
          *
@@ -1932,9 +1936,9 @@ static PyBList *blist_concat_subtrees(PyBList *left_subtree,
 }
 
 /* Concatenate two roots of potentially different heights. */
-static PyBList *blist_concat_roots(PyBList *left_root, int left_height,
-                                   PyBList *right_root, int right_height,
-                                   int *pheight)
+BLIST_LOCAL(PyBList *)
+blist_concat_roots(PyBList *left_root, int left_height,
+                   PyBList *right_root, int right_height, int *pheight)
 {
         /* Returns a tuple of the new, combined root and its height.
          *
@@ -1960,7 +1964,8 @@ blist_concat_unknown_roots(PyBList *left_root, PyBList *right_root)
 }
 
 /* Child at position k is too short by "depth".  Fix it */
-static int blist_reinsert_subtree(PyBList *self, int k, int depth)
+BLIST_LOCAL(int)
+blist_reinsert_subtree(PyBList *self, int k, int depth)
 {
         PyBList *subtree;
 
@@ -2001,10 +2006,11 @@ static int blist_reinsert_subtree(PyBList *self, int k, int depth)
  */
 
 /* Recursive to find position i, and insert item just there. */
-static PyBList *ins1(PyBList *self, Py_ssize_t i, PyObject *item)
+BLIST_LOCAL(PyBList *)
+ins1(PyBList *self, Py_ssize_t i, PyObject *item)
 {
         PyBList *ret;
-        PyBList *p;
+        PyBList *restrict p;
         int k;
         Py_ssize_t so_far;
         PyBList *overflow;
@@ -2038,7 +2044,8 @@ static PyBList *ins1(PyBList *self, Py_ssize_t i, PyObject *item)
         return _blist(ret);
 }
 
-static int blist_extend_blist(PyBList *self, PyBList *other)
+BLIST_LOCAL(int)
+blist_extend_blist(PyBList *self, PyBList *other)
 {
         PyBList *right, *left, *root;
 
@@ -2079,7 +2086,7 @@ static int blist_delslice(PyBList *self, Py_ssize_t i, Py_ssize_t j)
          * Additionally, this function may cause an underflow.
          */
 
-        PyBList *p, *p2;
+        PyBList *restrict p, *restrict p2;
         int k, k2, depth;
         Py_ssize_t so_far, so_far2, low;
         int collapse_left, collapse_right, deleted_k, deleted_k2;
@@ -3012,7 +3019,7 @@ static PyBList *forest_finish(Forest *forest)
 
 /* Initialize an empty BList from an array of PyObjects in O(n) time */
 BLIST_LOCAL(int)
-blist_init_from_array(PyBList *self, PyObject **src, Py_ssize_t n)
+blist_init_from_array(PyBList *self, PyObject **restrict src, Py_ssize_t n)
 {
         int i;
         PyBList *final, *cur;
@@ -3435,14 +3442,10 @@ blist_richcompare_item(int c, int op, PyObject *item1, PyObject *item2)
         if (c < 0)
                 return NULL;
         if (!c) {
-                if (op == Py_EQ) {
-                        Py_INCREF(Py_False);
-                        return Py_False;
-                }
-                if (op == Py_NE) {
-                        Py_INCREF(Py_True);
-                        return Py_True;
-                }
+                if (op == Py_EQ)
+                        Py_RETURN_FALSE;
+                if (op == Py_NE)
+                        Py_RETURN_TRUE;
                 DANGER_BEGIN;
                 ret = PyObject_RichCompare(item1, item2, op);
                 DANGER_END;
@@ -3525,11 +3528,9 @@ blist_richcompare_blist(PyBList *v, PyBList *w, int op)
         if (v->n != w->n) {
                 /* Shortcut: if the lengths differ, the lists differ */
                 if (op == Py_EQ) {
-                        Py_INCREF(Py_False);
-                        return Py_False;
+                        Py_RETURN_FALSE;
                 } else if (op == Py_NE) {
-                        Py_INCREF(Py_True);
-                        return Py_True;
+                        Py_RETURN_TRUE;
                 }
         }
 
@@ -3551,18 +3552,37 @@ blist_richcompare_blist(PyBList *v, PyBList *w, int op)
 
 /* Swiped from listobject.c */
 /* Reverse a slice of a list in place, from lo up to (exclusive) hi. */
-BLIST_LOCAL(void)
-reverse_slice(PyObject **lo, PyObject **hi)
+BLIST_LOCAL_INLINE(void)
+reverse_slice(PyObject **restrict lo, PyObject **restrict hi)
 {
         assert(lo && hi);
 
+        /* Use Duff's Device
+         * http://en.wikipedia.org/wiki/Duff%27s_device
+         */
+        
         --hi;
-        while (lo < hi) {
-                PyObject *t = *lo;
-                *lo = *hi;
-                *hi = t;
-                ++lo;
-                --hi;
+        
+        PyObject *t;
+        switch ((hi - lo) & 31) {
+                case 31: do { t = *lo; *lo++ = *hi; *hi-- = t;
+                case 30: case 29: t = *lo; *lo++ = *hi; *hi-- = t;
+                case 28: case 27: t = *lo; *lo++ = *hi; *hi-- = t;
+                case 26: case 25: t = *lo; *lo++ = *hi; *hi-- = t;
+                case 24: case 23: t = *lo; *lo++ = *hi; *hi-- = t;
+                case 22: case 21: t = *lo; *lo++ = *hi; *hi-- = t;
+                case 20: case 19: t = *lo; *lo++ = *hi; *hi-- = t;
+                case 18: case 17: t = *lo; *lo++ = *hi; *hi-- = t;
+                case 16: case 15: t = *lo; *lo++ = *hi; *hi-- = t;
+                case 14: case 13: t = *lo; *lo++ = *hi; *hi-- = t;
+                case 12: case 11: t = *lo; *lo++ = *hi; *hi-- = t;
+                case 10: case 9: t = *lo; *lo++ = *hi; *hi-- = t;
+                case 8: case 7: t = *lo; *lo++ = *hi; *hi-- = t;
+                case 6: case 5: t = *lo; *lo++ = *hi; *hi-- = t;
+                case 4: case 3: t = *lo; *lo++ = *hi; *hi-- = t;
+                case 2: case 1: t = *lo; *lo++ = *hi; *hi-- = t;
+                case 0: ;
+                } while (lo < hi);
         }
 }
 
@@ -3715,7 +3735,7 @@ blist_reverse(PyBList *self)
         if (!self->leaf) {
                 int i;
                 for (i = 0; i < self->num_children; i++) {
-                        PyBList *p = blist_PREPARE_WRITE(self, i);
+                        PyBList *restrict p = blist_PREPARE_WRITE(self, i);
                         blist_reverse(p);
                 }
         }
@@ -4213,7 +4233,7 @@ is_default_cmp(PyObject *cmpfunc)
 #endif
 
 BLIST_LOCAL(void)
-balance_leafs(PyBList *leaf1, PyBList *leaf2)
+balance_leafs(PyBList *restrict leaf1, PyBList *restrict leaf2)
 {
         assert(leaf1->leaf);
         assert(leaf2->leaf);
@@ -4262,14 +4282,16 @@ balance_last_2(PyBList **out, int n)
 }
 
 BLIST_LOCAL(void)
-do_fast_merge(PyBList **out, PyBList **in1, PyBList **in2, int n1, int n2)
+do_fast_merge(PyBList **restrict out, PyBList **in1, PyBList **in2,
+              int n1, int n2)
 {
         memcpy(out, in1, sizeof(PyBList *) * n1);
         memcpy(&out[n1], in2, sizeof(PyBList *) * n2);
 }
 
 BLIST_LOCAL(int)
-try_fast_merge(PyBList **out, PyBList **in1, PyBList **in2, int n1, int n2,
+try_fast_merge(PyBList **restrict out, PyBList **in1, PyBList **in2,
+               int n1, int n2,
                const compare_t *compare, int *err)
 {
         int c;
@@ -4307,11 +4329,11 @@ try_fast_merge(PyBList **out, PyBList **in1, PyBList **in2, int n1, int n2,
 /* Merge two sorted forests.  Each forest must contain on leafs.  The
  * forests will be deleted at the end. */
 BLIST_LOCAL(int)
-sub_merge(PyBList **out, PyBList **in1, PyBList **in2, int n1, int n2,
+sub_merge(PyBList **restrict out, PyBList **in1, PyBList **in2, int n1, int n2,
           const compare_t *compare, int *err)
 {
         int c, i, j;
-        PyBList *leaf1, *leaf2, *output;
+        PyBList *restrict leaf1, *restrict leaf2, *restrict output;
         int leaf1_i = 0, leaf2_i = 0;
         int nout = 0;
 
@@ -4423,7 +4445,7 @@ sub_merge(PyBList **out, PyBList **in1, PyBList **in2, int n1, int n2,
 }
 
 BLIST_LOCAL(int)
-merge_no_compare(PyBList **out, PyBList **in1, PyBList **in2,
+merge_no_compare(PyBList **restrict out, PyBList **in1, PyBList **in2,
                  int n1, int n2,
                  const compare_t *compare, int *err)
 {
@@ -4432,7 +4454,7 @@ merge_no_compare(PyBList **out, PyBList **in1, PyBList **in2,
 }
 
 BLIST_LOCAL(int)
-sub_sort(PyBList **scratch, PyBList **in, const compare_t *compare,
+sub_sort(PyBList **restrict scratch, PyBList **in, const compare_t *compare,
          int n, int *err)
 {
         int half, n1, n2;
