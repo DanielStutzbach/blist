@@ -4068,7 +4068,7 @@ static int
 gallop_sort(PyObject **array, int n, const compare_t *compare)
 {
         int i, j;
-        int run_length = 1, run_dir = 1;
+        int run_start = 0, run_dir = 2;
         PyObject **runs[LIMIT/RUN_THRESH+2];
         int ns[LIMIT/RUN_THRESH+2];
         int num_runs = 0;
@@ -4078,20 +4078,21 @@ gallop_sort(PyObject **array, int n, const compare_t *compare)
 
         for (i = 1; i < n; i++) {
                 int c = ISLT(array[i], array[i-1], compare);
+                assert(c < 0 || c == 0 || c == 1);
+                if (c == run_dir)
+                        continue;
                 if (c < 0)
                         return -1;
-                c = !!c; /* Ensure c is 0 or 1 */
-                if (run_length == 1)
+                if (run_start == i-1)
                         run_dir = c;
-                if (c == run_dir)
-                        run_length++;
-                else if (run_length >= RUN_THRESH) {
-                                if (run_dir > 0)
-                                        reverse_slice(run, &array[i]);
-                                runs[num_runs] = run;
-                                ns[num_runs++] = run_length;
-                                run = &array[i];
-                                run_length = 1;
+                else if (i - run_start >= RUN_THRESH) {
+                        if (run_dir > 0)
+                                reverse_slice(run, &array[i]);
+                        runs[num_runs] = run;
+                        ns[num_runs++] = i - run_start;
+                        run = &array[i];
+                        run_start = i;
+                        run_dir = 2;
                 } else {
                         int low = run - array;
                         int high = i-1;
@@ -4099,14 +4100,16 @@ gallop_sort(PyObject **array, int n, const compare_t *compare)
                         PyObject *tmp = array[i];
 
                         /* XXX: Is this a stable sort? */
+                        /* XXX: In both directions? */
 
                         while (low < high) {
                                 mid = low + (high - low)/2;
                                 c = ISLT(tmp, array[mid], compare);
-                                if (c < 0)
-                                        return -1;
-                                if ((!!c) == run_dir)
+                                assert(c < 0 || c == 0 || c == 1);
+                                if (c == run_dir)
                                         low = mid+1;
+                                else if (c < 0)
+                                        return -1;
                                 else
                                         high = mid;
                         }
@@ -4115,15 +4118,13 @@ gallop_sort(PyObject **array, int n, const compare_t *compare)
                                 array[j] = array[j-1];
 
                         array[low] = tmp;
-
-                        run_length++;
                 }
         }
 
         if (run_dir > 0)
                 reverse_slice(run, &array[i]);
         runs[num_runs] = run;
-        ns[num_runs++] = run_length;
+        ns[num_runs++] = i - run_start;
 
         while(num_runs > 1) {
                 for (i = 0; i < num_runs/2; i++) {
@@ -4488,14 +4489,10 @@ forest_sort(Forest *out, Forest *forest, const compare_t *compare,
         if (start == end) {
                 return;
         }
-        
+
         if (start+1 == end) {
-                PyBList *self = forest->list[start];
-                if (!*err)
-                        *err = gallop_sort(self->children,self->num_children,
-                                           compare);
                 assert(out->num_trees < out->max_trees);
-                out->list[out->num_trees++] = self;
+                out->list[out->num_trees++] = forest->list[start];
                 return;
         }
 
@@ -4533,6 +4530,11 @@ sort(PyBList *self, const compare_t *compare)
         }
         forest_uninit(&forest_tmp);
         forest_init(&forest_out);
+        
+        for (i = 0; i < forest_in->num_trees && !err; i++) {
+                leaf = forest_in->list[i];
+                err = gallop_sort(leaf->children, leaf->num_children,compare);
+        }
         
         forest_sort(&forest_out, forest_in, compare, 0, forest_in->num_trees,
                     &err);
