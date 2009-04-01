@@ -36,8 +36,8 @@ extern "C" {
 #define BLIST_LOCAL(type) static type __fastcall
 #define BLIST_LOCAL_INLINE(type) static __inline type __fastcall
 #elif defined(__GNUC__)
-#define BLIST_LOCAL(type) static type
-#define BLIST_LOCAL_INLINE(type) static inline type
+#define BLIST_LOCAL(type) static type __attribute__((fastcall))
+#define BLIST_LOCAL_INLINE(type) static inline __attribute__((fastcall)) type
 #else
 #define BLIST_LOCAL(type) static type
 #define BLIST_LOCAL_INLINE(type) static type
