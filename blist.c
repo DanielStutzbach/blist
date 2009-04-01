@@ -183,6 +183,38 @@ shift_left(PyBList *self, int k, int n)
 #endif
 }
 
+BLIST_LOCAL(void)
+balance_leafs(PyBList *restrict leaf1, PyBList *restrict leaf2)
+{
+        assert(leaf1->leaf);
+        assert(leaf2->leaf);
+        if (leaf1->num_children + leaf2->num_children <= LIMIT) {
+                copy(leaf1, leaf1->num_children, leaf2, 0,leaf2->num_children);
+                leaf1->num_children += leaf2->num_children;
+                leaf1->n += leaf2->num_children;
+                leaf2->num_children = 0;
+                leaf2->n = 0;
+        } else if (leaf1->num_children < HALF) {
+                int needed = HALF - leaf1->num_children;
+
+                copy(leaf1, leaf1->num_children, leaf2, 0, needed);
+                leaf1->num_children += needed;
+                leaf1->n += needed;
+                shift_left(leaf2, needed, needed);
+                leaf2->num_children -= needed;
+                leaf2->n -= needed;
+        } else if (leaf2->num_children < HALF) {
+                int needed = HALF - leaf2->num_children;
+
+                shift_right(leaf2, 0, needed);
+                copy(leaf2, 0, leaf1, leaf1->num_children-needed, needed);
+                leaf1->num_children -= needed;
+                leaf1->n -= needed;
+                leaf2->num_children += needed;
+                leaf2->n += needed;
+        }
+}
+
 /************************************************************************
  * Macros for O(1) iteration over a BList via Depth-First-Search.  If
  * the root is also a leaf, it will skip the memory allocation and
@@ -674,6 +706,23 @@ static void safe_decref(PyBList *self)
 #define _redir(ret) (ret)
 
 #endif
+
+BLIST_LOCAL(int)
+balance_last_2(PyBList **out, int n)
+{
+        PyBList *last;
+
+        if (n >= 2)
+                balance_leafs(out[n-2], out[n-1]);
+        if (n >= 1) {
+                last = out[n-1];
+                if (!last->num_children) {
+                        SAFE_DECREF(last);
+                        n--;
+                }
+        }
+        return n;
+}
 
 /************************************************************************
  * Back to BLists proper.
@@ -2066,6 +2115,16 @@ blist_extend_blist(PyBList *self, PyBList *other)
                 return _int(-1);
         blist_become_and_consume(left, self);
 
+        if (left->leaf && right->leaf) {
+                balance_leafs(left, right);
+                self->children[0] = (PyObject *) left;
+                self->children[1] = (PyObject *) right;
+                self->num_children = 2;
+                self->leaf = 0;
+                blist_adjust_n(self);
+                return _int(0);
+        }
+        
         root = blist_concat_unknown_roots(left, right);
         blist_become_and_consume(self, root);
         SAFE_DECREF(root);
@@ -4231,55 +4290,6 @@ is_default_cmp(PyObject *cmpfunc)
         return 1;
 }
 #endif
-
-BLIST_LOCAL(void)
-balance_leafs(PyBList *restrict leaf1, PyBList *restrict leaf2)
-{
-        assert(leaf1->leaf);
-        assert(leaf2->leaf);
-        if (leaf1->num_children + leaf2->num_children <= LIMIT) {
-                copy(leaf1, leaf1->num_children, leaf2, 0,leaf2->num_children);
-                leaf1->num_children += leaf2->num_children;
-                leaf1->n += leaf2->num_children;
-                leaf2->num_children = 0;
-                leaf2->n = 0;
-        } else if (leaf1->num_children < HALF) {
-                int needed = HALF - leaf1->num_children;
-
-                copy(leaf1, leaf1->num_children, leaf2, 0, needed);
-                leaf1->num_children += needed;
-                leaf1->n += needed;
-                shift_left(leaf2, needed, needed);
-                leaf2->num_children -= needed;
-                leaf2->n -= needed;
-        } else if (leaf2->num_children < HALF) {
-                int needed = HALF - leaf2->num_children;
-
-                shift_right(leaf2, 0, needed);
-                copy(leaf2, 0, leaf1, leaf1->num_children-needed, needed);
-                leaf1->num_children -= needed;
-                leaf1->n -= needed;
-                leaf2->num_children += needed;
-                leaf2->n += needed;
-        }
-}
-
-BLIST_LOCAL(int)
-balance_last_2(PyBList **out, int n)
-{
-        PyBList *last;
-
-        if (n >= 2)
-                balance_leafs(out[n-2], out[n-1]);
-        if (n >= 1) {
-                last = out[n-1];
-                if (!last->num_children) {
-                        SAFE_DECREF(last);
-                        n--;
-                }
-        }
-        return n;
-}
 
 BLIST_LOCAL(void)
 do_fast_merge(PyBList **restrict out, PyBList **in1, PyBList **in2,
