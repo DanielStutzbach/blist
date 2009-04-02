@@ -4724,7 +4724,7 @@ py_blist_dealloc(PyObject *oself)
         Py_TRASHCAN_SAFE_BEGIN(self)
 
         for (i = 0; i < self->num_children; i++)
-                Py_DECREF(self->children[i]);
+                Py_XDECREF(self->children[i]);
 
         if (PyRootBList_Check(self)) {
                 ext_dealloc((PyBListRoot *) self);
