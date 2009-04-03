@@ -64,6 +64,8 @@
 #include "listobject.h"
 #endif
 
+#define BLIST_PYAPI(type) static type
+
 typedef struct {
         PyBList *lst;
         int i;
@@ -2481,7 +2483,7 @@ static void iter_cleanup(iter_t *iter)
                 decref_later((PyObject *) iter->leaf);
 }
 
-Py_LOCAL(PyObject *)
+BLIST_PYAPI(PyObject *)
 py_blist_iter(PyObject *oseq)
 {
         PyBList *seq;
@@ -2576,7 +2578,7 @@ static PyObject *blistiter_next(PyObject *oit)
         return obj;
 }
 
-Py_LOCAL(PyObject *)
+BLIST_PYAPI(PyObject *)
 blistiter_len(blistiterobject *it)
 {
         iter_t *iter = &it->iter;
@@ -2722,7 +2724,7 @@ iter_prev(iter_t *iter)
         return p->children[i];
 }
 
-Py_LOCAL(PyObject *)
+BLIST_PYAPI(PyObject *)
 py_blist_reversed(PyBList *seq)
 {
         blistiterobject *it;
@@ -2777,7 +2779,7 @@ static PyObject *blistiter_prev(PyObject *oit)
         return obj;
 }
 
-Py_LOCAL(PyObject *)
+BLIST_PYAPI(PyObject *)
 blistriter_len(blistiterobject *it)
 {
         iter_t *iter = &it->iter;
@@ -3654,6 +3656,7 @@ blist_richcompare_blist(PyBList *v, PyBList *w, int op)
 BLIST_LOCAL_INLINE(void)
 reverse_slice(PyObject **restrict lo, PyObject **restrict hi)
 {
+        PyObject *t;
         assert(lo && hi);
 
         if (lo == hi) return;
@@ -3664,7 +3667,6 @@ reverse_slice(PyObject **restrict lo, PyObject **restrict hi)
         
         --hi;
         
-        PyObject *t;
         switch ((hi - lo) & 31) {
                 case 31: do { t = *lo; *lo++ = *hi; *hi-- = t;
                 case 30: case 29: t = *lo; *lo++ = *hi; *hi-- = t;
@@ -4493,25 +4495,10 @@ sub_merge(PyBList **restrict out, PyBList **in1, PyBList **in2, int n1, int n2,
 }
 
 BLIST_LOCAL(int)
-merge_no_compare(PyBList **restrict out, PyBList **in1, PyBList **in2,
-                 int n1, int n2,
-                 const compare_t *compare, int *err)
-{
-        do_fast_merge(out, in1, in2, n1, n2);
-        return n1 + n2;
-}
-
-BLIST_LOCAL(int)
 sub_sort(PyBList **restrict scratch, PyBList **in, const compare_t *compare,
          int n, int *err)
 {
         int half, n1, n2;
-        BLIST_LOCAL(int)
-                (*mergefunc)(PyBList **out, PyBList **in1, PyBList **in2,
-                             int n1, int n2,
-                             const compare_t *compare, int *err);
-
-        mergefunc = sub_merge;
 
         if (!n) return 0;
         if (n == 1) {
@@ -4523,8 +4510,6 @@ sub_sort(PyBList **restrict scratch, PyBList **in, const compare_t *compare,
 
         n1 = sub_sort(scratch, in, compare, half, err);
         n2 = sub_sort(&scratch[half], &in[half], compare, n-half, err);
-        if (*err)
-                mergefunc = merge_no_compare;
 
         n = sub_merge(scratch, in, &in[half], n1, n2, compare, err);
         memcpy(in, scratch, sizeof(PyBList *) * n);
@@ -4592,7 +4577,7 @@ sort(PyBList *self, const compare_t *compare)
  * returning to the interpreter.
  */
 
-Py_LOCAL(PyObject *)
+BLIST_PYAPI(PyObject *)
 py_blist_root_tp_new(PyTypeObject *subtype, PyObject *args, PyObject *kwds)
 {
         PyBList *self;
@@ -4616,7 +4601,7 @@ py_blist_root_tp_new(PyTypeObject *subtype, PyObject *args, PyObject *kwds)
 }
 
 /* Should only be used by the unpickler */
-Py_LOCAL(PyObject *)
+BLIST_PYAPI(PyObject *)
 py_blist_internal_tp_new(PyTypeObject *subtype, PyObject *args, PyObject *kwds)
 {
         assert (subtype == &PyBList_Type);
@@ -4624,13 +4609,13 @@ py_blist_internal_tp_new(PyTypeObject *subtype, PyObject *args, PyObject *kwds)
 }
 
 /* Should only be used by the unpickler */
-Py_LOCAL(int)
+BLIST_PYAPI(int)
 py_blist_internal_init(PyObject *oself, PyObject *args, PyObject *kw)
 {
         return 0;
 }
 
-Py_LOCAL(int)
+BLIST_PYAPI(int)
 py_blist_init(PyObject *oself, PyObject *args, PyObject *kw)
 {
         int ret;
@@ -4662,7 +4647,7 @@ py_blist_init(PyObject *oself, PyObject *args, PyObject *kw)
         return _int(ret);
 }
 
-Py_LOCAL(PyObject *)
+BLIST_PYAPI(PyObject *)
 py_blist_richcompare(PyObject *v, PyObject *w, int op)
 {
         PyObject *rv;
@@ -4690,7 +4675,7 @@ py_blist_richcompare(PyObject *v, PyObject *w, int op)
         goto not_implemented;
 }
 
-Py_LOCAL(int)
+BLIST_PYAPI(int)
 py_blist_traverse(PyObject *oself, visitproc visit, void *arg)
 {
         PyBList *self;
@@ -4706,7 +4691,7 @@ py_blist_traverse(PyObject *oself, visitproc visit, void *arg)
         return 0;
 }
 
-Py_LOCAL(int)
+BLIST_PYAPI(int)
 py_blist_clear(PyObject *oself)
 {
         PyBList *self;
@@ -4726,7 +4711,7 @@ py_blist_clear(PyObject *oself)
 #if PY_MAJOR_VERSION == 2 && PY_MINOR_VERSION >= 6 || PY_MAJOR_VERSION >= 3
 #define py_blist_nohash PyObject_HashNotImplemented
 #else
-Py_LOCAL(long)
+BLIST_PYAPI(long)
 py_blist_nohash(PyObject *self)
 {
         PyErr_SetString(PyExc_TypeError, "list objects are unhashable");
@@ -4734,7 +4719,7 @@ py_blist_nohash(PyObject *self)
 }
 #endif
 
-Py_LOCAL(void)
+BLIST_PYAPI(void)
 py_blist_dealloc(PyObject *oself)
 {
         int i;
@@ -4769,7 +4754,7 @@ py_blist_dealloc(PyObject *oself)
         Py_TRASHCAN_SAFE_END(self);
 }
 
-Py_LOCAL(int)
+BLIST_PYAPI(int)
 py_blist_ass_item(PyObject *oself, Py_ssize_t i, PyObject *v)
 {
         PyObject *old_value;
@@ -4796,7 +4781,7 @@ py_blist_ass_item(PyObject *oself, Py_ssize_t i, PyObject *v)
         return _int(0);
 }
 
-Py_LOCAL(int)
+BLIST_PYAPI(int)
 py_blist_ass_slice(PyObject *oself, Py_ssize_t ilow, Py_ssize_t ihigh,
                    PyObject *v)
 {
@@ -4874,7 +4859,7 @@ py_blist_ass_slice(PyObject *oself, Py_ssize_t ilow, Py_ssize_t ihigh,
         return _int(0);
 }
 
-Py_LOCAL(int)
+BLIST_PYAPI(int)
 py_blist_ass_subscript(PyObject *oself, PyObject *item, PyObject *value)
 {
         PyBList *self;
@@ -5025,14 +5010,14 @@ py_blist_ass_subscript(PyObject *oself, PyObject *item, PyObject *value)
         }
 }
 
-Py_LOCAL(Py_ssize_t)
+BLIST_PYAPI(Py_ssize_t)
 py_blist_length(PyObject *ob)
 {
         assert(PyRootBList_Check(ob));
         return ((PyBList *) ob)->n;
 }
 
-Py_LOCAL(PyObject *)
+BLIST_PYAPI(PyObject *)
 py_blist_repeat(PyObject *oself, Py_ssize_t n)
 {
         PyObject *ret;
@@ -5049,7 +5034,7 @@ py_blist_repeat(PyObject *oself, Py_ssize_t n)
         return _ob(ret);
 }
 
-Py_LOCAL(PyObject *)
+BLIST_PYAPI(PyObject *)
 py_blist_inplace_repeat(PyObject *oself, Py_ssize_t n)
 {
         PyBList *tmp, *self;
@@ -5072,7 +5057,7 @@ py_blist_inplace_repeat(PyObject *oself, Py_ssize_t n)
         return (PyObject *) _blist(self);
 }
 
-Py_LOCAL(PyObject *)
+BLIST_PYAPI(PyObject *)
 py_blist_extend(PyBList *self, PyObject *other)
 {
         int err;
@@ -5090,7 +5075,7 @@ py_blist_extend(PyBList *self, PyObject *other)
         Py_RETURN_NONE;
 }
 
-Py_LOCAL(PyObject *)
+BLIST_PYAPI(PyObject *)
 py_blist_inplace_concat(PyObject *oself, PyObject *other)
 {
         int err;
@@ -5113,7 +5098,7 @@ py_blist_inplace_concat(PyObject *oself, PyObject *other)
         return _ob((PyObject *)self);
 }
 
-Py_LOCAL(int)
+BLIST_PYAPI(int)
 py_blist_contains(PyObject *oself, PyObject *el)
 {
         int c, ret = 0;
@@ -5142,7 +5127,7 @@ py_blist_contains(PyObject *oself, PyObject *el)
         return _int(ret);
 }
 
-Py_LOCAL(PyObject *)
+BLIST_PYAPI(PyObject *)
 py_blist_get_slice(PyObject *oself, Py_ssize_t ilow, Py_ssize_t ihigh)
 {
         PyBList *rv, *self;
@@ -5229,7 +5214,7 @@ PyObject *_PyBList_GetItemFast3(PyBListRoot *root, Py_ssize_t i)
         return _ob(rv);
 }
 
-Py_LOCAL(PyObject *)
+BLIST_PYAPI(PyObject *)
 py_blist_get_item(PyObject *oself, Py_ssize_t i)
 {
         PyBList *self = (PyBList *) oself;
@@ -5250,7 +5235,7 @@ py_blist_get_item(PyObject *oself, Py_ssize_t i)
         return _ob(ret);
 }
 
-Py_LOCAL(PyObject *)
+BLIST_PYAPI(PyObject *)
 py_blist_concat(PyObject *oself, PyObject *oother)
 {
         PyBList *other, *rv, *self;
@@ -5278,7 +5263,7 @@ py_blist_concat(PyObject *oself, PyObject *oother)
 }
 
 /* User-visible repr() */
-Py_LOCAL(PyObject *)
+BLIST_PYAPI(PyObject *)
 py_blist_repr(PyObject *oself)
 {
         /* Basic approach: Clone self in O(1) time, then walk through
@@ -5370,7 +5355,7 @@ py_blist_repr(PyObject *oself)
 
 #if defined(Py_DEBUG) && !defined(BLIST_IN_PYTHON)
 /* Return a string that shows the internal structure of the BList */
-Py_LOCAL(PyObject *)
+BLIST_PYAPI(PyObject *)
 blist_debug(PyBList *self, PyObject *indent)
 {
         PyObject *result, *s, *nl_indent, *comma, *indent2, *tmp, *tmp2;
@@ -5446,7 +5431,7 @@ blist_debug(PyBList *self, PyObject *indent)
         return _ob(result);
 }
 
-Py_LOCAL(PyObject *)
+BLIST_PYAPI(PyObject *)
 py_blist_debug(PyBList *self)
 {
         invariants(self, VALID_USER);
@@ -5454,7 +5439,7 @@ py_blist_debug(PyBList *self)
 }
 #endif
 
-Py_LOCAL(PyObject *)
+BLIST_PYAPI(PyObject *)
 py_blist_sort(PyBList *self, PyObject *args, PyObject *kwds)
 {
         compare_t compare = {NULL, NULL};
@@ -5574,7 +5559,7 @@ py_blist_sort(PyBList *self, PyObject *args, PyObject *kwds)
         return _ob(result);
 }
 
-Py_LOCAL(PyObject *)
+BLIST_PYAPI(PyObject *)
 py_blist_reverse(PyBList *self)
 {
         invariants(self, VALID_USER|VALID_RW);
@@ -5585,7 +5570,7 @@ py_blist_reverse(PyBList *self)
         Py_RETURN_NONE;
 }
 
-Py_LOCAL(PyObject *)
+BLIST_PYAPI(PyObject *)
 py_blist_count(PyBList *self, PyObject *v)
 {
         Py_ssize_t count = 0;
@@ -5611,7 +5596,7 @@ py_blist_count(PyBList *self, PyObject *v)
         return _ob(PyInt_FromSsize_t(count));
 }
 
-Py_LOCAL(PyObject *)
+BLIST_PYAPI(PyObject *)
 py_blist_index(PyBList *self, PyObject *args)
 {
         Py_ssize_t i, start=0, stop=self->n;
@@ -5661,7 +5646,7 @@ py_blist_index(PyBList *self, PyObject *args)
         return _ob(NULL);
 }
 
-Py_LOCAL(PyObject *)
+BLIST_PYAPI(PyObject *)
 py_blist_remove(PyBList *self, PyObject *v)
 {
         Py_ssize_t i;
@@ -5694,7 +5679,7 @@ py_blist_remove(PyBList *self, PyObject *v)
         return _ob(NULL);
 }
 
-Py_LOCAL(PyObject *)
+BLIST_PYAPI(PyObject *)
 py_blist_pop(PyBList *self, PyObject *args)
 {
         Py_ssize_t i = -1;
@@ -5736,7 +5721,7 @@ py_blist_pop(PyBList *self, PyObject *args)
         return _ob(v); /* the caller now owns the reference the list had */
 }
 
-Py_LOCAL(PyObject *)
+BLIST_PYAPI(PyObject *)
 py_blist_insert(PyBList *self, PyObject *args)
 {
         Py_ssize_t i;
@@ -5783,7 +5768,7 @@ py_blist_insert(PyBList *self, PyObject *args)
         Py_RETURN_NONE;
 }
 
-Py_LOCAL(PyObject *)
+BLIST_PYAPI(PyObject *)
 py_blist_append(PyBList *self, PyObject *v)
 {
         int err;
@@ -5798,7 +5783,7 @@ py_blist_append(PyBList *self, PyObject *v)
         Py_RETURN_NONE;
 }
 
-Py_LOCAL(PyObject *)
+BLIST_PYAPI(PyObject *)
 py_blist_subscript(PyObject *oself, PyObject *item)
 {
         PyBList *self;
@@ -5912,7 +5897,7 @@ PyDoc_STRVAR(sizeof_doc,
  */
 
 #ifndef BLIST_IN_PYTHON
-Py_LOCAL(PyObject *)
+BLIST_PYAPI(PyObject *)
 blist_getstate(PyBList *self)
 {
         PyObject *lst;
@@ -5932,7 +5917,7 @@ blist_getstate(PyBList *self)
         return _ob(lst);        
 }
 
-Py_LOCAL(PyObject *)
+BLIST_PYAPI(PyObject *)
 py_blist_setstate(PyBList *self, PyObject *state)
 {
         Py_ssize_t i;
@@ -5963,7 +5948,7 @@ py_blist_setstate(PyBList *self, PyObject *state)
         Py_RETURN_NONE;
 }
 
-Py_LOCAL(PyObject *)
+BLIST_PYAPI(PyObject *)
 py_blist_reduce(PyBList *self)
 {
         PyObject *rv, *args, *type;
@@ -6165,7 +6150,7 @@ PyTypeObject PyRootBList_Type = {
 
 static PyMethodDef module_methods[] = { { NULL } };
 
-Py_LOCAL(int)
+BLIST_LOCAL(int)
 init_blist_types1(void)
 {
         decref_init();
@@ -6184,7 +6169,7 @@ init_blist_types1(void)
         return 0;
 }
 
-Py_LOCAL(int)
+BLIST_LOCAL(int)
 init_blist_types2(void)
 {        
         if (PyType_Ready(&PyRootBList_Type) < 0) return -1;
