@@ -286,7 +286,7 @@ class BListTest(list_tests.CommonTest):
         for i in range(2):
             x = blist(y)
             x.sort()
-            self.assertEqual(tuple(x), tuple(range(9)))
+            self.assertEqual(tuple(x), tuple(range(limit+1)))
 
     def test_LIFO(self):
         x = blist()
