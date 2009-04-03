@@ -6234,7 +6234,7 @@ PyInit_blist(void)
 
         if (init_blist_types1() < 0)
                 return NULL;
-        if (init_blist_types() < 0)
+        if (init_blist_types2() < 0)
                 return NULL;
         
         m = PyModule_Create(&blist_module);
