@@ -9,7 +9,7 @@ else:
     from distutils.core import setup, Extension
 
 setup(name='blist',
-      version='0.9.18',
+      version='1.0.0',
       description='a list-like type with better asymptotic performance and similar performance on small lists',
       author='Stutzbach Enterprises, LLC',
       author_email='daniel@stutzbachenterprises.com',
@@ -21,7 +21,7 @@ setup(name='blist',
       test_suite = "test_blist.test_suite",
       zip_safe = False, # zips are broken on cygwin for C extension modules
       classifiers = [
-            'Development Status :: 4 - Beta',
+            'Development Status :: 5 - Production/Stable',
             'Intended Audience :: Developers',
             'Intended Audience :: Science/Research',
             'License :: OSI Approved :: BSD License',
@@ -39,14 +39,14 @@ BList: a list-like type with better performance
 ===============================================
 
 The BList is a type that looks, acts, and quacks like a Python list,
-but has better performance for for modifying large lists.  
+but has better performance for for modifying large lists.
 
-Earlier versions of BList were also slower for large lists that never
-change length, but this is no longer true as of version 0.9.6, which
-features amortized worst-case O(1) getitem and setitem operations.
+For small lists (fewer than 128 elements), BLists and the built-in
+list have very similar performance, although BLists are memory
+inefficient if you need to create a larger number of small lists.
 
-With that disclaimer out of the way, here are some of the use cases
-where the BLists is dramatically faster than the built-in list:
+Here are some of the use cases where the BLists is dramatically faster
+than the built-in list:
 
 1. Insertion into or removal from a large list (O(log n) vs. O(n))
 2. Taking large slices of large lists (O(log n) vs O(n))
@@ -54,9 +54,7 @@ where the BLists is dramatically faster than the built-in list:
 4. Changing large slices of large lists (O(log n + log k) vs. O(n + k))
 5. Multiplying a list to make a large, sparse list (O(log k) vs. O(kn))
 
-You've probably noticed that we keep referring to "large lists".  For
-small lists, BLists and the built-in list have very similar
-performance.
+You've probably noticed that we keep referring to "large lists".  
 
 So you can see the performance of the BList in more detail, several
 performance graphs available at the following link: http://stutzbachenterprises.com/blist/
