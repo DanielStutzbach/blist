@@ -2,14 +2,12 @@ BList: a list-like type with better performance
 ===============================================
 
 The BList is a type that looks, acts, and quacks like a Python list,
-but has better performance for for modifying large lists.  
+but has better performance for for modifying large lists.  For small
+lists (fewer than 128 elements), BLists and the built-in list have
+very similar performance.
 
-Earlier versions of BList were also slower for large lists that never
-change length, but this is no longer true as of version 0.9.6, which
-features amortized worst-case O(1) getitem and setitem operations.
-
-With that disclaimer out of the way, here are some of the use cases
-where the BLists is dramatically faster than the built-in list:
+Here are some of the use cases where the BLists is dramatically faster
+than the built-in list:
 
 1. Insertion into or removal from a large list (O(log n) vs. O(n))
 2. Taking large slices of large lists (O(log n) vs O(n))
@@ -17,9 +15,7 @@ where the BLists is dramatically faster than the built-in list:
 4. Changing large slices of large lists (O(log n + log k) vs. O(n + k))
 5. Multiplying a list to make a large, sparse list (O(log k) vs. O(kn))
 
-You've probably noticed that we keep referring to "large lists".  For
-small lists, BLists and the built-in list have very similar
-performance.
+You've probably noticed that we keep referring to "large lists".  
 
 So you can see the performance of the BList in more detail, several
 performance graphs available at the following link: http://stutzbachenterprises.com/blist/
@@ -58,22 +54,16 @@ associated test suite, you can also run:
 which will verify the correct installation and functioning of the
 package.  The tests regrettably do not work on Python 3.
 
-Platforms
----------
-
-The BList was developed under Debian Linux and Microsoft Windows.
-Since it has no dependencies other than Python, we expect it will work
-on other 32-bit platforms without modification.  If you run into
-trouble building BList on your platform, please contact us.
-
 Known bugs and limitations
 --------------------------
-
-64-bit architectures should work in theory, but have not been tested.
 
 Out-of-memory errors are not always handled correctly and may cause
 undefined behavior.  While we plan to fix this, we hope that it does
 not arise in practice.
+
+The BList makes inefficient use of memory for very small lists
+compared to the built-in list.  The BList always allocate enough space
+for 128 elements.
 
 Feedback
 --------
