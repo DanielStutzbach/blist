@@ -37,7 +37,7 @@
 
 #include <Python.h>
 
-#if !defined(__GNUC__)
+#if !defined(__STDC_VERSION__) || __STDC_VERSION__ < 199901L
 #define restrict
 #endif
 
@@ -551,12 +551,8 @@ static void debug_setup(debug_t *debug)
                        || PyRootBList_Check(debug->self));
         }
 
-        if (debug->options & VALID_USER)
+        if (debug->options & VALID_USER) {
                 debug->options |= VALID_ROOT;
-
-        if (debug->options & VALID_ROOT) {
-                debug->options |= VALID_PARENT;
-
                 assert(PyRootBList_Check(debug->self));
                 if (!debug->self->leaf)
                         assert(((PyBListRoot *)debug->self)->last_n
@@ -566,6 +562,11 @@ static void debug_setup(debug_t *debug)
 
                 if (!blist_danger)
                         assert(decref_num == 0);
+        }
+        
+        if (debug->options & VALID_ROOT) {
+                debug->options |= VALID_PARENT;
+
                 assert(Py_REFCNT(debug->self) >= 1);
         }
 
@@ -706,6 +707,35 @@ static void safe_decref(PyBList *self)
 #define _redir(ret) (ret)
 
 #endif
+
+BLIST_LOCAL(int)
+append_and_squish(PyBList **out, int n, PyBList *leaf)
+{
+        if (n >= 1) {
+                PyBList *last = out[n-1];
+                if (last->num_children + leaf->num_children <= LIMIT) {
+                        copy(last, last->num_children, leaf, 0,
+                             leaf->num_children);
+                        last->num_children += leaf->num_children;
+                        last->n += leaf->num_children;
+                        leaf->num_children = 0;
+                        leaf->n = 0;
+                } else {
+                        int moved = LIMIT - last->num_children;
+                        copy(last, last->num_children, leaf, 0, moved);
+                        shift_left(leaf, moved, moved);
+                        last->num_children = LIMIT;
+                        last->n = LIMIT;
+                        leaf->num_children -= moved;
+                        leaf->n -= moved;
+                }
+        } 
+        if (!leaf->num_children) 
+                SAFE_DECREF(leaf);
+        else
+                out[n++] = leaf;
+        return n;
+}
 
 BLIST_LOCAL(int)
 balance_last_2(PyBList **out, int n)
@@ -957,7 +987,8 @@ static void blist_locate(PyBList *self, Py_ssize_t i,
  *      suspect it's not worth the extra overhead of updating it all
  *      over the place.
  */
-static int blist_get_height(PyBList *self)
+BLIST_LOCAL(int)
+blist_get_height(PyBList *self)
 {
         invariants(self, VALID_PARENT);
         if (self->leaf)
@@ -967,7 +998,8 @@ static int blist_get_height(PyBList *self)
                     + 1);
 }
 
-static PyBList *blist_prepare_write(PyBList *self, int pt)
+BLIST_LOCAL(PyBList *)
+blist_prepare_write(PyBList *self, int pt)
 {
         /* We are about to modify the child at index pt.  Prepare it.
          *
@@ -1541,7 +1573,7 @@ ext_index_all_r(PyBListRoot *root, PyBList *self, int i, int set_ok)
  */
 void _ext_index_all(PyBListRoot *root, int set_ok_all)
 {
-        int ioffset_max = root->n / INDEX_FACTOR;
+        int ioffset_max = root->n / INDEX_FACTOR + 1;
         int set_ok;
 
         if (root->index_length < ioffset_max)
@@ -2328,15 +2360,18 @@ blist_pop_last_fast(PyBList *self)
 
 static void blist_delitem(PyBList *self, Py_ssize_t i)
 {
+        invariants(self, VALID_ROOT|VALID_RW);
         if (i == self->n-1) {
                 PyObject *v = blist_pop_last_fast(self);
                 if (v) {
                         decref_later(v);
+                        _void();
                         return;
                 }
         }
 
         blist_delslice(self, i, i+1);
+        _void();
 }
 
 static PyObject *blist_delitem_return(PyBList *self, Py_ssize_t i)
@@ -3297,7 +3332,9 @@ blist_repr_r(PyBList *self)
                 for (i = 0; i < self->num_children; i++) {
                         if (Py_EnterRecursiveCall(" while getting the repr of a list"))
                                 return _int(-1);
+                        DANGER_BEGIN;
                         s = PyObject_Repr(self->children[i]);
+                        DANGER_END;
                         Py_LeaveRecursiveCall();
                         if (s == NULL)
                                 return _int(-1);
@@ -3616,6 +3653,8 @@ reverse_slice(PyObject **restrict lo, PyObject **restrict hi)
 {
         assert(lo && hi);
 
+        if (lo == hi) return;
+        
         /* Use Duff's Device
          * http://en.wikipedia.org/wiki/Duff%27s_device
          */
@@ -3695,7 +3734,7 @@ blist_repeat(PyBList *self, Py_ssize_t n)
         if (n <= 0 || self->n == 0)
                 return _ob((PyObject *) blist_root_new());
 
-        if (n > (PY_SSIZE_T_MAX / self->n / 2))
+        if ((self->n * n) / n != self->n)
                 return _ob(PyErr_NoMemory());
 
         rv = blist_root_new();
@@ -4199,7 +4238,7 @@ gallop_sort(PyObject **array, int n, const compare_t *compare)
                                         high = mid;
                         }
 
-                        for (j = i; j >= low; j--)
+                        for (j = i; j > low; j--)
                                 array[j] = array[j-1];
 
                         array[low] = tmp;
@@ -4404,52 +4443,48 @@ sub_merge(PyBList **restrict out, PyBList **in1, PyBList **in2, int n1, int n2,
 
  done:
         /* Append our partially-complete output leaf node to the forest */
-        out[nout++] = output;
-        nout = balance_last_2(out, nout);
+        nout = append_and_squish(out, nout, output);
 
         /* Append a partially-consumed input leaf node, if one exists */
-        if (leaf1_i <= n1) {
-                if (i < leaf1->num_children) {
-                        shift_left(leaf1, i, i);
-                        leaf1->num_children -= i;
-                        out[nout++] = leaf1;
-                        nout = balance_last_2(out, nout);
-                } else {
-                        leaf1->num_children = 0;
-                        SAFE_DECREF(leaf1);
-                }
+        if (i < leaf1->num_children) {
+                shift_left(leaf1, i, i);
+                leaf1->num_children -= i;
+                leaf1->n -= i;
+                nout = append_and_squish(out, nout, leaf1);
+        } else {
+                leaf1->num_children = 0;
+                SAFE_DECREF(leaf1);
+        }
+
+        if (j < leaf2->num_children) {
+                shift_left(leaf2, j, j);
+                leaf2->num_children -= j;
+                leaf2->n -= j;
+                nout = append_and_squish(out, nout, leaf2);
+        } else {
+                leaf2->num_children = 0;
+                SAFE_DECREF(leaf2);
+        }
+                
+        nout = balance_last_2(out, nout);
+
+        if (leaf1_i < n1) {
                 /* Append the rest of any input forests still has nodes. */
                 memcpy(&out[nout], &in1[leaf1_i],
                        sizeof(PyBList *) * (n1 - leaf1_i));
                 nout += n1 - leaf1_i;
-                nout = balance_last_2(out, nout);
         }
         
-        if (leaf2_i <= n2) {
-                if (j < leaf2->num_children) {
-                        shift_left(leaf2, j, j);
-                        leaf2->num_children -= j;
-                        out[nout++] = leaf2;
-                        nout = balance_last_2(out, nout);
-                } else {
-                        leaf2->num_children = 0;
-                        SAFE_DECREF(leaf2);
-                }
-                
+        if (leaf2_i < n2) {
                 memcpy(&out[nout], &in2[leaf2_i],
-                       sizeof(PyBList *) * (nout - leaf2_i));
+                       sizeof(PyBList *) * (n2 - leaf2_i));
                 nout += n2 - leaf2_i;
-                nout = balance_last_2(out, nout);
         }
-
-#ifdef Py_DEBUG
-        for (i = 0; i < nout; i++) {
-                check_invariants(out[i]);
-        }
-#endif
 
         for (i = nout; i < n1+n2; i++)
                 out[i] = NULL;
+
+        assert(nout <= n1+n2);
 
         return nout;
 }
@@ -4521,7 +4556,7 @@ sort(PyBList *self, const compare_t *compare)
         
         for (i = 0; i < leafs_n && !err; i++) {
                 leaf = leafs[i];
-                err = gallop_sort(leaf->children, leaf->num_children, compare);
+                err |= gallop_sort(leaf->children, leaf->num_children,compare);
         }
         
         leafs_n = sub_sort(scratch, leafs, compare, leafs_n, &err);
@@ -5330,7 +5365,7 @@ py_blist_repr(PyObject *oself)
         return _ob(result);
 }
 
-#ifdef Py_DEBUG
+#if defined(Py_DEBUG) && !defined(BLIST_IN_PYTHON)
 /* Return a string that shows the internal structure of the BList */
 Py_LOCAL(PyObject *)
 blist_debug(PyBList *self, PyObject *indent)
@@ -5842,10 +5877,38 @@ py_blist_subscript(PyObject *oself, PyObject *item)
         }
 }
 
+#if PY_MAJOR_VERSION == 2 && PY_MINOR_VERSION >= 6 || PY_MAJOR_VERSION >= 3
+static PyObject *
+py_blist_root_sizeof(PyBListRoot *root)
+{
+        Py_ssize_t res;
+        res = sizeof(PyBListRoot)
+                + LIMIT * sizeof(PyObject *)
+                + root->index_length * (sizeof (PyBList *) + sizeof(int))
+                + root->dirty_length * sizeof(int)
+                + (root->index_length ?
+                   SETCLEAN_LEN(root->index_length) * sizeof(unsigned): 0);
+        return PyLong_FromSsize_t(res);
+}
+
+static PyObject *
+py_blist_sizeof(PyBList *self)
+{
+        Py_ssize_t res;
+        res = sizeof(PyBList)
+                + LIMIT * sizeof(PyObject *);
+        return PyLong_FromSsize_t(res);
+}
+
+PyDoc_STRVAR(sizeof_doc,
+"L.__sizeof__() -- size of L in memory, in bytes");
+#endif
+
 /************************************************************************
  * Routines for supporting pickling
  */
 
+#ifndef BLIST_IN_PYTHON
 Py_LOCAL(PyObject *)
 blist_getstate(PyBList *self)
 {
@@ -5914,6 +5977,7 @@ py_blist_reduce(PyBList *self)
 
         return _ob(rv);
 }
+#endif
 
 PyDoc_STRVAR(getitem_doc,
              "x.__getitem__(y) <==> x[y]");
@@ -5941,9 +6005,11 @@ cmp(x, y) -> -1, 0, 1");
 
 static PyMethodDef blist_methods[] = {
         {"__getitem__", (PyCFunction)py_blist_subscript, METH_O|METH_COEXIST, getitem_doc},
-        {"__reduce__",  (PyCFunction)py_blist_reduce, METH_NOARGS, NULL},
         {"__reversed__",(PyCFunction)py_blist_reversed, METH_NOARGS, reversed_doc},
+#ifndef BLIST_IN_PYTHON
+        {"__reduce__",  (PyCFunction)py_blist_reduce, METH_NOARGS, NULL},
         {"__setstate__",(PyCFunction)py_blist_setstate, METH_O, NULL},
+#endif
         {"append",      (PyCFunction)py_blist_append,  METH_O, append_doc},
         {"insert",      (PyCFunction)py_blist_insert,  METH_VARARGS, insert_doc},
         {"extend",      (PyCFunction)py_blist_extend,  METH_O, extend_doc},
@@ -5953,15 +6019,23 @@ static PyMethodDef blist_methods[] = {
         {"count",       (PyCFunction)py_blist_count,   METH_O, count_doc},
         {"reverse",     (PyCFunction)py_blist_reverse, METH_NOARGS, reverse_doc},
         {"sort",        (PyCFunction)py_blist_sort,    METH_VARARGS | METH_KEYWORDS, sort_doc},
-#ifdef Py_DEBUG
+#if defined(Py_DEBUG) && !defined(BLIST_IN_PYTHON)
         {"debug",       (PyCFunction)py_blist_debug,   METH_NOARGS, NULL},
+#endif
+#if PY_MAJOR_VERSION == 2 && PY_MINOR_VERSION >= 6 || PY_MAJOR_VERSION >= 3
+        {"__sizeof__",  (PyCFunction)py_blist_root_sizeof, METH_NOARGS, sizeof_doc},
 #endif
         {NULL,          NULL}           /* sentinel */
 };
 
 static PyMethodDef blist_internal_methods[] = {
+#ifndef BLIST_IN_PYTHON
         {"__reduce__",  (PyCFunction)py_blist_reduce, METH_NOARGS, NULL},
         {"__setstate__",(PyCFunction)py_blist_setstate, METH_O, NULL},
+#endif
+#if PY_MAJOR_VERSION == 2 && PY_MINOR_VERSION >= 6 || PY_MAJOR_VERSION >= 3
+        {"__sizeof__",  (PyCFunction)py_blist_sizeof, METH_NOARGS, sizeof_doc},
+#endif
         {NULL,          NULL}           /* sentinel */
 };
 

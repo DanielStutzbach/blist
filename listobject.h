@@ -93,7 +93,7 @@ typedef struct PyBListRoot {
  */
         
 #ifdef BLIST_IN_PYTHON
-void PyList_Init(void);
+int PyList_Init(void);
 typedef PyBListRoot PyListObject;
         
 //PyAPI_DATA(PyTypeObject) PyList_Type;
