@@ -2583,6 +2583,9 @@ blistiter_len(blistiterobject *it)
         int depth;
         Py_ssize_t total = 0;
 
+        if (!iter->leaf)
+                return PyInt_FromLong(0);
+        
         total += iter->leaf->n - iter->i;
         
         for (depth = iter->depth-2; depth >= 0; depth--) {
@@ -4720,15 +4723,15 @@ py_blist_clear(PyObject *oself)
         return _int(0);
 }
 
-#if PY_MAJOR_VERSION < 3
+#if PY_MAJOR_VERSION == 2 && PY_MINOR_VERSION >= 6 || PY_MAJOR_VERSION >= 3
+#define py_blist_nohash PyObject_HashNotImplemented
+#else
 Py_LOCAL(long)
 py_blist_nohash(PyObject *self)
 {
         PyErr_SetString(PyExc_TypeError, "list objects are unhashable");
         return -1;
 }
-#else
-#define py_blist_nohash PyObject_HashNotImplemented
 #endif
 
 Py_LOCAL(void)
@@ -6135,7 +6138,7 @@ PyTypeObject PyRootBList_Type = {
         0,                                      /* tp_as_buffer */
         Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC |
                 Py_TPFLAGS_BASETYPE             /* tp_flags */
-#if PY_MAJOR_VERSION >= 3 && defined(BLIST_IN_PYTHON)
+#if (PY_MAJOR_VERSION == 2 && PY_MINOR_VERSION >= 6 || PY_MAJOR_VERSION >= 3) && defined(BLIST_IN_PYTHON)
         | Py_TPFLAGS_LIST_SUBCLASS
 #endif
         ,
@@ -6163,8 +6166,11 @@ PyTypeObject PyRootBList_Type = {
 static PyMethodDef module_methods[] = { { NULL } };
 
 Py_LOCAL(int)
-init_blist_types(void)
+init_blist_types1(void)
 {
+        decref_init();
+        highest_set_bit_init();
+
         Py_TYPE(&PyBList_Type) = &PyType_Type;
         Py_TYPE(&PyRootBList_Type) = &PyType_Type;
         Py_TYPE(&PyBListIter_Type) = &PyType_Type;
@@ -6175,6 +6181,12 @@ init_blist_types(void)
         Py_INCREF(&PyBListIter_Type);
         Py_INCREF(&PyBListReverseIter_Type);
 
+        return 0;
+}
+
+Py_LOCAL(int)
+init_blist_types2(void)
+{        
         if (PyType_Ready(&PyRootBList_Type) < 0) return -1;
         if (PyType_Ready(&PyBList_Type) < 0) return -1;
         if (PyType_Ready(&PyBListIter_Type) < 0) return -1;
@@ -6190,9 +6202,8 @@ initblist(void)
         PyObject *m;
         PyObject *limit = PyInt_FromLong(LIMIT);
 
-        decref_init();
-        highest_set_bit_init();
-        init_blist_types();
+        init_blist_types1();
+        init_blist_types2();
 
         m = Py_InitModule3("blist", module_methods, "blist");
 
@@ -6221,10 +6232,8 @@ PyInit_blist(void)
         PyObject *m;
         PyObject *limit = PyInt_FromLong(LIMIT);
 
-        if (decref_init() < 0)
+        if (init_blist_types1() < 0)
                 return NULL;
-        highest_set_bit_init();
-
         if (init_blist_types() < 0)
                 return NULL;
         
@@ -6245,13 +6254,15 @@ PyInit_blist(void)
 
 #ifdef Py_BUILD_CORE
 int
-PyList_Init(void)
+PyList_Init1(void)
 {
-        if (decref_init() < 0)
-                return -1;
-        highest_set_bit_init();
-        init_blist_types();
-        return 0;
+        return init_blist_types1();
+}
+
+int
+PyList_Init2(void)
+{
+        return init_blist_types2();
 }
 
 PyObject *PyList_New(Py_ssize_t size)
@@ -6475,15 +6486,10 @@ PyObject *PyList_AsTuple(PyObject *ob)
 PyObject *
 _PyList_Extend(PyBListRoot *ob, PyObject *b)
 {
-        if (ob == NULL || !PyList_Check(ob)) {
-                PyErr_BadInternalCall();
-                return NULL;
-        }
-
         return py_blist_extend((PyBList *) ob, b);
 }
 
-#if PY_MAJOR_VERSION == 3
+#if PY_MAJOR_VERSION == 2 && PY_MINOR_VERSION >= 6 || PY_MAJOR_VERSION >= 3
 void
 PyList_Fini(void)
 {

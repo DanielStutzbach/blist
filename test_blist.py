@@ -326,6 +326,11 @@ class BListTest(list_tests.CommonTest):
         type(iter(blist()))
         type(iter(reversed(blist())))
 
+    def test_iterlen_empty(self):
+        it = iter(blist())
+        self.assertRaises(StopIteration, it.next)
+        self.assertEqual(it.__length_hint__(), 0)
+
 def test_suite():
     suite = unittest.TestSuite()
     suite.addTest(unittest.makeSuite(BListTest))
