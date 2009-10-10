@@ -1,0 +1,9 @@
+*.py[oc]
+setuptools-*.egg
+build/
+blist.egg-info
+blist.dll
+blist.pyd
+blist.so
+distribute-*.tar.gz
+.backup
