@@ -23,7 +23,7 @@ limits = (128, )
 # The tests to run are near the bottom
 
 MIN_REPS = 3
-MIN_TIME = 0.01
+MIN_TIME = 0.1
 MAX_TIME = 1.0
 
 if 'cygwin' in os.uname()[0].lower():
@@ -65,7 +65,7 @@ def make(limit):
     rm('blist.o')
     if os.system('%s %s -DLIMIT=%d -c blist.c -o blist.o' % (CC, CFLAGS, limit)):
         raise 'Make failure'
-    if os.system('%s %s -o blist.so blist.o %s' % (LD, LDFLAGS, LOADLIBES)):
+    if os.system('%s %s -o blist.%s blist.o %s' % (LD, LDFLAGS, extension, LOADLIBES)):
         raise 'Make failure'
     #if os.system('CC="%s" python3.0 setup.py build --build-platlib .' % (CC % limit)):
     #    raise 'Make failure'
@@ -77,7 +77,7 @@ def make(limit):
 setup = 'from blist import blist'
 
 ns = (range(1,10) + range(10, 100, 10) + range(100, 1000, 100)
-      + range(1000, 10001, 1000)
+      + range(1000, 10000, 1000)
       + range(10000, 100001, 10000))
 
 def smart_timeit(stmt, setup, hint):
@@ -97,7 +97,7 @@ def timeit(stmt, setup, rep):
     try:
         p = subprocess.Popen([PYTHON, '/usr/local/lib/python3.0/timeit.py',
                               '-r', '5', '-n', str(rep), '-s', setup, '--', stmt],
-                             stdout=subprocess.PIPE)
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         so, se = p.communicate()
         try:
             parts = so.split()
@@ -281,7 +281,7 @@ set key below height 1
         print >>f, 'set key top left'
         print >>f, 'set mytics 10'
         print >>f, 'set logscale xy'
-        print >>f, 'set yrange [0.0001:10]'
+        print >>f, 'set yrange [0.00001:10]'
         print >>f, 'set ylabel "Execution Time"'
         print >>f, 'set ytics ("100 ns" 0.0001, "1 us" 0.001, "10 us" 0.01, "100 us" 0.1, "1 ms" 1.0, "10 ms" 10.0, "100 ms" 100.0)'
         print >>f, 'plot "dat/list-%s.dat" title "list()" with linespoints ' \
@@ -329,12 +329,12 @@ add_timing('eq recursive', 'x = TypeToTest()\nx.append(x)\ny = TypeToTest()\ny.a
 
 add_timing('FIFO', None, """\
 x.insert(0, 0)
-del x[0]
+x.pop(0)
 """)
 
 add_timing('LIFO', None, """\
 x.append(0)
-del x[-1]
+x.pop(-1)
 """)
 
 add_timing('add', None, "x + x")
@@ -357,6 +357,8 @@ add_timing('setslice', None, 'x[:] = x')
 add_timing('sort random', 'import random\nx = [random.random() for i in range(n)]', 'y = TypeToTest(x)\ny.sort()')
 add_timing('sort sorted', None, 'y = TypeToTest(x)\ny.sort()')
 add_timing('sort reversed', 'x = list(range(n))\nx.reverse()', 'y = TypeToTest(x)\ny.sort()')
+
+add_timing('sort random tuples', 'import random\nx = [(random.random(), random.random()) for i in range(n)]', 'y = TypeToTest(x)\ny.sort()')
 
 add_timing('init from list', 'x = list(range(n))', 'y = TypeToTest(x)')
 add_timing('init from tuple', 'x = tuple(range(n))', 'y = TypeToTest(x)')
