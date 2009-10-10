@@ -1,5 +1,8 @@
-PYTHON=python2.5
-PYPREFIX=/usr
+#PYTHON=python2.5
+#PYPREFIX=/usr
+
+PYTHON=python2.6
+PYPREFIX=/usr/local/stow/python-2.6.1-dbg
 
 CFLAGS=-Wall -g -fno-strict-aliasing -Wstrict-prototypes $(COPT) -Werror $(INCLUDE)
 #INCLUDE=-I/home/agthorr/Python-3.0/Include -I/home/agthorr/Python-3.0/ #-I/home/agthorr/mypython-3.0/Include/ -I/home/agthorr/mypython-3.0/
@@ -13,7 +16,7 @@ COPT=-DLIMIT=8 -DPy_DEBUG=1     # For debug mode
 LDFLAGS=-g -shared $(COPT)
 DLLFLAGS=-Wl,--enable-auto-image-base 
 LD=$(CC)
-LOADLIBES=-L$(PYPREFIX)/lib -L$(PYPREFIX)/lib/$(PYTHON)/config/ -l$(PYTHON)
+LOADLIBES=-L$(PYPREFIX)/lib -L$(PYPREFIX)/lib/$(PYTHON)/config/ -l$(PYTHON).dll
 
 blist.dll: blist.o
 	$(LD) $(LDFLAGS) $(DLLFLAGS) -o $@ $< $(LOADLIBES)
@@ -52,7 +55,7 @@ test: clean blist.so
 	$(PYTHON)-dbg test_blist.py
 
 testing: test.o blist.o
-	$(LD) -pthread -pg -Xlinker -export-dynamic -I/home/agthorr/Python-3.0/Include -I/home/agthorr/Python-3.0/ test.o blist.o -L/home/agthorr/Python-3.0 -l$(PYTHON) -o testing -lpthread -ldl -lutil -lm
+	$(LD) --static -pg test.o blist.o -o testing $(LOADLIBES)
 
 win:
 	/cygdrive/c/Python26/python.exe setup.py bdist_wininst
