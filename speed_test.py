@@ -7,12 +7,12 @@ from math import *
 # you won't get a fair comparison with Python's built-in list type
 #CFLAGS = '-g -O3 -DNDEBUG=1 -DLIMIT=%d -fno-strict-aliasing -I/usr/local/include/python2.5 -Winline'# --param inline-unit-growth=2000 --param max-inline-insns-single=2000 --param max-inline-insns-auto=2000' # --param inline-unit-growth=2000'
 #CFLAGS='-pg -O3 -DLIMIT=%d -fno-strict-aliasing -DNDEBUG=1 -I/usr/local/include/python2.5'
-CFLAGS='-c -fno-strict-aliasing -DNDEBUG -g -O3 -Wall -Wstrict-prototypes -I/usr/local/include/python3.0 --std=gnu99'
+CFLAGS='-c -fno-strict-aliasing -DNDEBUG -g -O3 -Wall -Wstrict-prototypes -I/usr/include/python2.5 --std=gnu99'
 CC = 'gcc'
-PYTHON='python3.0'
+PYTHON='/usr/bin/python2.5'
 LD = CC
-LDFLAGS='-g -shared'
-LOADLIBES='-lpython3.0'
+LDFLAGS='-g -shared -L/usr/lib/python2.5/config -Wl,--enable-auto-image-base'
+LOADLIBES='-lpython2.5'
 #PYTHON='/home/agthorr/mypython-2.5/python'
 
 # List of BList node sizes to try
@@ -95,7 +95,7 @@ def timeit(stmt, setup, rep):
     if key in timeit_cache:
         return timeit_cache[key]
     try:
-        p = subprocess.Popen([PYTHON, '/usr/local/lib/python3.0/timeit.py',
+        p = subprocess.Popen([PYTHON, '/usr/lib/python2.5/timeit.py',
                               '-r', '5', '-n', str(rep), '-s', setup, '--', stmt],
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         so, se = p.communicate()
