@@ -38,8 +38,8 @@ setup = ''
 types = ('blist', 'list')
 
 typemap = {
-    'blist': '/home/agthorr/mypython-2.5/python.exe',
-    'list': '/home/agthorr/Python-2.5/python.exe',
+    'blist': '/home/agthorr/mypython-2.5/python',
+    'list': '/home/agthorr/Python-2.5/python',
 }
 
 ns = (range(1,10) + range(10, 100, 10) + range(100, 1000, 100)
