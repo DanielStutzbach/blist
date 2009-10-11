@@ -3608,9 +3608,6 @@ blist_richcompare_item(int c, int op, PyObject *item1, PyObject *item2)
         return NULL;
 }
 
-#define Py_RETURN_TRUE return Py_INCREF(Py_True), Py_True
-#define Py_RETURN_FALSE return Py_INCREF(Py_False), Py_False
-
 static PyObject *blist_richcompare_len(PyBList *v, PyBList *w, int op)
 {
         /* No more items to compare -- compare sizes */
