@@ -28,7 +28,7 @@ clean:
 	rm -f *.o *.so *.dll
 
 tarball:
-	cd .. ; tar -zcvf blist.tar.gz blist/blist.c blist/Makefile blist/test_blist.py blist/test/*.py blist/prototype/blist.py blist/fuzz.py blist/README.txt blist/blist.rst blist/blist.h blist/LICENSE blist/CREDITS blist/setup.py
+	cd .. ; tar -zcvf blist.tar.gz blist/blist.c blist/Makefile blist/test_blist.py blist/test/*.py blist/prototype/blist.py blist/fuzz.py blist/README.rst blist/blist.rst blist/blist.h blist/LICENSE blist/CREDITS blist/setup.py
 
 egg:
 	$(PYTHON) setup.py register
@@ -43,7 +43,7 @@ bdist_egg:
 	$(PYTHON) setup.py bdist_egg upload -s
 
 html:
-	rst2html README.txt
+	rst2html README.rst
 
 speed:
 	$(PYTHON) speed_test.py 

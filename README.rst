@@ -6,19 +6,23 @@ but has better performance for for modifying large lists.  For small
 lists (fewer than 128 elements), BLists and the built-in list have
 very similar performance.
 
-Here are some of the use cases where the BLists is dramatically faster
-than the built-in list:
+Here are some of the use cases where the BLists asymptotically
+outperforms the built-in list:
 
-1. Insertion into or removal from a large list (O(log n) vs. O(n))
-2. Taking large slices of large lists (O(log n) vs O(n))
-3. Making shallow copies of large lists (O(1) vs. O(n))
-4. Changing large slices of large lists (O(log n + log k) vs. O(n + k))
-5. Multiplying a list to make a large, sparse list (O(log k) vs. O(kn))
-
-You've probably noticed that we keep referring to "large lists".  
+========================================== ================  =========
+Use Case                                   BList             list
+========================================== ================  =========
+Insertion into or removal from a list      O(log n)          O(n)
+Taking slices of lists                     O(log n)          O(n)
+Making shallow copies of lists             O(1)              O(n)
+Changing slices of lists                   O(log n + log k)  O(n+k)
+Multiplying a list to make a sparse list   O(log k)          O(kn)
+Maintain a sorted lists with bisect.insort O(log**2 n)       O(n)
+========================================== ================  =========
 
 So you can see the performance of the BList in more detail, several
-performance graphs available at the following link: http://stutzbachenterprises.com/blist/
+performance graphs available at the following link:
+http://stutzbachenterprises.com/blist/
 
 Example usage:
 
@@ -54,19 +58,24 @@ associated test suite, you can also run:
 which will verify the correct installation and functioning of the
 package.  The tests regrettably do not work on Python 3.
 
-Known bugs and limitations
---------------------------
-
-Out-of-memory errors are not always handled correctly and may cause
-undefined behavior.  While we plan to fix this, we hope that it does
-not arise in practice.
-
-The BList makes inefficient use of memory for very small lists
-compared to the built-in list.  The BList always allocate enough space
-for 128 elements.
-
 Feedback
 --------
 
 We're eager to hear about your experiences with the BList.  Please
 send all feedback and bug reports to daniel@stutzbachenterprises.com.
+Bug reports and feature requests may be reported on our bug tracker
+at: http://github.com/DanielStutzbach/blist/issues
+
+How we test
+-----------
+
+In addition to the tests include in the source distribution, we
+perform the following to additional rigor to our testing process:
+
+    1. We use a "fuzzer": a program that randomly generates list
+       operations, performs them using both the BList and the built-in
+       list, and compares the results.
+
+    2. We use a modified Python interpreter where we have replaced the
+       array-based built-in list with the BList.  Then, we run all of
+       the regular Python unit tests.
