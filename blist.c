@@ -5670,12 +5670,14 @@ py_blist_index(PyBList *self, PyObject *args)
                 start += self->n;
                 if (start < 0)
                         start = 0;
-        }
+        } else if (start > self->n)
+	  start = self->n;
         if (stop < 0) {
                 stop += self->n;
                 if (stop < 0)
                         stop = 0;
-        }
+        } else if (stop > self->n)
+	  stop = self->n;
 
         i = start;
         ITER2(self, item, start, stop, {
