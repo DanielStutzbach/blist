@@ -2453,6 +2453,17 @@ static PyObject *iter_next(iter_t *iter)
         p = iter->leaf;
         if (p == NULL)
                 return NULL;
+
+	if (!p->leaf) {
+		/* If p is the root, it may have been a leaf when we began
+		 * iterating, but turned into a non-leaf during iteration.
+		 * Modifying the list during iteration results in undefined
+		 * behavior, so just throw in the towel.
+		 */
+		
+		return NULL;			
+	}
+
         if (iter->i < p->num_children)
                 return p->children[iter->i++];
 
@@ -2574,7 +2585,7 @@ static PyObject *blistiter_next(PyObject *oit)
         p = it->iter.leaf;
         if (p == NULL)
                 return NULL;
-        if (it->iter.i < p->num_children) {
+        if (p->leaf && it->iter.i < p->num_children) {
                 obj = p->children[it->iter.i++];
                 Py_INCREF(obj);
                 return obj;
@@ -2603,13 +2614,17 @@ blistiter_len(blistiterobject *it)
         for (depth = iter->depth-2; depth >= 0; depth--) {
                 point_t point = iter->stack[depth];
                 int j;
-                assert(!point.lst->leaf);
+                if (point.lst->leaf) continue;
                 assert(point.i > 0);
                 for (j = point.i; j < point.lst->num_children; j++) {
                         PyBList *child = (PyBList *) point.lst->children[j];
                         total += child->n;
                 }
         }
+	if (iter->depth > 1 && iter->stack[0].lst->leaf) {
+		int extra = iter->stack[0].lst->n - iter->stack[0].i;
+		if (extra > 0) total += extra;
+	}
         return PyInt_FromLong(total); 
 }
 
@@ -2697,6 +2712,16 @@ iter_prev(iter_t *iter)
         if (p == NULL)
                 return NULL;
 
+	if (!p->leaf) {
+		/* If p is the root, it may have been a leaf when we began
+		 * iterating, but turned into a non-leaf during iteration.
+		 * Modifying the list during iteration results in undefined
+		 * behavior, so just throw in the towel.
+		 */
+		
+		return NULL;			
+	}
+
         if (iter->i >= p->num_children && iter->i >= 0)
                 iter->i = p->num_children - 1;
 
@@ -2775,7 +2800,7 @@ static PyObject *blistiter_prev(PyObject *oit)
         if (it->iter.i >= p->num_children && it->iter.i >= 0)
                 it->iter.i = p->num_children - 1;
 
-        if (it->iter.i >= 0) {
+        if (p->leaf && it->iter.i >= 0) {
                 obj = p->children[it->iter.i--];
                 Py_INCREF(obj);
                 return obj;
@@ -2801,12 +2826,16 @@ blistriter_len(blistiterobject *it)
         for (depth = iter->depth-2; depth >= 0; depth--) {
                 point_t point = iter->stack[depth];
                 int j;
-                assert(!point.lst->leaf);
+                if (point.lst->leaf) continue;
                 for (j = 0; j <= point.i; j++) {
                         PyBList *child = (PyBList *) point.lst->children[j];
                         total += child->n;
                 }
         }
+	if (iter->depth > 1 && iter->stack[0].lst->leaf) {
+		int extra = iter->stack[0].i + 1;
+		if (extra > 0) total += extra;
+	}
         return PyInt_FromLong(total); 
 }
 
