@@ -7,3 +7,5 @@ blist.pyd
 blist.so
 distribute-*.tar.gz
 .backup
+*.so
+core
