@@ -298,9 +298,9 @@ Root Node Extensions
 
 The data structure for BList root nodes contains additional fields to
 speed up certain operations.  Specifically, the root node contains an
-index of the trees leaf nodes, to speed up __getitem__ and __setitem__
-operations (making them O(1) worst-case amortized time rather than
-O(log n)).
+index of the tree's leaf nodes, to speed up __getitem__ and
+__setitem__ operations (making them O(1) worst-case amortized time
+rather than O(log n)).
 
 The index is broken into INDEX_FACTOR elements, where INDEX_FACTOR <=
 HALF.  
