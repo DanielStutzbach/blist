@@ -1,13 +1,12 @@
 #!/usr/bin/python2.5
 
-import sys
-sys.path.append('/home/agthorr/Python-2.5/build/lib.linux-i686-2.5')
-
-
 from blist import blist
 import random, sys
 
-random.seed(3)
+if len(sys.argv) > 0:
+    random.seed(int(sys.argv[1]))
+else:
+    random.seed(3)
 
 type1 = list
 type2 = blist
@@ -22,17 +21,17 @@ methods = {
     '__delitem__': 1,
     '__delslice__': 2,
     '__eq__': 1,
-    '__ge__': 1,
+    #'__ge__': 1,
     '__getitem__': 1,
     '__getslice__': 2,
-    '__gt__': 1,
+    #'__gt__': 1,
     '__hash__': 0,
     '__iadd__': 1,
     '__imul__': 1,
     '__iter__': 1,
-    '__le__': 1,
+    #'__le__': 1,
     '__len__': 0,
-    '__lt__': 1,
+    #'__lt__': 1,
     '__mul__': 1,
     '__ne__': 1,
     '__repr__': 0,
