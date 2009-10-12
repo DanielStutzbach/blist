@@ -227,13 +227,13 @@ balance_leafs(PyBList *restrict leaf1, PyBList *restrict leaf2)
 #define ITER2(lst, item, start, stop, block) {\
         iter_t _it; int _use_iter; \
         if (lst->leaf) { \
-                int _i; _use_iter = 0; \
+                Py_ssize_t _i; _use_iter = 0; \
                 for (_i = (start); _i < lst->num_children && _i < (stop); _i++) { \
                         item = lst->children[_i]; \
                         block; \
                 } \
         } else { \
-                int _remaining = (stop) - (start);\
+                Py_ssize_t _remaining = (stop) - (start);\
                 PyBList *_p; _use_iter = 1;\
                 iter_init2(&_it, (lst), (start)); \
                 _p = _it.leaf; \
@@ -255,7 +255,7 @@ balance_leafs(PyBList *restrict leaf1, PyBList *restrict leaf2)
 #define ITER(lst, item, block) {\
         if ((lst)->leaf) { \
                 iter_t _it; \
-                int _i; const int _use_iter = 0;\
+                Py_ssize_t _i; const int _use_iter = 0;\
                 for (_i = 0; _i < (lst)->num_children; _i++) { \
                         item = (lst)->children[_i]; \
                         block; \
@@ -289,8 +289,8 @@ PyTypeObject PyRootBList_Type;
 PyTypeObject PyBListIter_Type;
 PyTypeObject PyBListReverseIter_Type;
 static void ext_init(PyBListRoot *root);
-static void ext_mark(PyBList *broot, int offset, int value);
-static void ext_mark_set_dirty(PyBList *broot, int i, int j);
+static void ext_mark(PyBList *broot, Py_ssize_t offset, int value);
+static void ext_mark_set_dirty(PyBList *broot, Py_ssize_t i, Py_ssize_t j);
 static void ext_mark_set_dirty_all(PyBList *broot);
 #define CLEAN (-1) /* also hard-coded in listobject.h */
 #define DIRTY (-2)
@@ -1149,9 +1149,9 @@ static void ext_dealloc(PyBListRoot *root)
 
 /* Find or create a new free node in "dirty" and return an index to it.
  * amortized O(1) */
-static int ext_alloc(PyBListRoot *root)
+static Py_ssize_t ext_alloc(PyBListRoot *root)
 {
-        int i, parent;
+        Py_ssize_t i, parent;
 
         if (root->free_root < 0) {
                 int newl;
@@ -1159,7 +1159,7 @@ static int ext_alloc(PyBListRoot *root)
 
                 if (!root->dirty) {
                         newl = 32;
-                        root->dirty = PyMem_New(int, newl);
+                        root->dirty = PyMem_New(Py_ssize_t, newl);
                         root->dirty_root = DIRTY;
                         if (!root->dirty) return -1;
                 } else {
@@ -1168,7 +1168,7 @@ static int ext_alloc(PyBListRoot *root)
                         assert(root->dirty_length > 0);
                         newl = root->dirty_length*2;
                         tmp = root->dirty;
-                        PyMem_Resize(tmp, int, newl);
+                        PyMem_Resize(tmp, Py_ssize_t, newl);
                         if (!tmp) {
                                 PyMem_Free(root->dirty);
                                 root->dirty = NULL;
@@ -1235,7 +1235,7 @@ static int ext_alloc(PyBListRoot *root)
 /* Add each node in the tree rooted at loc to the free tree */
 /* Amortized O(1), since each node to be freed corresponds with
  * an earlier lookup.  Unamortized worst-case O(n)*/
-static void ext_free(PyBListRoot *root, int loc)
+static void ext_free(PyBListRoot *root, Py_ssize_t loc)
 {
         assert(loc >= 0);
         assert(loc+1 < root->dirty_length);
@@ -1252,9 +1252,10 @@ static void ext_free(PyBListRoot *root, int loc)
 }
 
 BLIST_LOCAL(void)
-ext_mark_r(PyBListRoot *root, int offset, int i, int bit, int value)
+ext_mark_r(PyBListRoot *root, Py_ssize_t offset, Py_ssize_t i, 
+	   int bit, int value)
 {
-        int j, next;
+        Py_ssize_t j, next;
 
         if (!(offset & bit)) {
                 /* Take left fork */
@@ -1285,8 +1286,8 @@ ext_mark_r(PyBListRoot *root, int offset, int i, int bit, int value)
         }
 
         if (j < 0) {
-                int nvalue = j;
-                int tmp;
+                Py_ssize_t nvalue = j;
+                Py_ssize_t tmp;
                 tmp = ext_alloc(root);
                 if (tmp < 0) {
                         ext_dealloc(root);
@@ -1316,7 +1317,7 @@ ext_mark_r(PyBListRoot *root, int offset, int i, int bit, int value)
 /* If "value" is CLEAN, mark the list clean at exactly "offset".
  * If "value" is DIRTY, mark the list dirty for all >= "offset".
  */
-static void ext_mark(PyBList *broot, int offset, int value)
+static void ext_mark(PyBList *broot, Py_ssize_t offset, int value)
 {
         int bit;
 
@@ -1342,7 +1343,7 @@ static void ext_mark(PyBList *broot, int offset, int value)
         if (root->dirty_root == value) return;
 
         if (root->dirty_root < 0) {
-                int nvalue = root->dirty_root;
+                Py_ssize_t nvalue = root->dirty_root;
                 root->dirty_root = ext_alloc(root);
                 if (root->dirty_root < 0) {
                         ext_dealloc(root);
@@ -1365,7 +1366,7 @@ static void ext_mark(PyBList *broot, int offset, int value)
 }
 
 /* Mark a section of the list dirty for set operations */
-static void ext_mark_set_dirty(PyBList *broot, int i, int j)
+static void ext_mark_set_dirty(PyBList *broot, Py_ssize_t i, Py_ssize_t j)
 {
         /* XXX We could set only the values in the setclean_list, but
          * that takes O(n) time.  Marking the nodes dirty for reading
@@ -1384,7 +1385,7 @@ static void ext_mark_set_dirty_all(PyBList *broot)
 #if 0
 /* These functions are unused, but useful for debugging.  Do not remove. */
 
-static void ext_print_r(PyBListRoot *root, int i)
+static void ext_print_r(PyBListRoot *root, Py_ssize_t i)
 {
         printf("(");
         if (root->dirty[i] < 0)
@@ -1414,7 +1415,8 @@ static void ext_print(PyBListRoot *root)
  * the bit tested to determine the right or left child of "i".
  * Returns the offset corresponding with the DIRTY node
  */
-static int ext_find_dirty(PyBListRoot *root, int offset, int bit, int i)
+static Py_ssize_t
+ext_find_dirty(PyBListRoot *root, Py_ssize_t offset, int bit, Py_ssize_t i)
 {
         assert(root->dirty);
         assert(i >= 0);
@@ -1432,13 +1434,15 @@ static int ext_find_dirty(PyBListRoot *root, int offset, int bit, int i)
 }
 
 /* Determine if "offset" is DIRTY, returning a Boolean value.  Sets
- * "dirty_offset to an arbitrary DIRTY node located along the way,
+ * "dirty_offset" to an arbitrary DIRTY node located along the way,
  * even if the requested offset is CLEAN.  "dirty_offset" will be set
  * to -1 if there are no DIRTY nodes.  Worst-case O(log n)
  */
-static int ext_is_dirty(PyBListRoot *root, int offset, int *dirty_offset)
+static int
+ ext_is_dirty(PyBListRoot *root, Py_ssize_t offset, Py_ssize_t *dirty_offset)
 {
-        int i, parent, bit;
+	Py_ssize_t i, parent;
+	int bit;
 
         if (root->dirty == NULL || root->dirty_root < 0) {
                 *dirty_offset = -1;
@@ -1478,9 +1482,10 @@ static int ext_is_dirty(PyBListRoot *root, int offset, int *dirty_offset)
 
 /* The length of the BList may have changed.  Adjust the lengths of
  * the extension data structures as needed */
-static int ext_grow_index(PyBListRoot *root)
+static int 
+ext_grow_index(PyBListRoot *root)
 {
-        int oldl = root->index_length;
+        Py_ssize_t oldl = root->index_length;
         if (!root->index_length) {
                 if (root->index_list) PyMem_Free(root->index_list);
                 if (root->offset_list) PyMem_Free(root->offset_list);
@@ -1497,7 +1502,7 @@ static int ext_grow_index(PyBListRoot *root)
                         root->index_length = oldl;
                         return -1;
                 }
-                root->offset_list = PyMem_New(int, root->index_length);
+                root->offset_list = PyMem_New(Py_ssize_t, root->index_length);
                 if (!root->offset_list) goto fail;
                 root->setclean_list
                         = PyMem_New(unsigned,SETCLEAN_LEN(root->index_length));
@@ -1514,7 +1519,7 @@ static int ext_grow_index(PyBListRoot *root)
                 root->index_list = tmp;
 
                 tmp = root->offset_list;
-                PyMem_Resize(tmp, int, root->index_length);
+                PyMem_Resize(tmp, Py_ssize_t, root->index_length);
                 if (!tmp) goto fail;
                 root->offset_list = tmp;
 
@@ -1531,7 +1536,7 @@ static int ext_grow_index(PyBListRoot *root)
 #define SET_OK_ALL 2
 
 BLIST_LOCAL(void)
-ext_index_all_r(PyBListRoot *root, PyBList *self, int i, int set_ok)
+ext_index_all_r(PyBListRoot *root, PyBList *self, Py_ssize_t i, int set_ok)
 {
         int j;
         if (self != (PyBList *)root) {
@@ -1542,7 +1547,7 @@ ext_index_all_r(PyBListRoot *root, PyBList *self, int i, int set_ok)
         if (((PyBList*)self->children[0])->leaf) {
                 for (j = 0; j < self->num_children; j++) {
                         PyBList *child = (PyBList *) self->children[j];
-                        int ioffset = i / INDEX_FACTOR;
+                        Py_ssize_t ioffset = i / INDEX_FACTOR;
                         if (ioffset * INDEX_FACTOR < i) ioffset++;
                         do {
                                 assert(ioffset < root->index_length);
@@ -1575,7 +1580,7 @@ ext_index_all_r(PyBListRoot *root, PyBList *self, int i, int set_ok)
  */
 void _ext_index_all(PyBListRoot *root, int set_ok_all)
 {
-        int ioffset_max = root->n / INDEX_FACTOR + 1;
+        Py_ssize_t ioffset_max = root->n / INDEX_FACTOR + 1;
         int set_ok;
 
         if (root->index_length < ioffset_max)
@@ -1602,9 +1607,9 @@ void _ext_index_all(PyBListRoot *root, int set_ok_all)
 /* We found a particular node at a certain offset.  Add it to the
  * index and mark it clean. */
 BLIST_LOCAL(void)
-ext_mark_clean(PyBListRoot *root, int offset, PyBList *p, int setclean)
+ext_mark_clean(PyBListRoot *root, Py_ssize_t offset, PyBList *p, int setclean)
 {
-        int ioffset = offset / INDEX_FACTOR;
+        Py_ssize_t ioffset = offset / INDEX_FACTOR;
 
         assert(offset < root->n);
 
@@ -1640,7 +1645,8 @@ static PyObject *ext_make_clean(PyBListRoot *root, Py_ssize_t i)
         Py_ssize_t so_far;
         Py_ssize_t offset = 0;
         PyBList *p = (PyBList *)root;
-        int j = i, k;
+        Py_ssize_t j = i;
+	int k;
         int setclean = 1;
         do {
                 blist_locate(p, j, (PyObject **) &p, &k, &so_far);
@@ -2850,9 +2856,9 @@ PyTypeObject PyBListReverseIter_Type = {
 
 typedef struct Forest
 {
-        int num_leafs;
-        int num_trees;
-        int max_trees;
+        Py_ssize_t num_leafs;
+        Py_ssize_t num_trees;
+        Py_ssize_t max_trees;
         PyBList **list;
 } Forest;
 
@@ -2929,7 +2935,7 @@ forest_new(void)
 }
 
 BLIST_LOCAL(void)
-forest_grow(Forest *forest, int new_max)
+forest_grow(Forest *forest, Py_ssize_t new_max)
 {
         if (forest->max_trees > new_max) return;
         /* XXX Check return value */
@@ -3029,7 +3035,7 @@ forest_append_safe(Forest *forest, PyBList *leaf)
 BLIST_LOCAL(void)
 forest_uninit(Forest *forest)
 {
-        int i;
+        Py_ssize_t i;
         for (i = 0; i < forest->num_trees; i++)
                 decref_later((PyObject *) forest->list[i]);
         if (num_free_forests < MAX_FREE_FORESTS && forest->max_trees == LIMIT){
@@ -3042,7 +3048,7 @@ forest_uninit(Forest *forest)
 BLIST_LOCAL(void)
 forest_uninit_now(Forest *forest)
 {
-        int i;
+        Py_ssize_t i;
         for (i = 0; i < forest->num_trees; i++)
                 Py_DECREF((PyObject *) forest->list[i]);
         if (num_free_forests < MAX_FREE_FORESTS && forest->max_trees == LIMIT){
@@ -3395,7 +3401,7 @@ ext_make_clean_set(PyBListRoot *root, Py_ssize_t i, PyObject *v)
 PyObject *
 blist_ass_item_return_slow(PyBListRoot *root, Py_ssize_t i, PyObject *v)
 {
-        int dirty_offset, ioffset;
+        Py_ssize_t dirty_offset, ioffset;
         PyObject *rv;
         assert(i >= 0);
         assert(i < root->n);
@@ -4345,7 +4351,7 @@ do_fast_merge(PyBList **restrict out, PyBList **in1, PyBList **in2,
 
 BLIST_LOCAL(int)
 try_fast_merge(PyBList **restrict out, PyBList **in1, PyBList **in2,
-               int n1, int n2,
+               Py_ssize_t n1, Py_ssize_t n2,
                const compare_t *compare, int *err)
 {
         int c;
@@ -4383,13 +4389,15 @@ try_fast_merge(PyBList **restrict out, PyBList **in1, PyBList **in2,
 /* Merge two sorted forests.  Each forest must contain on leafs.  The
  * forests will be deleted at the end. */
 BLIST_LOCAL(int)
-sub_merge(PyBList **restrict out, PyBList **in1, PyBList **in2, int n1, int n2,
+sub_merge(PyBList **restrict out, PyBList **in1, PyBList **in2, 
+	  Py_ssize_t n1, Py_ssize_t n2,
           const compare_t *compare, int *err)
 {
-        int c, i, j;
+        int c;
+	Py_ssize_t i, j;
         PyBList *restrict leaf1, *restrict leaf2, *restrict output;
         int leaf1_i = 0, leaf2_i = 0;
-        int nout = 0;
+        Py_ssize_t nout = 0;
 
         if (try_fast_merge(out, in1, in2, n1, n2, compare, err))
                 return n1 + n2;
@@ -4494,11 +4502,11 @@ sub_merge(PyBList **restrict out, PyBList **in1, PyBList **in2, int n1, int n2,
         return nout;
 }
 
-BLIST_LOCAL(int)
+BLIST_LOCAL(Py_ssize_t)
 sub_sort(PyBList **restrict scratch, PyBList **in, const compare_t *compare,
-         int n, int *err)
+         Py_ssize_t n, int *err)
 {
-        int half, n1, n2;
+        Py_ssize_t half, n1, n2;
 
         if (!n) return 0;
         if (n == 1) {
@@ -4516,13 +4524,14 @@ sub_sort(PyBList **restrict scratch, PyBList **in, const compare_t *compare,
         return n;
 }
 
-BLIST_LOCAL(int)
+BLIST_LOCAL(Py_ssize_t)
 sort(PyBList *self, const compare_t *compare) 
 {
         Forest builder, forest_tmp;
         PyBList *other, *leaf;
         PyBList **leafs, **scratch;
-        int err=0, i, leafs_n = 0;
+        int err=0;
+	Py_ssize_t i, leafs_n = 0;
 
         leafs = PyMem_New(PyBList *, self->n / HALF + 1);
         if (!leafs)
@@ -4825,7 +4834,7 @@ py_blist_ass_slice(PyObject *oself, Py_ssize_t ilow, Py_ssize_t ihigh,
         /* Special case small lists */
         if (self->leaf && other->leaf && (self->n + net <= LIMIT))
         {
-                int i;
+                Py_ssize_t i;
 
                 for (i = ilow; i < ihigh; i++)
                         decref_later(self->children[i]);
@@ -5172,7 +5181,7 @@ py_blist_get_slice(PyObject *oself, Py_ssize_t ilow, Py_ssize_t ihigh)
 PyObject *_PyBList_GetItemFast3(PyBListRoot *root, Py_ssize_t i)
 {
         PyObject *rv;
-        int dirty_offset = -1;
+        Py_ssize_t dirty_offset = -1;
 
         invariants(root, VALID_PARENT);
         assert(!root->leaf);
@@ -5183,7 +5192,7 @@ PyObject *_PyBList_GetItemFast3(PyBListRoot *root, Py_ssize_t i)
         if (ext_is_dirty(root, i, &dirty_offset)){
                 rv = ext_make_clean(root, i);
         } else {
-                int ioffset = i / INDEX_FACTOR;
+                Py_ssize_t ioffset = i / INDEX_FACTOR;
                 Py_ssize_t offset = root->offset_list[ioffset];
                 PyBList *p = root->index_list[ioffset];
                 assert(i >= offset);
@@ -5872,8 +5881,8 @@ py_blist_root_sizeof(PyBListRoot *root)
         Py_ssize_t res;
         res = sizeof(PyBListRoot)
                 + LIMIT * sizeof(PyObject *)
-                + root->index_length * (sizeof (PyBList *) + sizeof(int))
-                + root->dirty_length * sizeof(int)
+                + root->index_length * (sizeof (PyBList *) +sizeof(Py_ssize_t))
+                + root->dirty_length * sizeof(Py_ssize_t)
                 + (root->index_length ?
                    SETCLEAN_LEN(root->index_length) * sizeof(unsigned): 0);
         return PyLong_FromSsize_t(res);

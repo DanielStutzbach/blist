@@ -75,16 +75,16 @@ typedef struct PyBListRoot {
         PyObject **children;       /* Immediate children */
 
         PyBList **index_list;
-        int *offset_list;
+        Py_ssize_t *offset_list;
         unsigned *setclean_list;    /* contains index_length _bits_ */
-        int index_length;
-        int *dirty;
-        int dirty_length;
-        int dirty_root;
-        int free_root;
+        Py_ssize_t index_length;
+        Py_ssize_t *dirty;
+        Py_ssize_t dirty_length;
+        Py_ssize_t dirty_root;
+        Py_ssize_t free_root;
 
 #ifdef Py_DEBUG
-        int last_n;                 /* For debug */
+        Py_ssize_t last_n;                 /* For debug */
 #endif
 } PyBListRoot;
 
@@ -150,7 +150,7 @@ PyObject *ext_make_clean_set(PyBListRoot *root, Py_ssize_t i, PyObject *v);
 BLIST_LOCAL_INLINE(PyObject *)
 _PyBList_GET_ITEM_FAST2(PyBListRoot *root, Py_ssize_t i)
 {
-        int ioffset;
+        Py_ssize_t ioffset;
         Py_ssize_t offset;
         PyBList *p;
         
@@ -194,7 +194,7 @@ blist_ass_item_return2(PyBListRoot *root, Py_ssize_t i, PyObject *v)
         PyObject *rv;
         Py_ssize_t offset;
         PyBList *p;
-        int ioffset = i / INDEX_FACTOR;
+        Py_ssize_t ioffset = i / INDEX_FACTOR;
 
         assert(i >= 0);
         assert(i < root->n);
