@@ -37,9 +37,14 @@ extern "C" {
 /* fastest possible local call under MSVC */
 #define BLIST_LOCAL(type) static type __fastcall
 #define BLIST_LOCAL_INLINE(type) static __inline type __fastcall
-#elif defined(__GNUC__) && defined(__i386__)
+#elif defined(__GNUC__) 
+#if defined(__i386__)
 #define BLIST_LOCAL(type) static type __attribute__((fastcall))
 #define BLIST_LOCAL_INLINE(type) static inline __attribute__((fastcall)) type
+#else
+#define BLIST_LOCAL(type) static type
+#define BLIST_LOCAL_INLINE(type) static inline type
+#endif
 #else
 #define BLIST_LOCAL(type) static type
 #define BLIST_LOCAL_INLINE(type) static type
