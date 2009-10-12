@@ -25,7 +25,9 @@ returned item's reference count.
 extern "C" {
 #endif
 
-#undef BLIST_IN_PYTHON  /* Define if building BList into Python */
+#if 0
+#define BLIST_IN_PYTHON  /* Define if building BList into Python */
+#endif
         
 /* pyport.h includes similar defines, but they're broken and never use
  * "inline" except on Windows :-( */
