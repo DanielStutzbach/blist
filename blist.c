@@ -548,10 +548,14 @@ static void debug_setup(debug_t *debug)
                 assert(debug->options & VALID_USER);
         }
 
+#if 0
+        /* Comment this test out since users can get references via
+         * the gc module */
         if (debug->options & VALID_RW) {
                 assert(Py_REFCNT(debug->self) == 1
                        || PyRootBList_Check(debug->self));
         }
+#endif
 
         if (debug->options & VALID_USER) {
                 debug->options |= VALID_ROOT;
@@ -3226,8 +3230,10 @@ blist_init_from_seq(PyBList *self, PyObject *b)
                                                   PyList_GET_SIZE(l)));
         }
 #endif
-
+	
+	DANGER_BEGIN;
         it = PyObject_GetIter(b);
+	DANGER_END;
         if (it == NULL)
                 return _int(-1);
         iternext = *Py_TYPE(it)->tp_iternext;
@@ -3419,7 +3425,16 @@ blist_ass_item_return_slow(PyBListRoot *root, Py_ssize_t i, PyObject *v)
                 assert(p->leaf);
                 if (i < offset + p->n) {
                 good:
-                        assert(Py_REFCNT(p) == 1);
+                        /* If we're here, Py_REFCNT(p) == 1, most likely.
+			 * However, we can't assert() it since there are two
+			 * exceptions:
+			 * 1) The user may have acquired a ref via gc, or
+			 * 2) an iterator may have a reference
+			 *
+			 * If it's an iterator, we can go ahead and make the
+			 * change anyway since we're not changing the length
+			 * of the list.
+			 */
                         rv = p->children[i - offset];
                         p->children[i - offset] = v;
                         if (dirty_offset >= 0)

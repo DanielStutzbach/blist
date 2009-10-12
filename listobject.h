@@ -211,7 +211,8 @@ blist_ass_item_return2(PyBListRoot *root, Py_ssize_t i, PyObject *v)
         assert(p->leaf);
         if (i < offset + p->n) {
         good:
-                assert(Py_REFCNT(p) == 1);
+	  /* Py_REFCNT(p) == 1, generally, but see comment in
+	   * blist_ass_item_return_slow for caveats */
                 rv = p->children[i - offset];
                 p->children[i - offset] = v;
         } else if (!GET_BIT(root->setclean_list, ioffset+1)) {
