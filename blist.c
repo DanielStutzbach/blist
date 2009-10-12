@@ -597,7 +597,7 @@ static void debug_return(debug_t *debug)
          * the gc module */
         if (debug->options & VALID_RW) {
                 assert(Py_REFCNT(debug->self) == 1
-                       || PyList_Check(debug->self));
+                       || PyRootBList_Check(debug->self));
         }
 #endif
 
