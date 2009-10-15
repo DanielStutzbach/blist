@@ -12,3 +12,6 @@ core
 dat/
 fig/
 gnuplot/
+.backup
+*~
+*.bak
