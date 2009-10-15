@@ -1,4 +1,5 @@
 #!/usr/bin/python
+from __future__ import print_function
 
 """
 Copyright 2007 Stutzbach Enterprises, LLC (daniel@stutzbachenterprises.com)
@@ -36,19 +37,19 @@ import sys
 import os
 
 import unittest
-import blist, pickle, cPickle
+import blist, pickle
 #BList = list
 from test import test_support, list_tests
 
 limit = blist._limit
-n = 512/8 * limit
+n = 512//8 * limit
 blist = blist.blist
 
 class BListTest(list_tests.CommonTest):
     type2test = blist
 
     def test_delmul(self):
-        x = self.type2test(range(10000))
+        x = self.type2test(list(range(10000)))
         for i in range(100):
             del x[len(x)//4:3*len(x)//4]
             x *= 2
@@ -75,7 +76,7 @@ class BListTest(list_tests.CommonTest):
             self.assertEqual(tuple(lst), t[:i+1])
 
     def test_delstuff(self):
-        lst = self.type2test(range(n))
+        lst = self.type2test(list(range(n)))
         t = tuple(range(n))
         x = lst[4:258]
         self.assertEqual(tuple(x), tuple(t[4:258]))
@@ -89,14 +90,14 @@ class BListTest(list_tests.CommonTest):
         self.assertEqual(tuple(lst), tuple(t[0:200] + t[201:]))
 
     def test_del1(self):
-        lst2 = self.type2test(range(limit+1))
+        lst2 = self.type2test(list(range(limit+1)))
         self.assertEqual(tuple(lst2), tuple(range(limit+1)))
         del lst2[1]
         del lst2[-1]
         self.assertEqual(tuple(lst2), (0,) + tuple(range(2,limit)))
         
     def test_insert_and_del(self):
-        lst = self.type2test(range(n))
+        lst = self.type2test(list(range(n)))
         t = tuple(range(n))
         lst.insert(200, 0)
         self.assertEqual(tuple(lst), (t[0:200] + (0,) + t[200:]))
@@ -104,11 +105,11 @@ class BListTest(list_tests.CommonTest):
         self.assertEqual(tuple(lst), tuple(range(200)))
 
     def test_mul3(self):
-        lst = self.type2test(range(3))
-        self.assertEqual(tuple(lst*3), tuple(range(3)*3))
+        lst = self.type2test(list(range(3)))
+        self.assertEqual(tuple(lst*3), tuple(list(range(3))*3))
 
     def test_mul(self):
-        x = self.type2test(range(limit**2))
+        x = self.type2test(list(range(limit**2)))
         for i in range(10):
             self.assertEqual(len(x*i), i*limit**2)
 
@@ -119,14 +120,14 @@ class BListTest(list_tests.CommonTest):
 
     def test_bigmul1(self):
         x = self.type2test([0])
-        for i in range(290) + [1000, 10000, 100000, 1000000, 10000000, 2**29]:
+        for i in list(range(290)) + [1000, 10000, 100000, 1000000, 10000000, 2**29]:
             self.assertEqual(len(x*i), i)
 
     def test_badinit(self):
         self.assertRaises(TypeError, self.type2test, 0, 0, 0)
 
     def test_copyself(self):
-        x = self.type2test(range(n))
+        x = self.type2test(list(range(n)))
         x[:] = x
 
     def test_nohash(self):
@@ -135,11 +136,11 @@ class BListTest(list_tests.CommonTest):
         self.assertRaises(TypeError, d.__setitem__, x, 5)
 
     def test_collapseboth(self):
-        x = self.type2test(range(512))
+        x = self.type2test(list(range(512)))
         del x[193:318]
 
     def test_collapseright(self):
-        x = self.type2test(range(512))
+        x = self.type2test(list(range(512)))
         del x[248:318]
 
     def test_badrepr(self):
@@ -152,15 +153,15 @@ class BListTest(list_tests.CommonTest):
 
         x = self.type2test([BadRepr()])
         self.assertRaises(BadExc, repr, x)
-        x = self.type2test(range(n))
+        x = self.type2test(list(range(n)))
         x.append(BadRepr())
         self.assertRaises(BadExc, repr, x)
 
     def test_slice0(self):
-        x = self.type2test(range(n))
+        x = self.type2test(list(range(n)))
         x[slice(5,3,1)] = []
         self.assertEqual(x, list(range(n)))
-        x = self.type2test(range(n))
+        x = self.type2test(list(range(n)))
         self.assertRaises(ValueError, x.__setitem__, slice(5,3,1), [5,3,2])
         del x[slice(5,3,1)]
         self.assertEqual(x, list(range(n)))
@@ -170,7 +171,7 @@ class BListTest(list_tests.CommonTest):
         self.assertRaises(TypeError, x.__setitem__, 's', 5)
 
     def test_comparelist(self):
-        x = self.type2test(range(n))
+        x = self.type2test(list(range(n)))
         y = list(range(n-1))
         self.assert_(not (x == y))
         self.assert_(x != y)
@@ -188,8 +189,8 @@ class BListTest(list_tests.CommonTest):
         self.assert_(x != y)
 
     def test_compareblist(self):
-        x = self.type2test(range(n))
-        y = self.type2test(range(n-1))
+        x = self.type2test(list(range(n)))
+        y = self.type2test(list(range(n-1)))
         self.assert_(not (x == y))
         self.assert_(x != y)
         self.assert_(not (x < y))
@@ -202,25 +203,25 @@ class BListTest(list_tests.CommonTest):
         self.assert_(x != y)
 
     def test_comparetuple(self):
-        x = self.type2test(range(n))
+        x = self.type2test(list(range(n)))
         y = tuple(range(n))
         self.assert_(x != y)
 
     def test_indexempty(self):
-        x = self.type2test(range(10))
+        x = self.type2test(list(range(10)))
         self.assertRaises(ValueError, x.index, 'spam')
 
     def test_indexargs(self):
-        x = self.type2test(range(10))
+        x = self.type2test(list(range(10)))
         self.assertEqual(x.index(5,1,-1), 5)
         self.assertRaises(ValueError, x.index, 5, -1, -9)
         self.assertRaises(ValueError, x.index, 8, 1, 4)
         self.assertRaises(ValueError, x.index, 0, 1, 4)
 
     def test_reversebig(self):
-        x = self.type2test(range(n))
+        x = self.type2test(list(range(n)))
         x.reverse()
-        self.assertEqual(x, range(n-1,-1,-1))
+        self.assertEqual(x, list(range(n-1,-1,-1)))
 
     def test_badconcat(self):
         x = self.type2test()
@@ -228,7 +229,7 @@ class BListTest(list_tests.CommonTest):
         self.assertRaises(TypeError, x.__add__, y)
 
     def test_bad_assign(self):
-        x = self.type2test(range(n))
+        x = self.type2test(list(range(n)))
         self.assertRaises(TypeError, x.__setitem__, slice(1,10,2), 5)
 
     def test_sort_evil(self):
@@ -236,11 +237,11 @@ class BListTest(list_tests.CommonTest):
             count = 0
             def __init__(self, x):
                 self.x = x
-            def __cmp__(self, other):
+            def __lt__(self, other):
                 EvilCompare.count += 1
                 if EvilCompare.count > limit * 5:
                     raise ValueError
-                return cmp(self.x, other.x)
+                return self.x < other.x
 
         x = self.type2test(EvilCompare(x) for x in range(n))
         from random import shuffle
@@ -248,19 +249,19 @@ class BListTest(list_tests.CommonTest):
         self.assertRaises(ValueError, x.sort)
         x = [a.x for a in x]
         x.sort()
-        self.assertEquals(x, range(n))
+        self.assertEquals(x, list(range(n)))
 
     def test_big_extend(self):
         x = self.type2test([1])
-        x.extend(xrange(n))
-        self.assertEqual(tuple(x), (1,) + tuple(xrange(n)))
+        x.extend(range(n))
+        self.assertEqual(tuple(x), (1,) + tuple(range(n)))
 
     def test_big_getslice(self):
         x = self.type2test([0]) * 65536
         self.assertEqual(len(x[256:512]), 256)
 
     def test_modify_original(self):
-        x = self.type2test(range(1024))
+        x = self.type2test(list(range(1024)))
         y = x[:]
         x[5] = 'z'
         self.assertEqual(tuple(y), tuple(range(1024)))
@@ -269,7 +270,7 @@ class BListTest(list_tests.CommonTest):
         self.assertEqual(tuple(x[6:]), tuple(range(6, 1024)))
 
     def test_modify_copy(self):
-        x = self.type2test(range(1024))
+        x = self.type2test(list(range(1024)))
         y = x[:]
         y[5] = 'z'
         self.assertEqual(tuple(x), tuple(range(1024)))
@@ -278,11 +279,11 @@ class BListTest(list_tests.CommonTest):
         self.assertEqual(tuple(y[6:]), tuple(range(6, 1024)))
 
     def test_bigsort(self):
-        x = self.type2test(range(100000))
+        x = self.type2test(list(range(100000)))
         x.sort()
 
     def test_sort_twice(self):
-        y = blist(range(limit+1))
+        y = blist(list(range(limit+1)))
         for i in range(2):
             x = blist(y)
             x.sort()
@@ -303,9 +304,9 @@ class BListTest(list_tests.CommonTest):
 
     def pickle_tests(self, pickler):
         self.pickle_test(pickler, blist())
-        self.pickle_test(pickler, blist(range(limit)))
-        self.pickle_test(pickler, blist(range(limit+1)))
-        self.pickle_test(pickler, blist(range(n)))
+        self.pickle_test(pickler, blist(list(range(limit))))
+        self.pickle_test(pickler, blist(list(range(limit+1))))
+        self.pickle_test(pickler, blist(list(range(n))))
 
         x = blist([0])
         x *= n
@@ -318,9 +319,6 @@ class BListTest(list_tests.CommonTest):
     def test_pickle(self):
         self.pickle_tests(pickle)
 
-    def test_cPickle(self):
-        self.pickle_tests(cPickle)
-
     def test_types(self):
         type(blist())
         type(iter(blist()))
@@ -328,7 +326,10 @@ class BListTest(list_tests.CommonTest):
 
     def test_iterlen_empty(self):
         it = iter(blist())
-        self.assertRaises(StopIteration, it.next)
+        if hasattr(it, '__next__'):
+            self.assertRaises(StopIteration, it.__next__)
+        else:
+            self.assertRaises(StopIteration, it.next)
         self.assertEqual(it.__length_hint__(), 0)
 
 def test_suite():

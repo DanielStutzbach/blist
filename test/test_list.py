@@ -1,4 +1,5 @@
-import unittest
+from __future__ import print_function
+from . import unittest
 from test import test_support, list_tests
 
 class ListTest(list_tests.CommonTest):
@@ -26,12 +27,12 @@ def test_main(verbose=None):
     if verbose:
         import gc
         counts = [None] * 5
-        for i in xrange(len(counts)):
+        for i in range(len(counts)):
             test_support.run_unittest(ListTest)
             gc.set_debug(gc.DEBUG_STATS)
             gc.collect()
             #counts[i] = sys.gettotalrefcount()
-        print counts
+        print(counts)
 
 
 if __name__ == "__main__":
