@@ -61,7 +61,7 @@
 #endif
 
 #ifndef BLIST_IN_PYTHON
-#include "listobject.h"
+#include "blist.h"
 #endif
 
 #define BLIST_PYAPI(type) static type
@@ -292,7 +292,7 @@ static void ext_init(PyBListRoot *root);
 static void ext_mark(PyBList *broot, Py_ssize_t offset, int value);
 static void ext_mark_set_dirty(PyBList *broot, Py_ssize_t i, Py_ssize_t j);
 static void ext_mark_set_dirty_all(PyBList *broot);
-#define CLEAN (-1) /* also hard-coded in listobject.h */
+#define CLEAN (-1) /* also hard-coded in blist.h */
 #define DIRTY (-2)
 
 static PyObject *_indexerr = NULL;
