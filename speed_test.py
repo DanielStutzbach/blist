@@ -1,35 +1,14 @@
-#!/usr/bin/python2.5
+#!/usr/bin/python
+from __future__ import print_function
 
 import os, sys, subprocess
 from math import *
-
-# Set these to match the options used to compile Python.  Otherwise,
-# you won't get a fair comparison with Python's built-in list type
-#CFLAGS = '-g -O3 -DNDEBUG=1 -DLIMIT=%d -fno-strict-aliasing -I/usr/local/include/python2.5 -Winline'# --param inline-unit-growth=2000 --param max-inline-insns-single=2000 --param max-inline-insns-auto=2000' # --param inline-unit-growth=2000'
-#CFLAGS='-pg -O3 -DLIMIT=%d -fno-strict-aliasing -DNDEBUG=1 -I/usr/local/include/python2.5'
-CFLAGS='-c -fno-strict-aliasing -DNDEBUG -g -O3 -Wall -Wstrict-prototypes -I/usr/include/python2.5 --std=gnu99'
-CC = 'gcc'
-PYTHON='/usr/bin/python2.5'
-LD = CC
-LDFLAGS='-g -shared -L/usr/lib/python2.5/config -Wl,--enable-auto-image-base'
-LOADLIBES='-lpython2.5'
-#PYTHON='/home/agthorr/mypython-2.5/python'
-
-# List of BList node sizes to try
-#limits = (8, 64, 128, 512, 2048)
-#limits = (8, 128)
-limits = (128, )
 
 # The tests to run are near the bottom
 
 MIN_REPS = 3
 MIN_TIME = 0.1
 MAX_TIME = 1.0
-
-if 'cygwin' in os.uname()[0].lower():
-    extension = 'dll'
-else:
-    extension = 'so'
 
 def makedir(x):
     try:
@@ -50,43 +29,29 @@ makedir('.cache')
 makedir('dat')
 makedir('gnuplot')
 
-make_cache = set()
+limits = (128,)
 current_limit = None
 def make(limit):
     global current_limit
     current_limit = limit
-    if limit == 'list': return
-    if limit in make_cache:
-        os.system('cp .cache/blist.%s-%d blist.%s' % (extension, limit, extension))
-        return
-    if os.system('make clean > /dev/null 2> /dev/null'):
-        raise 'Make failure'
-    rm('blist.%s' % extension)
-    rm('blist.o')
-    if os.system('%s %s -DLIMIT=%d -c blist.c -o blist.o' % (CC, CFLAGS, limit)):
-        raise 'Make failure'
-    if os.system('%s %s -o blist.%s blist.o %s' % (LD, LDFLAGS, extension, LOADLIBES)):
-        raise 'Make failure'
-    #if os.system('CC="%s" python3.0 setup.py build --build-platlib .' % (CC % limit)):
-    #    raise 'Make failure'
-    #if os.system('make CFLAGS="%s"' % (CFLAGS % limit)):
-    #    raise 'Make failure'
-    os.system('cp blist.%s .cache/blist.%s-%d' % (extension, extension, limit))
-    make_cache.add(limit)
 
 setup = 'from blist import blist'
 
-ns = (range(1,10) + range(10, 100, 10) + range(100, 1000, 100)
-      + range(1000, 10000, 1000)
-      + range(10000, 100001, 10000))
+ns = []
+for i in range(50+1):
+    ns.append(int(floor(10**(i*0.1))))
+ns = list(sorted(set(ns)))
 
 def smart_timeit(stmt, setup, hint):
     n = hint
     while 1:
         v = timeit(stmt, setup, n)
-        if v*n > MIN_TIME:
+        if v[0]*n > MIN_TIME:
             return v, n
         n <<= 1
+
+import timeit
+timeit_path = timeit.__file__
 
 timeit_cache = {}
 def timeit(stmt, setup, rep):
@@ -95,49 +60,54 @@ def timeit(stmt, setup, rep):
     if key in timeit_cache:
         return timeit_cache[key]
     try:
-        p = subprocess.Popen([PYTHON, '/usr/lib/python2.5/timeit.py',
-                              '-r', '5', '-n', str(rep), '-s', setup, '--', stmt],
+        n = 9
+        args =[sys.executable, timeit_path,
+               '-r', str(n), '-v', '-n', str(rep), '-s', setup, '--', stmt]
+        p = subprocess.Popen(args, 
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         so, se = p.communicate()
         try:
-            parts = so.split()
-            v = float(parts[-4])
-            units = parts[-3]
-            if units == 'usec':
-                v *= 10.0**-6
-            elif units == 'msec':
-                v *= 10.0**-3
-            elif units == 'sec':
-                pass
-            else:
-                raise 'Unknown units'
+            lines = so.split(b'\n')
+            raw = lines[0]
+            number = int(lines[1].split()[0])
+            times = [float(x) / number for x in raw.split()[2:]]
+            times.sort()
+            # median, lower quartile, upper quartile
+            v = (times[n//2+1], times[n//4+1], times[(3*n)//4+1])
             timeit_cache[key] = v
             return v
         except:
-            print so
-            print se
+            print(so)
+            print(se)
             raise
     except:
-        print stmt
-        print setup
+        print(stmt)
+        print(setup)
         raise
 
 values = {}
 def get_timing1(limit, label, setup_n, template, typename, use_rep_map):
     f = open('dat/%s-%s.dat' % (str(limit), label), 'w')
-    print >>f, '#', label
-    print >>f, '#', template.replace('\n', '\\n')
-    for i in reversed(range(len(ns))):
+    print('#', label, file=f)
+    print('#', template.replace('\n', '\\n'), file=f)
+    if setup_n is None:
+        setup_n = "x = TypeToTest(range(n))"
+    else:
+        setup_n = setup_n
+    ftimeit = open('fig/%s.txt' % label, 'w')
+    print('<div class="blist_inner">Setup: <code>%s</code><br/>' % setup_n.replace('\n', '<br/>'), 
+          file=ftimeit)
+    print('Timed: <code>%s</code></div>' % template.replace('\n', '<br/>'), 
+          file=ftimeit)
+    ftimeit.close()
+ 
+    for i in reversed(list(range(len(ns)))):
         n = ns[i]
-        key = (limit, label, setup_n, n, template, current_limit)
-        print n,
+        key = (limit, label, setup_n, n, template, typename)
+        print(n, end=' ')
         sys.stdout.flush()
         setup2 = '\nTypeToTest = %s\nn = %d\n' % (typename, n)
-        if setup_n is None:
-            setup3 = "x = TypeToTest(range(n))"
-        else:
-            setup3 = setup_n
-        setup3 = setup + '\n' + setup2 + setup3
+        setup3 = setup + '\n' + setup2 + setup_n
         stmt = template
         if not use_rep_map:
             if i < len(ns)-1:
@@ -150,14 +120,17 @@ def get_timing1(limit, label, setup_n, template, typename, use_rep_map):
             if k * values[key] > MAX_TIME:
                 k = max(MIN_REPS, int(ceil(MAX_TIME / values[key])))
             v = timeit(stmt, setup3, k)
-        values[key] = v
-        v *= 1000
-        if limit == 'list':
-            list_values[n] = v
-            print >>f, n, v
-        else:
-            print >>f, n, v, v/list_values[n]
-    print
+        values[key] = v[0]
+        v = [x*1000 for x in v]
+        if typename == 'list':
+            list_values[n] = v[0]
+        print(n, file=f, end=' ')
+        for x in v:
+            print(x, file=f, end=' ')
+        for x in v:
+            print(x/list_values[n], file=f, end=' ')
+        print(file=f)
+    print()
     f.close()
 
 def get_timing(label, setup_n, template):
@@ -169,7 +142,7 @@ def get_timing(label, setup_n, template):
     make('list')
     get_timing1('list', label, setup_n, template, 'list', False)
     for limit in limits:
-        print 'Timing', label, limit, ':',
+        print('Timing', label, limit, ':', end=' ')
         sys.stdout.flush()
         make(limit)
         get_timing1(limit, label, setup_n, template, 'blist', False)
@@ -177,7 +150,7 @@ def get_timing(label, setup_n, template):
     make('list')
     get_timing1('list', label, setup_n, template, 'list', True)
     for limit in limits:
-        print 'Timing', label, limit, ':',
+        print('Timing', label, limit, ':', end=' ')
         sys.stdout.flush()
         make(limit)
         get_timing1(limit, label, setup_n, template, 'blist', True)
@@ -193,10 +166,11 @@ def html(label):
         setup = 'x = TypeToTest(range(n))'
     else:
         setup = timing_d[label][0]
-    print >>f, '''
+    print('''
 <html>
 <head>
 <title>BList vs Python list timing results: %s</title>
+<script src="svg.js"></script>
 </head>
 <body>
 <div style="width: 100%%; background-color: #ccc;">
@@ -208,8 +182,10 @@ def html(label):
 
 </div>
     
-<img src="absolute/%s.png"/>
-<img src="relative/%s.png"/>
+<object data="absolute/%s.svg" width="480" height="360"
+	type="image/svg+xml"></object>
+<object data="relative/%s.svg" width="480" height="360"
+	type="image/svg+xml"></object>
 <p>
 Setup:
 <pre>
@@ -221,7 +197,7 @@ Timed:
 </pre>
 </body>
 </html>
-    ''' % (label, label, label, setup, timing_d[label][1])
+    ''' % (label, label, label, setup, timing_d[label][1]), file=f)
     f.close()
 
 def plot(label, relative):
@@ -232,73 +208,43 @@ def plot(label, relative):
         d = 'fig/relative/'
     else:
         d = 'fig/absolute/'
-    os.putenv('GDFONTPATH', '/usr/local/share/fonts/truetype/msttcorefonts/')
-    print >>f, """
-set output "%s/%s.png"
+    print("""
+set output "%s/%s.svg"
 set xlabel "List Size (n)"
 set title "%s"
-set bmargin 3
-
-#set pointsize 2
-#set view 60, 30, 1.0, 1.0
-#set lmargin 12
-#set rmargin 10
-#set tmargin 1
-#set bmargin 5
-#set ylabel 0
-#set mxtics default
-#set mytics default
-#set tics out
-#set nox2tics
-#set noy2tics
-#set border 3
-#set xtics nomirror autofreq
-#set ytics nomirror autofreq
-#set key height 1
-#set nokey
-#unset xdata
-#unset y2label
-#unset x2label
-
-#set format "%%g"
-set terminal png transparent interlace medium font "./times.ttf" size 640,480 nocrop enhanced xffffff x000000 xff0000 x0000ff xc030c0 xff0000 x000000
+set terminal svg size 480,360 dynamic enhanced
 set size noratio 1,1
-
-set key below height 1
-""" % (d, label, safe_label)
+set key top left
+set bars 0.2
+set pointsize 0.5
+set xtics ("1" 1, "10" 10, "100" 100, "1k" 1000, "10k" 10000, "100k" 100000, "1M" 1000000)
+""" % (d, label, safe_label), file=f)
 
     if relative:
-        print >>f, 'set title "Normalized Execution Times, log-linear scale"'
-        print >>f, 'set logscale x'
-        print >>f, 'set yrange [0:*]'
-        print >>f, 'set yrange [0:200]'
-        print >>f, 'set ylabel "Execution Time (%)"'
-        print >>f, 'set key bottom left'
-        print >>f, 'set mytics 5'
-        print >>f, 'plot 100 title "list()" ',
+        print('set title "Normalized Execution Times, log-linear scale"', file=f)
+        print('set logscale x', file=f)
+        print('set yrange [0:*]', file=f)
+        print('set yrange [0:200]', file=f)
+        print('set ylabel "Execution Time (%)"', file=f)
+        k = 3
+        m = 100.0
     else:
-        print >>f, 'set title "Raw Execution Times, log-log scale"'
-        print >>f, 'set key top left'
-        print >>f, 'set mytics 10'
-        print >>f, 'set logscale xy'
-        print >>f, 'set yrange [0.00001:10]'
-        print >>f, 'set ylabel "Execution Time"'
-        print >>f, 'set ytics ("100 ns" 0.0001, "1 us" 0.001, "10 us" 0.01, "100 us" 0.1, "1 ms" 1.0, "10 ms" 10.0, "100 ms" 100.0)'
-        print >>f, 'plot "dat/list-%s.dat" title "list()" with linespoints ' \
-              % (label),
+        print('set title "Raw Execution Times, log-log scale"', file=f)
+        print('set logscale xy', file=f)
+        print('set yrange [0.00001:10]', file=f)
+        print('set ylabel "Execution Time"', file=f)
+        print('set ytics ("1 ns" 0.000001, "10 ns" 0.00001, "100 ns" 0.0001, "1 us" 0.001, "10 us" 0.01, "100 us" 0.1, "1 ms" 1.0, "10 ms" 10.0, "100 ms" 100.0)', file=f)
+        k = 0
+        m = 1.0
+
+    print (('plot "dat/list-%s.dat" using 1:(%f*$%d):(%f*$%d):(%f*$%d) title "list()" with yerr pt 1, \\' % (label, m, k+2, m, k+3, m, k+4)), file=f)
     for limit in limits:
-        print >>f, ', \\'
-        if relative:
-            print >>f, '     "dat/%d-%s.dat" using 1:(100.0*$3) title "blist(), limit=%d" with linespoints' \
-                  % (limit, label, limit),
-        else:
-            print >>f, '     "dat/%d-%s.dat" using 1:($2) title "blist(), limit=%d" with linespoints' \
-                  % (limit, label, limit),
-    print >>f
+        print (('    "dat/%d-%s.dat" using 1:(%f*$%d):(%f*$%d):(%f*$%d) title "blist()" with yerr pt 1 '% (limit, label, m, k+2, m, k+3, m, k+4)), file=f)
+    print(file=f)
     f.flush()
     f.close()
     if os.system('gnuplot "%s"' % fname):
-        raise 'Gnuplot failure'
+        raise RuntimeError('Gnuplot failure')
 
 timing_d = {}
 def add_timing(name, auto, stmt):
@@ -325,7 +271,7 @@ def run_all():
 #   - n
 
 add_timing('eq list', 'x = TypeToTest(range(n))\ny=range(n)', 'x==y')
-add_timing('eq recursive', 'x = TypeToTest()\nx.append(x)\ny = TypeToTest()\ny.append(y)', 'try:\n  x==y\nexcept RuntimeError:\n  pass')
+#add_timing('eq recursive', 'x = TypeToTest()\nx.append(x)\ny = TypeToTest()\ny.append(y)', 'try:\n  x==y\nexcept RuntimeError:\n  pass')
 
 add_timing('FIFO', None, """\
 x.insert(0, 0)
@@ -339,15 +285,15 @@ x.pop(-1)
 
 add_timing('add', None, "x + x")
 add_timing('contains', None, "-1 in x")
-add_timing('getitem1', None, "x[0]")
-add_timing('getitem2', None, "x.__getitem__(0)")
+#add_timing('getitem1', None, "x[0]")
+#add_timing('getitem2', None, "x.__getitem__(0)")
 add_timing('getitem3', 'x = TypeToTest(range(n))\nm = n//2', "x[m]")
 add_timing('getslice', None, "x[1:-1]")
 add_timing('forloop', None, "for i in x:\n    pass")
 add_timing('len', None, "len(x)")
 add_timing('eq', None, "x == x")
 add_timing('mul10', None, "x * 10")
-add_timing('setitem1', None, 'x[0] = 1')
+#add_timing('setitem1', None, 'x[0] = 1')
 add_timing('setitem3', 'x = TypeToTest(range(n))\nm = n//2', 'x[m] = 1')
 add_timing('count', None, 'x.count(5)')
 add_timing('reverse', None, 'x.reverse()')
@@ -355,7 +301,7 @@ add_timing('delslice', None, 'del x[len(x)//4:3*len(x)//4]\nx *= 2')
 add_timing('setslice', None, 'x[:] = x')
 
 add_timing('sort random', 'import random\nx = [random.random() for i in range(n)]', 'y = TypeToTest(x)\ny.sort()')
-add_timing('sort sorted', None, 'y = TypeToTest(x)\ny.sort()')
+add_timing('sort sorted', None, 'x.sort()')
 add_timing('sort reversed', 'x = list(range(n))\nx.reverse()', 'y = TypeToTest(x)\ny.sort()')
 
 add_timing('sort random tuples', 'import random\nx = [(random.random(), random.random()) for i in range(n)]', 'y = TypeToTest(x)\ny.sort()')
@@ -368,7 +314,7 @@ add_timing('init from same type', None, 'y = TypeToTest(x)')
 add_timing('shuffle', 'from random import shuffle\nx = TypeToTest(range(n))', 'shuffle(x)')
 
 if __name__ == '__main__':
-    make(limits[0])
+    make(128)
     if len(sys.argv) == 1:
         run_all()
     else:

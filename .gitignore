@@ -9,3 +9,6 @@ distribute-*.tar.gz
 .backup
 *.so
 core
+dat/
+fig/
+gnuplot/
