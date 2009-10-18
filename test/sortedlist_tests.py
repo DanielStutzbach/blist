@@ -18,13 +18,20 @@ class SortedListTest(seq_tests.CommonTest):
     test_contains_fake = not_applicable
 
     def test_mismatched_types(self):
+        class NotComparable:
+            def __lt__(self, other):
+                raise TypeError
+            def __cmp__(self, other):
+                raise TypeError
+        NotComparable = NotComparable()
+
         sl = self.type2test()
         sl.add(5)
-        self.assertRaises(TypeError, sl.add, 'f')
-        self.assertFalse('f' in sl)
-        self.assertEqual(sl.count('f'), 0)
-        sl.discard('f')
-        self.assertRaises(ValueError, sl.index, 'f')
+        self.assertRaises(TypeError, sl.add, NotComparable)
+        self.assertFalse(NotComparable in sl)
+        self.assertEqual(sl.count(NotComparable), 0)
+        sl.discard(NotComparable)
+        self.assertRaises(ValueError, sl.index, NotComparable)
 
     def test_order(self):
         stuff = [random.random() for i in range(1000)]
