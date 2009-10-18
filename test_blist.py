@@ -39,7 +39,7 @@ import os
 import unittest
 import blist, pickle, _blist
 #BList = list
-from test import test_support, list_tests
+from test import test_support, list_tests, sortedlist_tests
 
 limit = _blist._limit
 n = 512//8 * limit
@@ -331,13 +331,20 @@ class BListTest(list_tests.CommonTest):
             self.assertRaises(StopIteration, it.next)
         self.assertEqual(it.__length_hint__(), 0)
 
+tests = [BListTest, 
+         sortedlist_tests.SortedListTest,
+         sortedlist_tests.WeakSortedListTest,
+         sortedlist_tests.SortedSetTest,
+         sortedlist_tests.WeakSortedSetTest]
+
 def test_suite():
     suite = unittest.TestSuite()
-    suite.addTest(unittest.makeSuite(BListTest))
+    for test in tests:
+        suite.addTest(unittest.TestLoader().loadTestsFromTestCase(test))
     return suite                                            
 
 def test_main(verbose=None):
-    test_support.run_unittest(BListTest)
+    test_support.run_unittest(*tests)
 
 if __name__ == "__main__":
     test_main(verbose=True)
