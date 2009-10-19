@@ -16,3 +16,5 @@ gnuplot/
 *~
 *.bak
 distribute-*.egg
+*.pyd
+dist/
