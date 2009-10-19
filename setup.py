@@ -1,12 +1,9 @@
-#!/usr/bin/env
+#!/usr/bin/env python
 
 import sys
-if sys.version_info[0] <= 2:
-    import ez_setup
-    ez_setup.use_setuptools()
-    from setuptools import setup, Extension
-else:
-    from distutils.core import setup, Extension
+import distribute_setup
+distribute_setup.use_setuptools()
+from setuptools import setup, Extension
 
 setup(name='blist',
       version='1.0.2',
