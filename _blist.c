@@ -1342,7 +1342,9 @@ static void ext_mark(PyBList *broot, Py_ssize_t offset, int value)
                 return;
         }
 
+#ifdef Py_DEBUG
         assert(root->last_n == root->n);
+#endif
 
         if (root->dirty_root == value) return;
 
@@ -1457,7 +1459,9 @@ static int
         offset /= INDEX_FACTOR;
         bit = highest_set_bit((root->n-1) / INDEX_FACTOR);
 
+#ifdef Py_DEBUG
         assert(root->last_n == root->n);
+#endif
 
         do {
                 assert(bit);
