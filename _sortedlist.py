@@ -4,21 +4,68 @@ import collections, bisect, weakref
 __all__ = ['sortedlist', 'weaksortedlist', 'sortedset', 'weaksortedset']
 
 class sortedlist(collections.MutableSet, collections.Sequence):
-    def _bisect(self, v):
-        i = bisect.bisect_left(self, v)
-        if i < len(self._blist):
-            return i, self._blist[i]
-        return i, None
+    def __init__(self, seq=(), key=None):
+        self._key = key
+        self._blist = blist()
+        for v in seq:
+            self.add(v)
 
-    def __init__(self, seq=()):
-        self._blist = blist(seq)
-        self._blist.sort()
+    def _u2key(self, value):
+        "Convert a user-object to the key"
+        if self._key is None:
+            return value
+        else:
+            return self._key(value)
+
+    def _u2i(self, value):
+        "Convert a user-object to the internal representation"
+        if self._key is None:
+            return value
+        else:
+            return (self._key(value), value)
+
+    def _i2u(self, value):
+        "Convert an internal object to a user-object"
+        if self._key is None:
+            return value
+        else:
+            return value[1]
+
+    def _i2key(self, value):
+        "Convert an internal object to the key"
+        if self._key is None:
+            return value
+        else:
+            return value[0]
+
+    def _bisect(self, v):
+        """Locate the point in the list where v would be inserted.
+
+        Returns an (i, value) tuple:
+          - i is the position where v would be inserted
+          - value is the current user-object at position i
+
+        This is the key function to override in subclasses.  They must
+        accept a user-object v and return a user-object value.
+        """
+
+        key = self._u2key(v)
+        lo = 0
+        hi = len(self._blist)
+        while lo < hi:
+            mid = (lo+hi)//2
+            v = self._i2key(self._blist[mid])
+            if v < key: lo = mid+1
+            else: hi = mid
+        if lo < len(self._blist):
+            return lo, self._i2u(self._blist[lo])
+        return lo, None
 
     def add(self, value):
         # Will throw a TypeError when trying to add an object that
         # cannot be compared to objects already in the list.
         i, _ = self._bisect(value)
-        self._blist.insert(i, value)
+        self._blist.insert(i, self._u2i(value))
 
     def discard(self, value):
         try:
@@ -27,7 +74,8 @@ class sortedlist(collections.MutableSet, collections.Sequence):
             # Value cannot be compared with values already in the list.
             # Ergo, value isn't in the list.
             return
-        if i < len(self._blist) and v == value:
+        i = self._advance(i, value)
+        if i >= 0:
             del self._blist[i]
 
     def clear(self):
@@ -36,94 +84,119 @@ class sortedlist(collections.MutableSet, collections.Sequence):
     def __contains__(self, value):
         try:
             i, v = self._bisect(value)
-        except TypeError: 
+        except TypeError:
             # Value cannot be compared with values already in the list.
             # Ergo, value isn't in the list.
             return False
-        if i == len(self._blist): return False
-        return v == value
+        i = self._advance(i, value)
+        return i >= 0
 
     def __len__(self):
         return len(self._blist)
 
     def __iter__(self):
-        return iter(self._blist)
+        return (self._i2u(v) for v in self._blist)
 
     def __getitem__(self, index):
         if isinstance(index, slice):
-            return sortedlist(self._blist[index])
-        return self._blist[index]
+            rv = self.__class__()
+            rv._blist = self._blist[index]
+            rv._key = self._key
+            return rv
+        return self._i2u(self._blist[index])
+
+    def _advance(self, i, value):
+        "Do a linear search through all items with the same key"
+        key = self._u2key(value)
+        while i < len(self._blist):
+            if self._i2u(self._blist[i]) == value:
+                return i
+            elif key < self._i2key(self._blist[i]):
+                break
+            i += 1
+        return -1
 
     def __reversed__(self):
-        return reversed(self._blist)
+        return (self._i2u(v) for v in reversed(self._blist))
 
     def index(self, value):
         try:
             i, v = self._bisect(value)
         except TypeError:
             raise ValueError
-        if i == len(self._blist) or v != value:
-            raise ValueError
-        return i
+        i = self._advance(i, value)
+        if i >= 0:
+            return i
+        raise ValueError
 
     def count(self, value):
         try:
             i, _ = self._bisect(value)
         except TypeError:
             return 0
-        start = i
-        while i < len(self._blist) and self._blist[i] == value:
+        key = self._u2key(value)
+        count = 0
+        while True:
+            i = self._advance(i, value)
+            if i == -1:
+                return count
+            count += 1
             i += 1
-        return i - start
 
     def __repr__(self):
         return 'sortedlist' + repr(self._blist)[5:]
 
 class sortedset(sortedlist):
     def add(self, value):
-        i, v = self._bisect(value)
-        if i < len(self._blist) and v == value:
-            return
-        self._blist.insert(i, value)
+        if value in self: return
+        sortedlist.add(self, value)
 
 class weaksortedlist(sortedlist):
     def _bisect(self, value):
-        if isinstance(value, weakref.ref):
-            value = value()
-        if value is None:
-            raise ValueError
+        key = self._u2key(value)
         lo = 0
         hi = len(self._blist)
         while lo < hi:
             mid = (lo+hi)//2
-            n, v = self.__squeeze(mid)
+            n, v = self._squeeze(mid)
             hi -= n
-            if n and hi == len(self._blist): 
+            if n and hi == len(self._blist):
                 continue
-            if v < value: lo = mid+1
+            if self._i2key(self._blist[mid]) < key: lo = mid+1
             else: hi = mid
-        n, v = self.__squeeze(lo)
+        n, v = self._squeeze(lo)
         return lo, v
 
-    def __init__(self, seq=()):
-        self._blist = blist(weakref.ref(value) for value in sorted(seq))
+    def _u2i(self, value):
+        if self._key is None:
+            return weakref.ref(value)
+        else:
+            return (self._key(value), weakref.ref(value))
 
-    def add(self, value):
-        sortedlist.add(self, weakref.ref(value))
+    def _i2u(self, value):
+        if self._key is None:
+            return value()
+        else:
+            return value[1]()
+
+    def _i2key(self, value):
+        if self._key is None:
+            return value()
+        else:
+            return value[0]
 
     def __iter__(self):
         i = 0
         while i < len(self._blist):
-            n, v = self.__squeeze(i)
+            n, v = self._squeeze(i)
             if v is None: break
             yield v
             i += 1
 
-    def __squeeze(self, i):
+    def _squeeze(self, i):
         n = 0
         while i < len(self._blist):
-            r = self._blist[i]
-            v = r()
+            v = self._i2u(self._blist[i])
             if v is None:
                 del self._blist[i]
                 n += 1
@@ -133,11 +206,8 @@ class weaksortedlist(sortedlist):
 
     def __getitem__(self, index):
         if isinstance(index, slice):
-            rv = weaksortedlist()
-            rv._blist = self._blist[index]
-            return rv
-        
-        n, v = self.__squeeze(index)
+            return sortedlist.__getitem__(index)
+        n, v = self._squeeze(index)
         if v is None:
             raise IndexError('list index out of range')
         return v
@@ -145,22 +215,25 @@ class weaksortedlist(sortedlist):
     def __reversed__(self):
         i = len(self._blist)-1
         while i >= 0:
-            n, v = self.__squeeze(i)
+            n, v = self._squeeze(i)
             if not n:
                 yield v
             i -= 1
 
-    def count(self, value):
-        try:
-            i, v = self._bisect(value)
-        except TypeError:
-            return 0
-        start = i
-        while i < len(self._blist) and v == value:
+    def _advance(self, i, value):
+        "Do a linear search through all items with the same key"
+        key = self._u2key(value)
+        while i < len(self._blist):
+            n, v = self._squeeze(i)
+            if v is None:
+                break
+            if v == value:
+                return i
+            elif key < self._i2key(self._blist[i]):
+                break
             i += 1
-            _, v = self.__squeeze(i)
-        return i - start
-    
+        return -1
+
     def __repr__(self):
         store = [r() for r in self._blist]
         store = [r for r in store if r is not None]
@@ -168,7 +241,5 @@ class weaksortedlist(sortedlist):
 
 class weaksortedset(weaksortedlist):
     def add(self, value):
-        i, v = self._bisect(value)
-        if i < len(self._blist) and v == value:
-            return
-        self._blist.insert(i, weakref.ref(value))
+        if value in self: return
+        weaksortedlist.add(self, value)
