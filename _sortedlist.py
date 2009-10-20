@@ -206,7 +206,7 @@ class weaksortedlist(sortedlist):
 
     def __getitem__(self, index):
         if isinstance(index, slice):
-            return sortedlist.__getitem__(index)
+            return sortedlist.__getitem__(self, index)
         n, v = self._squeeze(index)
         if v is None:
             raise IndexError('list index out of range')

@@ -292,5 +292,10 @@ class WeakSortedListTest(unittest.TestCase):
             self.assertEqual(wsl.count(x), 1)
         self.assertEqual(wsl.count(weak_int(-1)), 0)
 
+    def test_getslice(self):
+        with weak_manager() as m:
+            wsl = self.type2test(m.all)
+        self.assertEqual(m.live, list(wsl[:]))
+
 class WeakSortedSetTest(WeakSortedListTest, SortedSetMixin):
     type2test = blist.weaksortedset
