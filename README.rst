@@ -2,7 +2,7 @@ BList: a list-like type with better performance
 ===============================================
 
 The BList is a type that looks, acts, and quacks like a Python list,
-but has better performance for for modifying large lists.  For small
+but has better performance for modifying large lists.  For small
 lists (fewer than 128 elements), BLists and the built-in list have
 very similar performance.
 
