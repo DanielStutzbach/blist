@@ -39,7 +39,8 @@ import os
 import unittest
 import blist, pickle, _blist
 #BList = list
-from test import test_support, list_tests, sortedlist_tests
+from test import test_support, list_tests, sortedlist_tests, btuple_tests
+from test import sorteddict_tests
 
 limit = _blist._limit
 n = 512//8 * limit
@@ -335,7 +336,10 @@ tests = [BListTest,
          sortedlist_tests.SortedListTest,
          sortedlist_tests.WeakSortedListTest,
          sortedlist_tests.SortedSetTest,
-         sortedlist_tests.WeakSortedSetTest]
+         sortedlist_tests.WeakSortedSetTest,
+         btuple_tests.bTupleTest,
+         sorteddict_tests.sorteddict_test
+         ]
 
 def test_suite():
     suite = unittest.TestSuite()

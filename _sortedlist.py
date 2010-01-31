@@ -144,12 +144,17 @@ class sortedlist(collections.MutableSet, collections.Sequence):
             i += 1
 
     def __repr__(self):
-        return 'sortedlist' + repr(self._blist)[5:]
+        return ('sortedlist([%s])'
+                % ', '.join(repr(self._i2u(v)) for v in self._blist))
 
 class sortedset(sortedlist):
     def add(self, value):
         if value in self: return
         sortedlist.add(self, value)
+
+    def __repr__(self):
+        return ('sortedset([%s])'
+                % ', '.join(repr(self._i2u(v)) for v in self._blist))
 
 class weaksortedlist(sortedlist):
     def _bisect(self, value):
@@ -235,7 +240,7 @@ class weaksortedlist(sortedlist):
         return -1
 
     def __repr__(self):
-        store = [r() for r in self._blist]
+        store = [self._i2u(r) for r in self._blist]
         store = [r for r in store if r is not None]
         return 'weakreflist(%s)' % repr(store)
 
@@ -243,3 +248,8 @@ class weaksortedset(weaksortedlist):
     def add(self, value):
         if value in self: return
         weaksortedlist.add(self, value)
+
+    def __repr__(self):
+        store = [self._i2u(r) for r in self._blist]
+        store = [r for r in store if r is not None]
+        return 'weakrefset(%s)' % repr(store)

@@ -1,3 +1,5 @@
+# This file based loosely on Python's list_tests.py.
+
 import unittest
 import sys
 from . import seq_tests

@@ -1,3 +1,5 @@
+# This file taken from Python, licensed under the Python License Agreement
+
 from __future__ import print_function
 """
 Tests common to list and UserList.UserList

@@ -1,3 +1,5 @@
+# This file taken from Python, licensed under the Python License Agreement
+
 from __future__ import print_function
 """Supporting definitions for the Python regression tests."""
 
