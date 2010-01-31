@@ -31,7 +31,7 @@ egg:
 	$(PYTHON) setup.py register
 	CFLAGS='-O3 -fno-strict-aliasing' $(PYTHON) setup.py build -f
 	rm -f dist/*.asc
-	$(PYTHON) setup.py sdist bdist_egg upload -s
+	$(PYTHON) setup.py sdist upload -s
 	rsync -e ssh dist/* webadmin@stutzbachenterprises.com:stutzbachenterprises/html/blist/
 
 bdist_egg:
