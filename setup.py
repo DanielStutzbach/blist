@@ -6,13 +6,13 @@ distribute_setup.use_setuptools()
 from setuptools import setup, Extension
 
 setup(name='blist',
-      version='1.0.2',
+      version='1.1.0',
       description='a list-like type with better asymptotic performance and similar performance on small lists',
       author='Stutzbach Enterprises, LLC',
       author_email='daniel@stutzbachenterprises.com',
       url='http://stutzbachenterprises.com/blist/',
       license = "BSD",
-      keywords = "blist list b+tree btree fast copy-on-write sparse array sortedlist sorted sortedset weak",
+      keywords = "blist list b+tree btree fast copy-on-write sparse array sortedlist sorted sortedset weak weaksortedlist weaksortedset sorteddict btuple",
       ext_modules=[Extension('_blist', ['_blist.c'])],
       provides = ['blist'],
       py_modules=['blist', '_sortedlist', '_sorteddict', '_btuple'],
