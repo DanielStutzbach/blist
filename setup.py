@@ -6,7 +6,7 @@ distribute_setup.use_setuptools()
 from setuptools import setup, Extension
 
 setup(name='blist',
-      version='1.1.0',
+      version='1.1.1',
       description='a list-like type with better asymptotic performance and similar performance on small lists',
       author='Stutzbach Enterprises, LLC',
       author_email='daniel@stutzbachenterprises.com',
