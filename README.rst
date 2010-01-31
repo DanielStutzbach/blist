@@ -62,6 +62,9 @@ The blist package provides other data structures based on the blist:
 - sorteddict
 - btuple
 
+These additional data structures are only available in Python 2.6 or
+higher, as they make use of Abstract Base Classes.
+
 The sortedlist is a list that's always sorted.  It's iterable and
 indexable like a Python list, but to modify a sortedlist the same
 methods you would use on a Python set (add, discard, or remove).
