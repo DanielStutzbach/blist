@@ -8,7 +8,7 @@ class sorteddict(collections.MutableMapping):
         self._map = dict()
         key = None
         if len(args) > 0:
-            if callable(args[0]):
+            if hasattr(args[0], '__call__'):
                 key = args[0]
                 args = args[1:]
             elif len(args) > 1:

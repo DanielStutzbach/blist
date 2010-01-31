@@ -41,14 +41,14 @@ class sorteddict_test(mapping_tests.TestHashMappingProtocol):
 
     def test_sort(self):
         u = self.type2test.fromkeys([1, 0])
-        self.assertEqual(u.keys(), [0, 1])
+        self.assertEqual(list(u.keys()), [0, 1])
 
         u = self.type2test.fromkeys([2,1,0,-1,-2])
         self.assertEqual(u, self.type2test.fromkeys([-2,-1,0,1,2]))
-        self.assertEqual(u.keys(), [-2,-1,0,1,2])
+        self.assertEqual(list(u.keys()), [-2,-1,0,1,2])
         
         a = self.type2test.fromkeys(reversed(list(range(512))))
-        self.assertEqual(a.keys(), list(range(512)))
+        self.assertEqual(list(a.keys()), list(range(512)))
         
         def revcmp(a, b):
             if a == b:
@@ -58,7 +58,7 @@ class sorteddict_test(mapping_tests.TestHashMappingProtocol):
             else: # a > b
                 return -1
         u = self.type2test.fromkeys([2,1,0,-1,-2], key=CmpToKey(revcmp))
-        self.assertEqual(u.keys(), [2,1,0,-1,-2])
+        self.assertEqual(list(u.keys()), [2,1,0,-1,-2])
         
         # The following dumps core in unpatched Python 1.5:
         def myComparison(x,y):
