@@ -1,12 +1,9 @@
-#!/usr/bin/env
+#!/usr/bin/env python
 
 import sys
-if sys.version_info[0] <= 2:
-    import ez_setup
-    ez_setup.use_setuptools()
-    from setuptools import setup, Extension
-else:
-    from distutils.core import setup, Extension
+import distribute_setup
+distribute_setup.use_setuptools()
+from setuptools import setup, Extension
 
 setup(name='blist',
       version='1.0.2',
@@ -15,9 +12,10 @@ setup(name='blist',
       author_email='daniel@stutzbachenterprises.com',
       url='http://stutzbachenterprises.com/blist/',
       license = "BSD",
-      keywords = "blist list b+tree btree fast copy-on-write sparse array",
-      ext_modules=[Extension('blist', ['blist.c'])],
+      keywords = "blist list b+tree btree fast copy-on-write sparse array sortedlist sorted sortedset weak",
+      ext_modules=[Extension('_blist', ['_blist.c'])],
       provides = ['blist'],
+      py_modules=['blist', '_sortedlist', '_sorteddict', '_btuple'],
       test_suite = "test_blist.test_suite",
       zip_safe = False, # zips are broken on cygwin for C extension modules
       classifiers = [
@@ -30,7 +28,6 @@ setup(name='blist',
             'Programming Language :: Python :: 2.6',
             'Programming Language :: Python :: 2.7',
             'Programming Language :: Python :: 3',
-            'Programming Language :: Python :: 3.0',
             'Programming Language :: Python :: 3.1',
             ],
       long_description=open('README.rst').read()

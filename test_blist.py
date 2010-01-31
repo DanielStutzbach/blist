@@ -2,7 +2,7 @@
 from __future__ import print_function
 
 """
-Copyright 2007 Stutzbach Enterprises, LLC (daniel@stutzbachenterprises.com)
+Copyright 2007-2009 Stutzbach Enterprises, LLC (daniel@stutzbachenterprises.com)
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are
@@ -37,16 +37,16 @@ import sys
 import os
 
 import unittest
-import blist, pickle
+import blist, pickle, _blist
 #BList = list
-from test import test_support, list_tests
+from test import test_support, list_tests, sortedlist_tests, btuple_tests
+from test import sorteddict_tests
 
-limit = blist._limit
+limit = _blist._limit
 n = 512//8 * limit
-blist = blist.blist
 
 class BListTest(list_tests.CommonTest):
-    type2test = blist
+    type2test = blist.blist
 
     def test_delmul(self):
         x = self.type2test(list(range(10000)))
@@ -283,14 +283,14 @@ class BListTest(list_tests.CommonTest):
         x.sort()
 
     def test_sort_twice(self):
-        y = blist(list(range(limit+1)))
+        y = blist.blist(list(range(limit+1)))
         for i in range(2):
-            x = blist(y)
+            x = blist.blist(y)
             x.sort()
             self.assertEqual(tuple(x), tuple(range(limit+1)))
 
     def test_LIFO(self):
-        x = blist()
+        x = blist.blist()
         for i in range(1000):
             x.append(i)
         for j in range(1000-1,-1,-1):
@@ -303,15 +303,15 @@ class BListTest(list_tests.CommonTest):
         self.assertEqual(repr(x), repr(z))
 
     def pickle_tests(self, pickler):
-        self.pickle_test(pickler, blist())
-        self.pickle_test(pickler, blist(list(range(limit))))
-        self.pickle_test(pickler, blist(list(range(limit+1))))
-        self.pickle_test(pickler, blist(list(range(n))))
+        self.pickle_test(pickler, blist.blist())
+        self.pickle_test(pickler, blist.blist(list(range(limit))))
+        self.pickle_test(pickler, blist.blist(list(range(limit+1))))
+        self.pickle_test(pickler, blist.blist(list(range(n))))
 
-        x = blist([0])
+        x = blist.blist([0])
         x *= n
         self.pickle_test(pickler, x)
-        y = blist(x)
+        y = blist.blist(x)
         y[5] = 'x'
         self.pickle_test(pickler, x)
         self.pickle_test(pickler, y)
@@ -320,25 +320,35 @@ class BListTest(list_tests.CommonTest):
         self.pickle_tests(pickle)
 
     def test_types(self):
-        type(blist())
-        type(iter(blist()))
-        type(iter(reversed(blist())))
+        type(blist.blist())
+        type(iter(blist.blist()))
+        type(iter(reversed(blist.blist())))
 
     def test_iterlen_empty(self):
-        it = iter(blist())
+        it = iter(blist.blist())
         if hasattr(it, '__next__'):
             self.assertRaises(StopIteration, it.__next__)
         else:
             self.assertRaises(StopIteration, it.next)
         self.assertEqual(it.__length_hint__(), 0)
 
+tests = [BListTest, 
+         sortedlist_tests.SortedListTest,
+         sortedlist_tests.WeakSortedListTest,
+         sortedlist_tests.SortedSetTest,
+         sortedlist_tests.WeakSortedSetTest,
+         btuple_tests.bTupleTest,
+         sorteddict_tests.sorteddict_test
+         ]
+
 def test_suite():
     suite = unittest.TestSuite()
-    suite.addTest(unittest.makeSuite(BListTest))
+    for test in tests:
+        suite.addTest(unittest.TestLoader().loadTestsFromTestCase(test))
     return suite                                            
 
 def test_main(verbose=None):
-    test_support.run_unittest(BListTest)
+    test_support.run_unittest(*tests)
 
 if __name__ == "__main__":
     test_main(verbose=True)

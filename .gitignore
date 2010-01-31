@@ -15,3 +15,6 @@ gnuplot/
 .backup
 *~
 *.bak
+distribute-*.egg
+*.pyd
+dist/
