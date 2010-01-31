@@ -31,7 +31,7 @@ egg:
 	$(PYTHON) setup.py register
 	rm -f dist/*.asc
 	$(PYTHON) setup.py sdist upload -s
-	rsync -e ssh dist/* webadmin@stutzbachenterprises.com:stutzbachenterprises/html/blist/
+	rsync -e ssh dist/* stutzbachenterprises.com:stutzbachenterprises/html/blist/
 
 bdist_egg:
 	CFLAGS='-O3 -fno-strict-aliasing' $(PYTHON) setup.py build -f
@@ -43,7 +43,7 @@ html:
 
 speed:
 	$(PYTHON) speed_test.py 
-	rsync -e ssh -r fig/* webadmin@stutzbachenterprises.com:stutzbachenterprises/html/fig/
+	rsync -e ssh -r fig/* stutzbachenterprises.com:stutzbachenterprises/html/fig/
 
 test: COPT=-DLIMIT=8 -DPy_DEBUG=1 
 test: LOADLIBES=-l$(PYTHON) -L/bin
