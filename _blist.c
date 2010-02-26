@@ -1596,7 +1596,7 @@ void _ext_index_all(PyBListRoot *root, int set_ok_all)
         if (set_ok_all) {
                 set_ok = SET_OK_ALL;
                 memset(root->setclean_list, 255,
-                       SETCLEAN_LEN(root->index_length));
+                       SETCLEAN_LEN(root->index_length) * sizeof(unsigned));
         } else
                 set_ok = SET_OK_YES;
 
