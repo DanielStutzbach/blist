@@ -5617,8 +5617,13 @@ py_blist_reverse(PyBList *self)
 {
         invariants(self, VALID_USER|VALID_RW);
 
-        blist_reverse(self);
-        ext_index_set_all((PyBListRoot *)self);
+        if (self->leaf)
+                reverse_slice(self->children,
+                              &self->children[self->num_children]);
+        else {
+                blist_reverse(self);
+                ext_index_set_all((PyBListRoot *)self);
+        }
 
         Py_RETURN_NONE;
 }
