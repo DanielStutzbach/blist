@@ -3702,7 +3702,6 @@ blist_richcompare_blist(PyBList *v, PyBList *w, int op)
 
 }
 
-/* Swiped from listobject.c */
 /* Reverse a slice of a list in place, from lo up to (exclusive) hi. */
 BLIST_LOCAL_INLINE(void)
 reverse_slice(PyObject **restrict lo, PyObject **restrict hi)
