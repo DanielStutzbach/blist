@@ -1260,7 +1260,7 @@ static void ext_free(PyBListRoot *root, Py_ssize_t loc)
 
 BLIST_LOCAL(void)
 ext_mark_r(PyBListRoot *root, Py_ssize_t offset, Py_ssize_t i, 
-	   int bit, int value)
+           int bit, int value)
 {
         Py_ssize_t j, next;
 
@@ -1448,10 +1448,10 @@ ext_find_dirty(PyBListRoot *root, Py_ssize_t offset, int bit, Py_ssize_t i)
  * to -1 if there are no DIRTY nodes.  Worst-case O(log n)
  */
 static int
- ext_is_dirty(PyBListRoot *root, Py_ssize_t offset, Py_ssize_t *dirty_offset)
+ext_is_dirty(PyBListRoot *root, Py_ssize_t offset, Py_ssize_t *dirty_offset)
 {
-	Py_ssize_t i, parent;
-	int bit;
+        Py_ssize_t i, parent;
+        int bit;
 
         if (root->dirty == NULL || root->dirty_root < 0) {
                 *dirty_offset = -1;
@@ -1719,7 +1719,7 @@ static PyObject *ext_make_clean(PyBListRoot *root, Py_ssize_t i)
         Py_ssize_t offset = 0;
         PyBList *p = (PyBList *)root;
         Py_ssize_t j = i;
-	int k;
+        int k;
         int setclean = 1;
         do {
                 blist_locate(p, j, (PyObject **) &p, &k, &so_far);
@@ -2523,15 +2523,15 @@ static PyObject *iter_next(iter_t *iter)
         if (p == NULL)
                 return NULL;
 
-	if (!p->leaf) {
-		/* If p is the root, it may have been a leaf when we began
-		 * iterating, but turned into a non-leaf during iteration.
-		 * Modifying the list during iteration results in undefined
-		 * behavior, so just throw in the towel.
-		 */
-		
-		return NULL;			
-	}
+        if (!p->leaf) {
+                /* If p is the root, it may have been a leaf when we began
+                 * iterating, but turned into a non-leaf during iteration.
+                 * Modifying the list during iteration results in undefined
+                 * behavior, so just throw in the towel.
+                 */
+
+                return NULL;
+        }
 
         if (iter->i < p->num_children)
                 return p->children[iter->i++];
@@ -2690,10 +2690,10 @@ blistiter_len(blistiterobject *it)
                         total += child->n;
                 }
         }
-	if (iter->depth > 1 && iter->stack[0].lst->leaf) {
-		int extra = iter->stack[0].lst->n - iter->stack[0].i;
-		if (extra > 0) total += extra;
-	}
+        if (iter->depth > 1 && iter->stack[0].lst->leaf) {
+                int extra = iter->stack[0].lst->n - iter->stack[0].i;
+                if (extra > 0) total += extra;
+        }
         return PyInt_FromLong(total); 
 }
 
@@ -2781,15 +2781,15 @@ iter_prev(iter_t *iter)
         if (p == NULL)
                 return NULL;
 
-	if (!p->leaf) {
-		/* If p is the root, it may have been a leaf when we began
-		 * iterating, but turned into a non-leaf during iteration.
-		 * Modifying the list during iteration results in undefined
-		 * behavior, so just throw in the towel.
-		 */
-		
-		return NULL;			
-	}
+        if (!p->leaf) {
+                /* If p is the root, it may have been a leaf when we began
+                 * iterating, but turned into a non-leaf during iteration.
+                 * Modifying the list during iteration results in undefined
+                 * behavior, so just throw in the towel.
+                 */
+
+                return NULL;
+        }
 
         if (iter->i >= p->num_children && iter->i >= 0)
                 iter->i = p->num_children - 1;
@@ -2901,10 +2901,10 @@ blistriter_len(blistiterobject *it)
                         total += child->n;
                 }
         }
-	if (iter->depth > 1 && iter->stack[0].lst->leaf) {
-		int extra = iter->stack[0].i + 1;
-		if (extra > 0) total += extra;
-	}
+        if (iter->depth > 1 && iter->stack[0].lst->leaf) {
+                int extra = iter->stack[0].i + 1;
+                if (extra > 0) total += extra;
+        }
         return PyInt_FromLong(total); 
 }
 
@@ -3328,10 +3328,10 @@ blist_init_from_seq(PyBList *self, PyObject *b)
                                                   PyList_GET_SIZE(l)));
         }
 #endif
-	
-	DANGER_BEGIN;
+
+        DANGER_BEGIN;
         it = PyObject_GetIter(b);
-	DANGER_END;
+        DANGER_END;
         if (it == NULL)
                 return _int(-1);
         iternext = *Py_TYPE(it)->tp_iternext;
@@ -3524,15 +3524,15 @@ blist_ass_item_return_slow(PyBListRoot *root, Py_ssize_t i, PyObject *v)
                 if (i < offset + p->n) {
                 good:
                         /* If we're here, Py_REFCNT(p) == 1, most likely.
-			 * However, we can't assert() it since there are two
-			 * exceptions:
-			 * 1) The user may have acquired a ref via gc, or
-			 * 2) an iterator may have a reference
-			 *
-			 * If it's an iterator, we can go ahead and make the
-			 * change anyway since we're not changing the length
-			 * of the list.
-			 */
+                         * However, we can't assert() it since there are two
+                         * exceptions:
+                         * 1) The user may have acquired a ref via gc, or
+                         * 2) an iterator may have a reference
+                         *
+                         * If it's an iterator, we can go ahead and make the
+                         * change anyway since we're not changing the length
+                         * of the list.
+                         */
                         rv = p->children[i - offset];
                         p->children[i - offset] = v;
                         if (dirty_offset >= 0)
@@ -3767,7 +3767,6 @@ blist_richcompare_blist(PyBList *v, PyBList *w, int op)
 
 }
 
-/* Swiped from listobject.c */
 /* Reverse a slice of a list in place, from lo up to (exclusive) hi. */
 BLIST_LOCAL_INLINE(void)
 reverse_slice(PyObject **restrict lo, PyObject **restrict hi)
@@ -4602,11 +4601,11 @@ try_fast_merge(PyBList **restrict out, PyBList **in1, PyBList **in2,
  * forests will be deleted at the end. */
 BLIST_LOCAL(int)
 sub_merge(PyBList **restrict out, PyBList **in1, PyBList **in2, 
-	  Py_ssize_t n1, Py_ssize_t n2,
+          Py_ssize_t n1, Py_ssize_t n2,
           const compare_t *compare, int *err)
 {
         int c;
-	Py_ssize_t i, j;
+        Py_ssize_t i, j;
         PyBList *restrict leaf1, *restrict leaf2, *restrict output;
         int leaf1_i = 0, leaf2_i = 0;
         Py_ssize_t nout = 0;
@@ -4743,7 +4742,7 @@ sort(PyBList *self, const compare_t *compare)
         PyBList *other, *leaf;
         PyBList **leafs, **scratch;
         int err=0;
-	Py_ssize_t i, leafs_n = 0;
+        Py_ssize_t i, leafs_n = 0;
 
         leafs = PyMem_New(PyBList *, self->n / HALF + 1);
         if (!leafs)
@@ -5784,7 +5783,14 @@ BLIST_PYAPI(PyObject *)
 py_blist_reverse(PyBList *self)
 {
         invariants(self, VALID_USER|VALID_RW);
-        blist_reverse((PyBListRoot*) self);
+
+        if (self->leaf)
+                reverse_slice(self->children,
+                              &self->children[self->num_children]);
+        else {
+                blist_reverse(self);
+        }
+
         Py_RETURN_NONE;
 }
 
@@ -5836,13 +5842,13 @@ py_blist_index(PyBList *self, PyObject *args)
                 if (start < 0)
                         start = 0;
         } else if (start > self->n)
-	  start = self->n;
+		start = self->n;
         if (stop < 0) {
                 stop += self->n;
                 if (stop < 0)
                         stop = 0;
         } else if (stop > self->n)
-	  stop = self->n;
+		stop = self->n;
 
         i = start;
         ITER2(self, item, start, stop, {
