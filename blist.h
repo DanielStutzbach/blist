@@ -165,7 +165,7 @@ _PyBList_GET_ITEM_FAST2(PyBListRoot *root, Py_ssize_t i)
         assert(i >= 0);
         assert(i < root->n);
 
-        if (root->dirty_root != -1 /* "CLEAN" */)
+        if (root->dirty_root >= -1 /* DIRTY */)
                 return _PyBList_GetItemFast3(root, i);
 
         ioffset = i / INDEX_FACTOR;
@@ -207,7 +207,7 @@ blist_ass_item_return2(PyBListRoot *root, Py_ssize_t i, PyObject *v)
         assert(i < root->n);
         assert(!root->leaf);
         
-        if (root->dirty_root != -1 /* CLEAN */
+        if (root->dirty_root >= -1 /* DIRTY */
             || !GET_BIT(root->setclean_list, ioffset))
                 return blist_ass_item_return_slow(root, i, v);
         

@@ -292,8 +292,11 @@ static void ext_init(PyBListRoot *root);
 static void ext_mark(PyBList *broot, Py_ssize_t offset, int value);
 static void ext_mark_set_dirty(PyBList *broot, Py_ssize_t i, Py_ssize_t j);
 static void ext_mark_set_dirty_all(PyBList *broot);
-#define CLEAN (-1) /* also hard-coded in blist.h */
-#define DIRTY (-2)
+
+/* also hard-coded in blist.h */
+#define DIRTY (-1)
+#define CLEAN (-2)
+#define CLEAN_RW (-3) /* Only valid for dirty_root */
 
 static PyObject *_indexerr = NULL;
 void set_index_error(void)
@@ -1544,7 +1547,7 @@ ext_grow_index(PyBListRoot *root)
 #define SET_OK_ALL 2
 
 BLIST_LOCAL(void)
-ext_index_all_r(PyBListRoot *root, PyBList *self, Py_ssize_t i, int set_ok)
+ext_index_r(PyBListRoot *root, PyBList *self, Py_ssize_t i, int set_ok)
 {
         int j;
         if (self != (PyBList *)root) {
@@ -1552,41 +1555,88 @@ ext_index_all_r(PyBListRoot *root, PyBList *self, Py_ssize_t i, int set_ok)
                 set_ok = set_ok && (Py_REFCNT(self) == 1);
         }
 
-        if (((PyBList*)self->children[0])->leaf) {
-                for (j = 0; j < self->num_children; j++) {
-                        PyBList *child = (PyBList *) self->children[j];
-                        Py_ssize_t ioffset = i / INDEX_FACTOR;
-                        if (ioffset * INDEX_FACTOR < i) ioffset++;
-                        do {
-                                assert(ioffset < root->index_length);
-                                root->index_list[ioffset] = child;
-                                root->offset_list[ioffset] = i;
-                                if (set_ok != SET_OK_ALL) {
-                                        if (Py_REFCNT(child) > 1 || !set_ok)
-                                                CLEAR_BIT(root->setclean_list,ioffset);
-                                        else
-                                                SET_BIT(root->setclean_list, ioffset);
-                                }
-                        } while (++ioffset * INDEX_FACTOR < i + child->n);
-                        i += child->n;
-                }
+        if (self->leaf) {
+                Py_ssize_t ioffset = i / INDEX_FACTOR;
+                if (ioffset * INDEX_FACTOR < i) ioffset++;
+                do {
+                        assert(ioffset < root->index_length);
+                        root->index_list[ioffset] = self;
+                        root->offset_list[ioffset] = i;
+                        if (set_ok != SET_OK_ALL) {
+                                if (Py_REFCNT(self) > 1 || !set_ok)
+                                        CLEAR_BIT(root->setclean_list,ioffset);
+                                else
+                                        SET_BIT(root->setclean_list, ioffset);
+                        }
+                } while (++ioffset * INDEX_FACTOR < i + self->n);
+                i += self->n;
         } else {
                 for (j = 0; j < self->num_children; j++) {
                         PyBList *child = (PyBList *) self->children[j];
-                        ext_index_all_r(root, child, i, set_ok);
+                        ext_index_r(root, child, i, set_ok);
                         i += child->n;
                 }
         }
-                        
+}
+
+BLIST_LOCAL(void)
+ext_index_all_dirty_r(PyBListRoot *root, PyBList *self, Py_ssize_t end,
+                      Py_ssize_t child_index, Py_ssize_t child_n, int set_ok)
+{
+        Py_ssize_t i;
+        for (i = child_index; i < self->num_children && child_n < end; i++) {
+                PyBList *child = (PyBList *) self->children[i];
+                ext_index_r(root, child, child_n, set_ok);
+                child_n += child->n;
+        }
+}
+
+BLIST_LOCAL(void)
+ext_index_all_r(PyBListRoot *root,
+                Py_ssize_t dirty_index, Py_ssize_t dirty_offset, Py_ssize_t dirty_length,
+                PyBList *self, Py_ssize_t child_index, Py_ssize_t child_n,
+                int set_ok)
+{
+        if (dirty_index == CLEAN) {
+                return;
+        } else if (dirty_index < 0) {
+                ext_index_all_dirty_r(root, self, dirty_offset + dirty_length,
+                                      child_index, child_n, set_ok);
+                return;
+        }
+
+        if (!self->leaf) {
+                while (child_index < self->num_children) {
+                        PyBList *child = (PyBList *) self->children[child_index];
+                        if (child_n + child->n > dirty_offset)
+                                break;
+                        child_n += child->n;
+                        child_index++;
+                }
+                
+                if (child_index+1 == self->num_children
+                    || (((PyBList *)self->children[child_index])->n + child_n
+                        <= dirty_offset + dirty_length)) {
+                        self = (PyBList *) self->children[child_index];
+                        child_index = 0;
+                }
+        }
+
+        dirty_length /= 2;
+        ext_index_all_r(root, 
+                        root->dirty[dirty_index], dirty_offset, dirty_length,
+                        self, child_index, child_n, set_ok);
+        dirty_offset += dirty_length;
+        ext_index_all_r(root, 
+                        root->dirty[dirty_index+1], dirty_offset, dirty_length,
+                        self, child_index, child_n, set_ok);
 }
 
 /* Make everything clean in O(n) time.  Any operation that alters the
- * list and already takes Omega(n) time should call this.
- *
- * The caller may have just permuted the list, so assume that the
- * entire cache is currently dirty even if not marked as such.
+ * list and already takes Omega(n) time should call one of these functions.
  */
-void _ext_index_all(PyBListRoot *root, int set_ok_all)
+BLIST_LOCAL(void)
+_ext_index_all(PyBListRoot *root, int set_ok_all)
 {
         Py_ssize_t ioffset_max = (root->n-1) / INDEX_FACTOR + 1;
         int set_ok;
@@ -1596,21 +1646,36 @@ void _ext_index_all(PyBListRoot *root, int set_ok_all)
         if (set_ok_all) {
                 set_ok = SET_OK_ALL;
                 memset(root->setclean_list, 255,
-                       SETCLEAN_LEN(root->index_length));
+                       SETCLEAN_LEN(root->index_length) * sizeof(unsigned));
         } else
                 set_ok = SET_OK_YES;
+
+        ext_index_all_r(root, root->dirty_root, 0,
+                        highest_set_bit((root->n-1)) * 2,
+                        (PyBList*)root, 0, 0, set_ok);
 
 #ifdef Py_DEBUG
         root->last_n = root->n;
 #endif
         if (root->dirty_root >= 0)
                 ext_free(root, root->dirty_root);
-        root->dirty_root = CLEAN;
-
-        ext_index_all_r(root, (PyBList*)root, 0, set_ok);
+        root->dirty_root = set_ok_all ? CLEAN_RW : CLEAN;
 }
 #define ext_index_all(root) do { if (!(root)->leaf) _ext_index_all((root), 0); } while (0)
 #define ext_index_set_all(root) do { if (!(root)->leaf) _ext_index_all((root), 1); } while (0)
+
+BLIST_LOCAL(void)
+_ext_reindex_all(PyBListRoot *root, int set_ok_all)
+{
+        if (root->dirty_root >= 0)
+                ext_free(root, root->dirty_root);
+        root->dirty_root = DIRTY;
+
+        _ext_index_all(root, set_ok_all);
+}
+
+#define ext_reindex_all(root) do { if (!(root)->leaf) _ext_reindex_all((root), 0); } while (0)
+#define ext_reindex_set_all(root) do { if (!(root)->leaf) _ext_reindex_all((root), 1); } while (0)
 
 /* We found a particular node at a certain offset.  Add it to the
  * index and mark it clean. */
@@ -1624,7 +1689,7 @@ ext_mark_clean(PyBListRoot *root, Py_ssize_t offset, PyBList *p, int setclean)
         while (ioffset * INDEX_FACTOR < offset)
                 ioffset++;
         for (;ioffset * INDEX_FACTOR < offset + p->n; ioffset++) {
-                ext_mark((PyBList*)root, ioffset * INDEX_FACTOR,CLEAN);
+                ext_mark((PyBList*)root, ioffset * INDEX_FACTOR, CLEAN);
 
                 if (ioffset >= root->index_length) {
                         int err = ext_grow_index(root);
@@ -3226,7 +3291,7 @@ blist_init_from_array(PyBList *self, PyObject **restrict src, Py_ssize_t n)
         final = forest_finish(&forest);
         blist_become_and_consume(self, final);
 
-        ext_index_all((PyBListRoot *) self);
+        ext_reindex_all((PyBListRoot *) self);
         SAFE_DECREF(final);
 
         return _int(0);
@@ -3352,7 +3417,7 @@ blist_init_from_seq(PyBList *self, PyObject *b)
         SAFE_DECREF(final);
 
  done:
-        ext_index_all((PyBListRoot*)self);
+        ext_reindex_all((PyBListRoot*)self);
         decref_later(it);
         return _int(0);
 
@@ -3880,21 +3945,123 @@ blist_repeat(PyBList *self, Py_ssize_t n)
 }
 
 BLIST_LOCAL(void)
-blist_reverse(PyBList *self)
+linearize_rw_r(PyBList *self)
 {
+        int i;
+        
         invariants(self, VALID_PARENT|VALID_RW);
 
-        reverse_slice(self->children,
-                      &self->children[self->num_children]);
-        if (!self->leaf) {
-                int i;
-                for (i = 0; i < self->num_children; i++) {
-                        PyBList *restrict p = blist_PREPARE_WRITE(self, i);
-                        blist_reverse(p);
-                }
+        for (i = 0; i < self->num_children; i++) {
+                PyBList *restrict p = blist_PREPARE_WRITE(self, i);
+                if (!p->leaf)
+                        linearize_rw_r(p);
         }
 
         _void();
+        return;
+}
+
+BLIST_LOCAL(void)
+linearize_rw(PyBListRoot *self)
+{
+        int i;
+
+        if (self->leaf || self->dirty_root == CLEAN_RW)
+                return;
+
+        if (self->dirty_root == CLEAN) {
+                Py_ssize_t n = SETCLEAN_LEN(self->index_length);
+                for (i = 0; i < n; i++)
+                        if (self->setclean_list[i] != (unsigned) -1)
+                                goto slow;
+                memset(self->setclean_list, 255,
+                       SETCLEAN_LEN(self->index_length) * sizeof(unsigned));
+                self->dirty_root = CLEAN_RW;
+                return;
+        }
+
+slow:
+        linearize_rw_r((PyBList *)self);
+        ext_reindex_set_all(self);
+}
+
+BLIST_LOCAL(void)
+blist_reverse(PyBListRoot *self)
+{
+        int idx, ridx;
+        PyBList *left, *right;
+        register PyObject **slice1;
+        register PyObject **slice2;
+        int n1, n2;
+        
+        invariants(self, VALID_ROOT|VALID_RW);
+
+        if (self->leaf) {
+                reverse_slice(self->children,
+                              &self->children[self->num_children]);
+                _void();
+                return;
+        }
+        
+        linearize_rw(self);
+
+        idx = 0;
+        left = self->index_list[idx];
+        if (left == self->index_list[idx+1])
+                idx++;
+        slice1 = &left->children[0];
+        n1 = left->num_children;
+
+        ridx = self->index_length-1;
+        right = self->index_list[ridx];
+        if (right == self->index_list[ridx-1])
+                ridx--;
+        slice2 = &right->children[right->num_children-1];
+        n2 = right->num_children;
+
+        while (idx < ridx) {
+                int n = (n1 < n2) ? n1 : n2;
+                int count = (n+7) / 8;
+                
+                switch (n & 7) {
+                        register PyObject *t;
+                case 0: do { t = *slice1; *slice1++ = *slice2; *slice2-- = t;
+                case 7: t = *slice1; *slice1++ = *slice2; *slice2-- = t;
+                case 6: t = *slice1; *slice1++ = *slice2; *slice2-- = t;
+                case 5: t = *slice1; *slice1++ = *slice2; *slice2-- = t;
+                case 4: t = *slice1; *slice1++ = *slice2; *slice2-- = t;
+                case 3: t = *slice1; *slice1++ = *slice2; *slice2-- = t;
+                case 2: t = *slice1; *slice1++ = *slice2; *slice2-- = t;
+                case 1: t = *slice1; *slice1++ = *slice2; *slice2-- = t;
+                        } while (--count > 0);
+                }
+
+                n1 -= n;
+                if (!n1) {
+                        idx++;
+                        left = self->index_list[idx];
+                        if (left == self->index_list[idx+1])
+                                idx++;
+                        slice1 = &left->children[0];
+                        n1 = left->num_children;
+                }
+                
+                n2 -= n;
+                if (!n2) {
+                        ridx--;
+                        right = self->index_list[ridx];
+                        if (right == self->index_list[ridx-1])
+                                ridx--;
+                        slice2 = &right->children[right->num_children-1];
+                        n2 = right->num_children;
+                }
+        }
+
+        if (left == right && slice1 < slice2)
+                reverse_slice(slice1, slice2 + 1);
+
+        _void();
+        return;
 }
 
 BLIST_LOCAL(int)
@@ -5570,7 +5737,7 @@ py_blist_sort(PyBList *self, PyObject *args, PyObject *kwds)
         /* Reverse sort stability achieved by initially reversing the list,
            applying a stable forward sort, then reversing the final result. */
         if (reverse)
-                blist_reverse((PyBList*)&saved);
+                blist_reverse(&saved);
 
         if (saved.leaf)
                 ret = gallop_sort(saved.children,saved.num_children,pcompare);
@@ -5578,7 +5745,7 @@ py_blist_sort(PyBList *self, PyObject *args, PyObject *kwds)
                 ret = sort((PyBList*)&saved, pcompare);
 
         if (reverse)
-                blist_reverse((PyBList*)&saved);
+                blist_reverse(&saved);
 
         if (ret >= 0)
                 result = Py_None;
@@ -5609,7 +5776,7 @@ py_blist_sort(PyBList *self, PyObject *args, PyObject *kwds)
 
         decref_flush();
 
-        ext_index_set_all((PyBListRoot *) self);
+        ext_reindex_set_all((PyBListRoot *) self);
         return _ob(result);
 }
 
@@ -5617,10 +5784,7 @@ BLIST_PYAPI(PyObject *)
 py_blist_reverse(PyBList *self)
 {
         invariants(self, VALID_USER|VALID_RW);
-
-        blist_reverse(self);
-        ext_index_set_all((PyBListRoot *)self);
-
+        blist_reverse((PyBListRoot*) self);
         Py_RETURN_NONE;
 }
 
@@ -5999,7 +6163,7 @@ py_blist_setstate(PyBList *self, PyObject *state)
         self->num_children = PyList_GET_SIZE(state);
 
         if (PyRootBList_CheckExact(self)) 
-                ext_index_all((PyBListRoot*)self);
+                ext_reindex_all((PyBListRoot*)self);
 
         Py_RETURN_NONE;
 }
