@@ -1503,7 +1503,7 @@ ext_grow_index(PyBListRoot *root)
                 root->offset_list = NULL;
                 root->setclean_list = NULL;
 
-                root->index_length = root->n / INDEX_FACTOR + 1;
+                root->index_length = (root->n-1) / INDEX_FACTOR + 1;
                 root->index_list = PyMem_New(PyBList *, root->index_length);
                 if (!root->index_list) {
                 fail:
@@ -1520,7 +1520,7 @@ ext_grow_index(PyBListRoot *root)
 
                 do {
                         root->index_length *= 2;
-                } while (root->n / INDEX_FACTOR + 1 > root->index_length);
+                } while ((root->n-1) / INDEX_FACTOR + 1 > root->index_length);
                 tmp = root->index_list;
                 PyMem_Resize(tmp, PyBList *, root->index_length);
                 if (!tmp) goto fail;
@@ -1588,7 +1588,7 @@ ext_index_all_r(PyBListRoot *root, PyBList *self, Py_ssize_t i, int set_ok)
  */
 void _ext_index_all(PyBListRoot *root, int set_ok_all)
 {
-        Py_ssize_t ioffset_max = root->n / INDEX_FACTOR + 1;
+        Py_ssize_t ioffset_max = (root->n-1) / INDEX_FACTOR + 1;
         int set_ok;
 
         if (root->index_length < ioffset_max)
