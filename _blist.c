@@ -1664,7 +1664,7 @@ _ext_index_all(PyBListRoot *root, int set_ok_all)
 #define ext_index_all(root) do { if (!(root)->leaf) _ext_index_all((root), 0); } while (0)
 #define ext_index_set_all(root) do { if (!(root)->leaf) _ext_index_all((root), 1); } while (0)
 
-BLIST_LOCAL(void)
+BLIST_LOCAL_INLINE(void)
 _ext_reindex_all(PyBListRoot *root, int set_ok_all)
 {
         if (root->dirty_root >= 0)
@@ -3769,19 +3769,17 @@ blist_richcompare_blist(PyBList *v, PyBList *w, int op)
 
 /* Reverse a slice of a list in place, from lo up to (exclusive) hi. */
 BLIST_LOCAL_INLINE(void)
-reverse_slice(PyObject **restrict lo, PyObject **restrict hi)
+reverse_slice(register PyObject **restrict lo, register PyObject **restrict hi)
 {
-        PyObject *t;
+        register PyObject *t;
         assert(lo && hi);
 
-        if (lo == hi) return;
-        
         /* Use Duff's Device
          * http://en.wikipedia.org/wiki/Duff%27s_device
          */
-        
+
         --hi;
-        
+
         switch ((hi - lo) & 31) {
                 case 31: do { t = *lo; *lo++ = *hi; *hi-- = t;
                 case 30: case 29: t = *lo; *lo++ = *hi; *hi-- = t;
@@ -3985,14 +3983,14 @@ slow:
 }
 
 BLIST_LOCAL(void)
-blist_reverse(PyBListRoot *self)
+blist_reverse(PyBListRoot *restrict self)
 {
         int idx, ridx;
-        PyBList *left, *right;
-        register PyObject **slice1;
-        register PyObject **slice2;
+        PyBList *restrict left, *restrict right;
+        register PyObject **restrict slice1;
+        register PyObject **restrict slice2;
         int n1, n2;
-        
+
         invariants(self, VALID_ROOT|VALID_RW);
 
         if (self->leaf) {
@@ -4001,7 +3999,7 @@ blist_reverse(PyBListRoot *self)
                 _void();
                 return;
         }
-        
+
         linearize_rw(self);
 
         idx = 0;
@@ -4020,11 +4018,34 @@ blist_reverse(PyBListRoot *self)
 
         while (idx < ridx) {
                 int n = (n1 < n2) ? n1 : n2;
-                int count = (n+7) / 8;
-                
-                switch (n & 7) {
+                int count = (n+31) / 32;
+                switch (n & 31) {
                         register PyObject *t;
                 case 0: do { t = *slice1; *slice1++ = *slice2; *slice2-- = t;
+                case 31: t = *slice1; *slice1++ = *slice2; *slice2-- = t;
+                case 30: t = *slice1; *slice1++ = *slice2; *slice2-- = t;
+                case 29: t = *slice1; *slice1++ = *slice2; *slice2-- = t;
+                case 28: t = *slice1; *slice1++ = *slice2; *slice2-- = t;
+                case 27: t = *slice1; *slice1++ = *slice2; *slice2-- = t;
+                case 26: t = *slice1; *slice1++ = *slice2; *slice2-- = t;
+                case 25: t = *slice1; *slice1++ = *slice2; *slice2-- = t;
+                case 24: t = *slice1; *slice1++ = *slice2; *slice2-- = t;
+                case 23: t = *slice1; *slice1++ = *slice2; *slice2-- = t;
+                case 22: t = *slice1; *slice1++ = *slice2; *slice2-- = t;
+                case 21: t = *slice1; *slice1++ = *slice2; *slice2-- = t;
+                case 20: t = *slice1; *slice1++ = *slice2; *slice2-- = t;
+                case 19: t = *slice1; *slice1++ = *slice2; *slice2-- = t;
+                case 18: t = *slice1; *slice1++ = *slice2; *slice2-- = t;
+                case 17: t = *slice1; *slice1++ = *slice2; *slice2-- = t;
+                case 16: t = *slice1; *slice1++ = *slice2; *slice2-- = t;
+                case 15: t = *slice1; *slice1++ = *slice2; *slice2-- = t;
+                case 14: t = *slice1; *slice1++ = *slice2; *slice2-- = t;
+                case 13: t = *slice1; *slice1++ = *slice2; *slice2-- = t;
+                case 12: t = *slice1; *slice1++ = *slice2; *slice2-- = t;
+                case 11: t = *slice1; *slice1++ = *slice2; *slice2-- = t;
+                case 10: t = *slice1; *slice1++ = *slice2; *slice2-- = t;
+                case 9: t = *slice1; *slice1++ = *slice2; *slice2-- = t;
+                case 8: t = *slice1; *slice1++ = *slice2; *slice2-- = t;
                 case 7: t = *slice1; *slice1++ = *slice2; *slice2-- = t;
                 case 6: t = *slice1; *slice1++ = *slice2; *slice2-- = t;
                 case 5: t = *slice1; *slice1++ = *slice2; *slice2-- = t;
@@ -4044,7 +4065,7 @@ blist_reverse(PyBListRoot *self)
                         slice1 = &left->children[0];
                         n1 = left->num_children;
                 }
-                
+
                 n2 -= n;
                 if (!n2) {
                         ridx--;
@@ -5780,7 +5801,7 @@ py_blist_sort(PyBList *self, PyObject *args, PyObject *kwds)
 }
 
 BLIST_PYAPI(PyObject *)
-py_blist_reverse(PyBList *self)
+py_blist_reverse(PyBList *restrict self)
 {
         invariants(self, VALID_USER|VALID_RW);
 
@@ -5788,7 +5809,7 @@ py_blist_reverse(PyBList *self)
                 reverse_slice(self->children,
                               &self->children[self->num_children]);
         else {
-                blist_reverse(self);
+                blist_reverse((PyBListRoot*) self);
         }
 
         Py_RETURN_NONE;
