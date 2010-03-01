@@ -4743,7 +4743,7 @@ sub_sort(PyBList **restrict scratch, PyBList **in, const compare_t *compare,
 {
         Py_ssize_t half, n1, n2;
 
-        if (!n) return 0;
+        if (!n || *err) return n;
         if (n == 1) {
                 *scratch = *in;
                 return 1;
@@ -4754,15 +4754,23 @@ sub_sort(PyBList **restrict scratch, PyBList **in, const compare_t *compare,
         n1 = sub_sort(scratch, in, compare, half, err);
         n2 = sub_sort(&scratch[half], &in[half], compare, n-half, err);
 
-        n = sub_merge(scratch, in, &in[half], n1, n2, compare, err);
-        memcpy(in, scratch, sizeof(PyBList *) * n);
+	if (!*err) {
+		/* XXX If in[n1] < in[half], we needlessly copy the list
+		   twice */
+		n = sub_merge(scratch, in, &in[half], n1, n2, compare, err);
+		memcpy(in, scratch, sizeof(PyBList *) * n);
+	} else {
+		if (n1 < half)
+			memmove(&in[n1], &in[half], sizeof(PyBList *) * n2);
+		n = n1 + n2;
+	}
         return n;
 }
 
 BLIST_LOCAL(Py_ssize_t)
-sort(PyBList *self, const compare_t *compare) 
+sort(PyBListRoot *self, const compare_t *compare)
 {
-        Forest builder, forest_tmp;
+        Forest builder;
         PyBList *other, *leaf;
         PyBList **leafs, **scratch;
         int err=0;
@@ -4776,24 +4784,27 @@ sort(PyBList *self, const compare_t *compare)
                 PyMem_Free(leafs);
                 return -1;
         }
-        
-        forest_init(&forest_tmp);
-        Py_INCREF(self); /* forest_append steals a reference */
-        forest_append(&forest_tmp, self);
-        while (forest_tmp.num_trees) {
-                leaf = forest_get_leaf(&forest_tmp);
-                leafs[leafs_n++] = leaf;
-        }
-        forest_uninit(&forest_tmp);
-        
-        for (i = 0; i < leafs_n && !err; i++) {
+
+	linearize_rw(self);
+	assert(INDEX_LENGTH(self) <= self->index_allocated);
+	for (i = 0; i < INDEX_LENGTH(self)-1; i++) {
+		leaf = self->index_list[i];
+		if (leaf == self->index_list[i+1])
+			continue;
+		leafs[leafs_n++] = leaf;
+	}
+	leafs[leafs_n++] = self->index_list[INDEX_LENGTH(self)-1];
+
+        for (i = 0; i < leafs_n; i++) {
                 leaf = leafs[i];
-                err |= gallop_sort(leaf->children, leaf->num_children,compare);
+		Py_INCREF(leaf);
+		if (!err)
+			err = gallop_sort(leaf->children, leaf->num_children,compare);
         }
-        
+
         leafs_n = sub_sort(scratch, leafs, compare, leafs_n, &err);
         PyMem_Free(scratch);
-        
+
         forest_init(&builder);
         for (i = 0; i < leafs_n && leafs[i]; i++) {
                 leafs[i]->n = leafs[i]->num_children;
@@ -4801,8 +4812,7 @@ sort(PyBList *self, const compare_t *compare)
         }
         PyMem_Free(leafs);
         other = forest_finish(&builder);
-        assert(self->num_children == 0);
-        blist_become_and_consume(self, other);
+	blist_become_and_consume((PyBList *) self, other);
         SAFE_DECREF(other);
         return err;
 }
