@@ -1616,7 +1616,7 @@ ext_index_all_r(PyBListRoot *root,
                         child_n += child->n;
                         child_index++;
                 }
-                
+
                 if (child_index+1 == self->num_children
                     || (((PyBList *)self->children[child_index])->n + child_n
                         <= dirty_offset + dirty_length)) {
@@ -1626,7 +1626,7 @@ ext_index_all_r(PyBListRoot *root,
         }
 
         dirty_length /= 2;
-        ext_index_all_r(root, 
+        ext_index_all_r(root,
                         root->dirty[dirty_index], dirty_offset, dirty_length,
                         self, child_index, child_n, set_ok);
         dirty_offset += dirty_length;

@@ -9,14 +9,14 @@ modification, are permitted provided that the following conditions are
 met:
 
    1. Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer. 
+      notice, this list of conditions and the following disclaimer.
    2. Redistributions in binary form must reproduce the above
       copyright notice, this list of conditions and the following
       disclaimer in the documentation and/or other materials provided
-      with the distribution. 
+      with the distribution.
    3. The name of the author may not be used to endorse or promote
       products derived from this software without specific prior written
-      permission. 
+      permission.
 
 THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
 IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
@@ -95,7 +95,7 @@ class BListTest(list_tests.CommonTest):
         del lst2[1]
         del lst2[-1]
         self.assertEqual(tuple(lst2), (0,) + tuple(range(2,limit)))
-        
+
     def test_insert_and_del(self):
         lst = self.type2test(list(range(n)))
         t = tuple(range(n))
@@ -354,7 +354,7 @@ def test_suite():
     suite = unittest.TestSuite()
     for test in tests:
         suite.addTest(unittest.TestLoader().loadTestsFromTestCase(test))
-    return suite                                            
+    return suite
 
 def test_main(verbose=None):
     test_support.run_unittest(*tests)
