@@ -5708,19 +5708,22 @@ py_blist_sort(PyBList *self, PyObject *args, PyObject *kwds)
                                                   kwlist, &compare.compare,
                                                   &compare.keyfunc,
                                                   &reverse);
+                DANGER_END;
+                if (!err)
+                        return _ob(NULL);
 #else
                 err = PyArg_ParseTupleAndKeywords(args, kwds, "|Oi:sort",
                                                   kwlist, &compare.keyfunc,
                                                   &reverse);
-                if (Py_SIZE(args) > 0) {
-                        PyErr_SetString(PyExc_TypeError,
-                                "must use keyword argument for key function");
-                        return NULL;
-                }
-#endif
                 DANGER_END;
                 if (!err)
                         return _ob(NULL);
+                if (Py_SIZE(args) > 0) {
+                        PyErr_SetString(PyExc_TypeError,
+                                "must use keyword argument for key function");
+                        return _ob(NULL);
+                }
+#endif
         }
 
         if (self->n < 2)
