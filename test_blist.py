@@ -232,14 +232,16 @@ class BListTest(list_tests.CommonTest):
         x = self.type2test(list(range(n)))
         self.assertRaises(TypeError, x.__setitem__, slice(1,10,2), 5)
 
-    def test_sort_evil(self):
+    def sort_evil(self, after):
         class EvilCompare:
             count = 0
+            num_raises = 0
             def __init__(self, x):
                 self.x = x
             def __lt__(self, other):
                 EvilCompare.count += 1
-                if EvilCompare.count > limit * 5:
+                if EvilCompare.count > after:
+                    EvilCompare.num_raises += 1
                     raise ValueError
                 return self.x < other.x
 
@@ -247,9 +249,16 @@ class BListTest(list_tests.CommonTest):
         from random import shuffle
         shuffle(x)
         self.assertRaises(ValueError, x.sort)
+        self.assertEqual(EvilCompare.num_raises, 1)
         x = [a.x for a in x]
         x.sort()
         self.assertEquals(x, list(range(n)))
+
+    def test_sort_evil_small(self):
+        self.sort_evil(limit * 5)
+
+    def test_sort_evil_big(self):
+        self.sort_evil(n + limit)
 
     def test_big_extend(self):
         x = self.type2test([1])
