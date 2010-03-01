@@ -343,7 +343,7 @@ dirty_length:
 
 dirty_root:
     An integer pointing to the root node of dirty, or a negative value
-    (CLEAN or DIRTY).
+    (CLEAN_RW, CLEAN, or DIRTY).
 
 free_root:
     Another integer pointer into dirty.  free_root points to an entry
