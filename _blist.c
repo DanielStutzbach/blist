@@ -1599,9 +1599,9 @@ ext_index_all_r(PyBListRoot *root,
                 PyBList *self, Py_ssize_t child_index, Py_ssize_t child_n,
                 int set_ok)
 {
-        if (dirty_index == CLEAN) {
+        if (dirty_index <= CLEAN) {
                 return;
-        } else if (dirty_index < 0) {
+        } else if (dirty_index == DIRTY) {
                 ext_index_all_dirty_r(root, self, dirty_offset + dirty_length,
                                       child_index, child_n, set_ok);
                 return;
