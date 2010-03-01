@@ -1,16 +1,16 @@
 Implementation Details
 ======================
 
-BLists are based on B+Trees are a dictionary data structure where each
-element is a (key, value) pair and the keys are kept in sorted order.
-B+Trees internally use a tree representation.  All data is stored in
-the leaf nodes of the tree, and all leaf nodes are at the same level.
-Unlike binary trees, each node has a large number of children, stored
-as an array of references within the node.  The B+Tree operations ensure
-that each node always has between "limit/2" and "limit" children
-(except the root which may have between 0 and "limit" children).  When
-a B+Tree has fewer than "limit/2" elements, they will all be contained
-in a single node (the root).
+BLists are based on B+Trees, which are a dictionary data structure
+where each element is a (key, value) pair and the keys are kept in
+sorted order.  B+Trees internally use a tree representation.  All data
+is stored in the leaf nodes of the tree, and all leaf nodes are at the
+same level.  Unlike binary trees, each node has a large number of
+children, stored as an array of references within the node.  The
+B+Tree operations ensure that each node always has between "limit/2"
+and "limit" children (except the root which may have between 0 and
+"limit" children).  When a B+Tree has fewer than "limit/2" elements,
+they will all be contained in a single node (the root).
 
 Wikipedia has a diagram that may be helpful for understanding the
 basic structure of a B+Tree:
