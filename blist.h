@@ -83,8 +83,8 @@ typedef struct PyBListRoot {
 
         PyBList **index_list;
         Py_ssize_t *offset_list;
-        unsigned *setclean_list;    /* contains index_length _bits_ */
-        Py_ssize_t index_length;
+        unsigned *setclean_list;    /* contains index_allocated _bits_ */
+        Py_ssize_t index_allocated;
         Py_ssize_t *dirty;
         Py_ssize_t dirty_length;
         Py_ssize_t dirty_root;
@@ -180,7 +180,7 @@ _PyBList_GET_ITEM_FAST2(PyBListRoot *root, Py_ssize_t i)
         return p->children[i - offset];
 }
 
-#define SETCLEAN_LEN(index_length) ((((index_length)-1) >> SETCLEAN_SHIFT)+1)
+#define SETCLEAN_LEN(index_allocated) ((((index_allocated)-1) >> SETCLEAN_SHIFT)+1)
 #if SIZEOF_INT == 4
 #define SETCLEAN_SHIFT (5u)
 #define SETCLEAN_MASK (0x1fu)
@@ -226,7 +226,7 @@ blist_ass_item_return2(PyBListRoot *root, Py_ssize_t i, PyObject *v)
                 return ext_make_clean_set(root, i, v);
         } else {
                 ioffset++;
-                assert(ioffset < root->index_length);
+                assert(ioffset < root->index_allocated);
                 offset = root->offset_list[ioffset];
                 p = root->index_list[ioffset];
                 assert(p);

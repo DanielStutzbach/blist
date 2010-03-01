@@ -100,6 +100,8 @@ static int num_free_iters = 0;
 #define PyBList_CheckExact(op) ((op)->ob_type == &PyBList_Type || (op)->ob_type == &PyRootBList_Type)
 #define PyBListIter_Check(op) (PyObject_TypeCheck((op), &PyBListIter_Type) || (PyObject_TypeCheck((op), &PyBListReverseIter_Type)))
 
+#define INDEX_LENGTH(self) (((self)->n-1) / INDEX_FACTOR + 1)
+
 /************************************************************************
  * Utility functions for copying and moving children.
  */
@@ -1133,7 +1135,7 @@ static void ext_init(PyBListRoot *root)
         root->index_list = NULL;
         root->offset_list = NULL;
         root->setclean_list = NULL;
-        root->index_length = 0;
+        root->index_allocated = 0;
         root->dirty = NULL;
         root->dirty_length = 0;
         root->dirty_root = DIRTY;
@@ -1496,8 +1498,8 @@ ext_is_dirty(PyBListRoot *root, Py_ssize_t offset, Py_ssize_t *dirty_offset)
 static int 
 ext_grow_index(PyBListRoot *root)
 {
-        Py_ssize_t oldl = root->index_length;
-        if (!root->index_length) {
+        Py_ssize_t oldl = root->index_allocated;
+        if (!root->index_allocated) {
                 if (root->index_list) PyMem_Free(root->index_list);
                 if (root->offset_list) PyMem_Free(root->offset_list);
                 if (root->setclean_list) PyMem_Free(root->setclean_list);
@@ -1506,36 +1508,36 @@ ext_grow_index(PyBListRoot *root)
                 root->offset_list = NULL;
                 root->setclean_list = NULL;
 
-                root->index_length = (root->n-1) / INDEX_FACTOR + 1;
-                root->index_list = PyMem_New(PyBList *, root->index_length);
+                root->index_allocated = (root->n-1) / INDEX_FACTOR + 1;
+                root->index_list = PyMem_New(PyBList *, root->index_allocated);
                 if (!root->index_list) {
                 fail:
-                        root->index_length = oldl;
+                        root->index_allocated = oldl;
                         return -1;
                 }
-                root->offset_list = PyMem_New(Py_ssize_t, root->index_length);
+                root->offset_list = PyMem_New(Py_ssize_t, root->index_allocated);
                 if (!root->offset_list) goto fail;
                 root->setclean_list
-                        = PyMem_New(unsigned,SETCLEAN_LEN(root->index_length));
+                        = PyMem_New(unsigned,SETCLEAN_LEN(root->index_allocated));
                 if (!root->setclean_list) goto fail;
         } else {
                 void *tmp;
 
                 do {
-                        root->index_length *= 2;
-                } while ((root->n-1) / INDEX_FACTOR + 1 > root->index_length);
+                        root->index_allocated *= 2;
+                } while ((root->n-1) / INDEX_FACTOR + 1 > root->index_allocated);
                 tmp = root->index_list;
-                PyMem_Resize(tmp, PyBList *, root->index_length);
+                PyMem_Resize(tmp, PyBList *, root->index_allocated);
                 if (!tmp) goto fail;
                 root->index_list = tmp;
 
                 tmp = root->offset_list;
-                PyMem_Resize(tmp, Py_ssize_t, root->index_length);
+                PyMem_Resize(tmp, Py_ssize_t, root->index_allocated);
                 if (!tmp) goto fail;
                 root->offset_list = tmp;
 
                 tmp = root->setclean_list;
-                PyMem_Resize(tmp, unsigned, SETCLEAN_LEN(root->index_length));
+                PyMem_Resize(tmp, unsigned, SETCLEAN_LEN(root->index_allocated));
                 if (!tmp) goto fail;
                 root->setclean_list = tmp;
         }
@@ -1559,7 +1561,7 @@ ext_index_r(PyBListRoot *root, PyBList *self, Py_ssize_t i, int set_ok)
                 Py_ssize_t ioffset = i / INDEX_FACTOR;
                 if (ioffset * INDEX_FACTOR < i) ioffset++;
                 do {
-                        assert(ioffset < root->index_length);
+                        assert(ioffset < root->index_allocated);
                         root->index_list[ioffset] = self;
                         root->offset_list[ioffset] = i;
                         if (set_ok != SET_OK_ALL) {
@@ -1641,12 +1643,12 @@ _ext_index_all(PyBListRoot *root, int set_ok_all)
         Py_ssize_t ioffset_max = (root->n-1) / INDEX_FACTOR + 1;
         int set_ok;
 
-        if (root->index_length < ioffset_max)
+        if (root->index_allocated < ioffset_max)
                 ext_grow_index(root);
         if (set_ok_all) {
                 set_ok = SET_OK_ALL;
                 memset(root->setclean_list, 255,
-                       SETCLEAN_LEN(root->index_length) * sizeof(unsigned));
+                       SETCLEAN_LEN(root->index_allocated) * sizeof(unsigned));
         } else
                 set_ok = SET_OK_YES;
 
@@ -1691,7 +1693,7 @@ ext_mark_clean(PyBListRoot *root, Py_ssize_t offset, PyBList *p, int setclean)
         for (;ioffset * INDEX_FACTOR < offset + p->n; ioffset++) {
                 ext_mark((PyBList*)root, ioffset * INDEX_FACTOR, CLEAN);
 
-                if (ioffset >= root->index_length) {
+                if (ioffset >= root->index_allocated) {
                         int err = ext_grow_index(root);
                         if (err < -1) {
                                 ext_dealloc(root);
@@ -1700,7 +1702,7 @@ ext_mark_clean(PyBListRoot *root, Py_ssize_t offset, PyBList *p, int setclean)
                 }
 
                 assert(ioffset >= 0);
-                assert(ioffset < root->index_length);
+                assert(ioffset < root->index_allocated);
                 root->index_list[ioffset] = p;
                 root->offset_list[ioffset] = offset;
 
@@ -3542,7 +3544,7 @@ blist_ass_item_return_slow(PyBListRoot *root, Py_ssize_t i, PyObject *v)
                         rv = ext_make_clean_set(root, i, v);
                 } else {
                         ioffset++;
-                        assert(ioffset < root->index_length);
+                        assert(ioffset < root->index_allocated);
                         offset = root->offset_list[ioffset];
                         p = root->index_list[ioffset];
                         assert(p);
@@ -3967,12 +3969,12 @@ linearize_rw(PyBListRoot *self)
                 return;
 
         if (self->dirty_root == CLEAN) {
-                Py_ssize_t n = SETCLEAN_LEN(self->index_length);
+                Py_ssize_t n = SETCLEAN_LEN(INDEX_LENGTH(self));
                 for (i = 0; i < n; i++)
                         if (self->setclean_list[i] != (unsigned) -1)
                                 goto slow;
                 memset(self->setclean_list, 255,
-                       SETCLEAN_LEN(self->index_length) * sizeof(unsigned));
+                       SETCLEAN_LEN(INDEX_LENGTH(self)) * sizeof(unsigned));
                 self->dirty_root = CLEAN_RW;
                 return;
         }
@@ -4009,7 +4011,7 @@ blist_reverse(PyBListRoot *restrict self)
         slice1 = &left->children[0];
         n1 = left->num_children;
 
-        ridx = self->index_length-1;
+        ridx = INDEX_LENGTH(self)-1;
         right = self->index_list[ridx];
         if (right == self->index_list[ridx-1])
                 ridx--;
@@ -5438,7 +5440,7 @@ PyObject *_PyBList_GetItemFast3(PyBListRoot *root, Py_ssize_t i)
                         rv = ext_make_clean(root, i);
                 } else {
                         ioffset++;
-                        assert(ioffset < root->index_length);
+                        assert(ioffset < root->index_allocated);
                         offset = root->offset_list[ioffset];
                         p = root->index_list[ioffset];
                         rv = p->children[i - offset];
@@ -6119,10 +6121,10 @@ py_blist_root_sizeof(PyBListRoot *root)
         Py_ssize_t res;
         res = sizeof(PyBListRoot)
                 + LIMIT * sizeof(PyObject *)
-                + root->index_length * (sizeof (PyBList *) +sizeof(Py_ssize_t))
+                + root->index_allocated * (sizeof (PyBList *) +sizeof(Py_ssize_t))
                 + root->dirty_length * sizeof(Py_ssize_t)
-                + (root->index_length ?
-                   SETCLEAN_LEN(root->index_length) * sizeof(unsigned): 0);
+                + (root->index_allocated ?
+                   SETCLEAN_LEN(root->index_allocated) * sizeof(unsigned): 0);
         return PyLong_FromSsize_t(res);
 }
 
