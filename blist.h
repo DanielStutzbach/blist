@@ -76,6 +76,7 @@ typedef struct PyBList {
 
 typedef struct PyBListRoot {
         PyObject_HEAD
+#define BLIST_FIRST_FIELD n
         Py_ssize_t n;              /* Total # of user-object descendents */
         int num_children;     /* Number of immediate children */
         int leaf;                  /* Boolean value */

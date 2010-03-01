@@ -36,6 +36,7 @@
 
 
 #include <Python.h>
+#include <stddef.h>
 
 #if !defined(__STDC_VERSION__) || __STDC_VERSION__ < 199901L
 #define restrict
@@ -5683,7 +5684,7 @@ py_blist_debug(PyBList *self)
 #endif
 
 BLIST_PYAPI(PyObject *)
-py_blist_sort(PyBList *self, PyObject *args, PyObject *kwds)
+py_blist_sort(PyBListRoot *self, PyObject *args, PyObject *kwds)
 {
         compare_t compare = {NULL, NULL};
         compare_t *pcompare = &compare;
@@ -5738,12 +5739,11 @@ py_blist_sort(PyBList *self, PyObject *args, PyObject *kwds)
         if (compare.compare == NULL && compare.keyfunc == NULL)
                 pcompare = NULL;
 
-        saved.children = self->children;
-        Py_TYPE(&saved) = &PyRootBList_Type; /* Make validations happy */
-        Py_REFCNT(&saved) = 1;               /* Make valgrind happy */
-        saved.n = self->n;
-        saved.num_children = self->num_children;
-        saved.leaf = self->leaf;
+	memset(&saved, 0, offsetof(PyBListRoot, BLIST_FIRST_FIELD));
+	memcpy(&saved.BLIST_FIRST_FIELD, &self->BLIST_FIRST_FIELD,
+	       sizeof(*self) - offsetof(PyBListRoot, BLIST_FIRST_FIELD));
+	Py_TYPE(&saved) = &PyRootBList_Type;
+	Py_REFCNT(&saved) = 1;
 
         if (extra_list != NULL) {
                 self->children = extra_list;
@@ -5758,6 +5758,7 @@ py_blist_sort(PyBList *self, PyObject *args, PyObject *kwds)
         self->n = 0;
         self->num_children = 0;
         self->leaf = 1;
+	ext_init(self);
 
         /* Reverse sort stability achieved by initially reversing the list,
            applying a stable forward sort, then reversing the final result. */
@@ -5767,13 +5768,16 @@ py_blist_sort(PyBList *self, PyObject *args, PyObject *kwds)
         if (saved.leaf)
                 ret = gallop_sort(saved.children,saved.num_children,pcompare);
         else
-                ret = sort((PyBList*)&saved, pcompare);
+                ret = sort(&saved, pcompare);
 
         if (reverse)
                 blist_reverse(&saved);
 
-        if (ret >= 0)
+        if (ret >= 0) {
                 result = Py_None;
+		ext_reindex_set_all(&saved);
+	} else
+		ext_mark((PyBList*)&saved, 0, DIRTY);
 
         if (self->n && saved.n) {
                 DANGER_BEGIN;
@@ -5783,25 +5787,24 @@ py_blist_sort(PyBList *self, PyObject *args, PyObject *kwds)
                 PyErr_SetString(PyExc_ValueError, "list modified during sort");
                 DANGER_END;
                 result = NULL;
-                blist_CLEAR(self);
+                blist_CLEAR((PyBList*) self);
         }
 
         if (extra_list == NULL)
                 extra_list = self->children;
         else
                 PyMem_Free(self->children);
+
+	ext_dealloc(self);
         assert(!self->n);
- err:
-        self->n = saved.n;
-        self->num_children = saved.num_children;
-        self->leaf = saved.leaf;
-        self->children = saved.children;
+  err:
+	memcpy(&self->BLIST_FIRST_FIELD, &saved.BLIST_FIRST_FIELD,
+	       sizeof(*self) - offsetof(PyBListRoot, BLIST_FIRST_FIELD));
 
         Py_XINCREF(result);
 
         decref_flush();
 
-        ext_reindex_set_all((PyBListRoot *) self);
         return _ob(result);
 }
 
