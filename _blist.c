@@ -3294,7 +3294,7 @@ blist_init_from_array(PyBList *self, PyObject **restrict src, Py_ssize_t n)
         final = forest_finish(&forest);
         blist_become_and_consume(self, final);
 
-        ext_reindex_all((PyBListRoot *) self);
+        ext_reindex_set_all((PyBListRoot *) self);
         SAFE_DECREF(final);
 
         return _int(0);
@@ -3420,7 +3420,7 @@ blist_init_from_seq(PyBList *self, PyObject *b)
         SAFE_DECREF(final);
 
  done:
-        ext_reindex_all((PyBListRoot*)self);
+        ext_reindex_set_all((PyBListRoot*)self);
         decref_later(it);
         return _int(0);
 
