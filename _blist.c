@@ -221,6 +221,46 @@ balance_leafs(PyBList *restrict leaf1, PyBList *restrict leaf2)
 }
 
 /************************************************************************
+ */
+
+static PyObject * (*pgc_disable)(PyObject *self, PyObject *noargs);
+static PyObject * (*pgc_enable)(PyObject *self, PyObject *noargs);
+static PyObject * (*pgc_isenabled)(PyObject *self, PyObject *noargs);
+#ifdef Py_DEBUG
+static int gc_pause_count = 0;
+#endif
+
+BLIST_LOCAL(void)
+gc_unpause(int previous)
+{
+#ifdef Py_DEBUG
+        assert(gc_pause_count > 0);
+        gc_pause_count--;
+#endif
+        if (previous) {
+                PyObject *rv = pgc_enable(NULL, NULL);
+                Py_DECREF(rv);
+        }
+}
+
+BLIST_LOCAL(int)
+gc_pause(void)
+{
+        int rv;
+        PyObject *enabled = pgc_isenabled(NULL, NULL);
+        rv = (enabled == Py_True);
+        Py_DECREF(enabled);
+        if (rv) {
+                PyObject *none = pgc_disable(NULL, NULL);
+                Py_DECREF(none);
+        }
+#ifdef Py_DEBUG
+        gc_pause_count++;
+#endif
+        return rv;
+}
+
+/************************************************************************
  * Macros for O(1) iteration over a BList via Depth-First-Search.  If
  * the root is also a leaf, it will skip the memory allocation and
  * just use a for loop.
@@ -318,13 +358,17 @@ void set_index_error(void)
 static int blist_unstable = 0;
 static int blist_in_code = 0;
 static int blist_danger = 0;
-#define DANGER_BEGIN { int _blist_unstable = blist_unstable, _blist_in_code = blist_in_code; blist_unstable = 0; blist_in_code = 0; blist_danger++
-#define DANGER_END assert(!blist_unstable); assert(!blist_in_code); blist_unstable = _blist_unstable; blist_in_code = _blist_in_code; assert(blist_danger); blist_danger--; } while (0)
+#define DANGER_GC_BEGIN { int _blist_unstable = blist_unstable, _blist_in_code = blist_in_code; blist_unstable = 0; blist_in_code = 0; blist_danger++
+#define DANGER_GC_END assert(!blist_unstable); assert(!blist_in_code); blist_unstable = _blist_unstable; blist_in_code = _blist_in_code; assert(blist_danger); blist_danger--; } while (0)
+#define DANGER_BEGIN DANGER_GC_BEGIN; assert(!gc_pause_count)
+#define DANGER_END assert(!gc_pause_count); DANGER_GC_END
 
 #else
 
 #define DANGER_BEGIN while(0)
 #define DANGER_END while(0)
+#define DANGER_GC_BEGIN while(0)
+#define DANGER_GC_END while(0)
 
 #endif
 
@@ -698,9 +742,9 @@ static void safe_decref(PyBList *self)
         assert(PyBList_Check((PyObject *) self));
         safe_decref_check(self);
 
-        DANGER_BEGIN;
+        DANGER_GC_BEGIN;
         Py_DECREF(self);
-        DANGER_END;
+        DANGER_GC_END;
 }
 
 #undef SAFE_DECREF
@@ -779,9 +823,9 @@ static PyBList *blist_new(void)
                 self = free_lists[--num_free_lists];
                 _Py_NewReference((PyObject *) self);
         } else {
-                DANGER_BEGIN;
+                DANGER_GC_BEGIN;
                 self = PyObject_GC_New(PyBList, &PyBList_Type);
-                DANGER_END;
+                DANGER_GC_END;
                 if (self == NULL)
                         return NULL;
                 self->children = PyMem_New(PyObject *, LIMIT);
@@ -810,9 +854,9 @@ static PyBList *blist_root_new(void)
                 self = free_ulists[--num_free_ulists];
                 _Py_NewReference((PyObject *) self);
         } else {
-                DANGER_BEGIN;
+                DANGER_GC_BEGIN;
                 self = (PyBList *) PyObject_GC_New(PyBListRoot, &PyRootBList_Type);
-                DANGER_END;
+                DANGER_GC_END;
                 if (self == NULL)
                         return NULL;
                 self->children = PyMem_New(PyObject *, LIMIT);
@@ -3237,6 +3281,7 @@ blist_init_from_array(PyBList *self, PyObject **restrict src, Py_ssize_t n)
         PyObject **stop = &src[n];
         PyObject **next;
         Forest forest;
+        int gc_previous;
 
         invariants(self, VALID_ROOT|VALID_RW);
 
@@ -3253,6 +3298,9 @@ blist_init_from_array(PyBList *self, PyObject **restrict src, Py_ssize_t n)
 
         if (forest_init(&forest) == NULL)
                 return _int(-1);
+
+        gc_previous = gc_pause();
+
         cur = blist_new();
         if (cur == NULL)
                 goto error2;
@@ -3266,7 +3314,7 @@ blist_init_from_array(PyBList *self, PyObject **restrict src, Py_ssize_t n)
                         *dst++ = *src++;
                 }
                 if (src == stop) break;
-                
+
                 cur->num_children = LIMIT;
                 if (forest_append(&forest, cur) < 0)
                         goto error;
@@ -3277,7 +3325,7 @@ blist_init_from_array(PyBList *self, PyObject **restrict src, Py_ssize_t n)
         }
 
         i = dst - cur->children;
-        
+
         if (i) {
                 cur->num_children = i;
                 if (forest_append(&forest, cur) < 0) {
@@ -3285,6 +3333,7 @@ blist_init_from_array(PyBList *self, PyObject **restrict src, Py_ssize_t n)
                         Py_DECREF(cur);
                 error2:
                         forest_uninit(&forest);
+                        gc_unpause(gc_previous);
                         return _int(-1);
                 }
         } else {
@@ -3296,6 +3345,8 @@ blist_init_from_array(PyBList *self, PyObject **restrict src, Py_ssize_t n)
 
         ext_reindex_set_all((PyBListRoot *) self);
         SAFE_DECREF(final);
+
+        gc_unpause(gc_previous);
 
         return _int(0);
 }
@@ -6479,6 +6530,9 @@ static struct PyModuleDef blist_module = {
 PyMODINIT_FUNC
 PyInit__blist(void)
 {
+        PyModuleDef *gc_module_def;
+        PyMethodDef *gc_methods;
+        PyObject *gc_module;
         PyObject *m;
         PyObject *limit = PyInt_FromLong(LIMIT);
 
@@ -6486,13 +6540,26 @@ PyInit__blist(void)
                 return NULL;
         if (init_blist_types2() < 0)
                 return NULL;
-        
+
         m = PyModule_Create(&blist_module);
 
         PyModule_AddObject(m, "blist", (PyObject *) &PyRootBList_Type);
         PyModule_AddObject(m, "_limit", limit);
         PyModule_AddObject(m, "__internal_blist", (PyObject *)
-                &PyBList_Type);
+                           &PyBList_Type);
+
+        gc_module = PyImport_ImportModule("gc");
+        gc_module_def = PyModule_GetDef(gc_module);
+        gc_methods = gc_module_def->m_methods;
+        while (gc_methods->ml_name != NULL) {
+                if (0 == strcmp(gc_methods->ml_name, "enable"))
+                        pgc_enable = gc_methods->ml_meth;
+                else if (0 == strcmp(gc_methods->ml_name, "disable"))
+                        pgc_disable = gc_methods->ml_meth;
+                else if (0 == strcmp(gc_methods->ml_name, "isenabled"))
+                        pgc_isenabled = gc_methods->ml_meth;
+                gc_methods++;
+        }
 
         return m;
 }
