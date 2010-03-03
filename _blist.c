@@ -5980,7 +5980,7 @@ py_blist_sort(PyBListRoot *self, PyObject *args, PyObject *kwds)
         self->n = 0;
         self->num_children = 0;
         self->leaf = 1;
-	ext_init(self);
+        ext_init(self);
 
         /* Reverse sort stability achieved by initially reversing the list,
            applying a stable forward sort, then reversing the final result. */
@@ -6009,9 +6009,9 @@ py_blist_sort(PyBListRoot *self, PyObject *args, PyObject *kwds)
 
         if (ret >= 0) {
                 result = Py_None;
-		ext_reindex_set_all(&saved);
-	} else
-		ext_mark((PyBList*)&saved, 0, DIRTY);
+                ext_reindex_set_all(&saved);
+        } else
+                ext_mark((PyBList*)&saved, 0, DIRTY);
 
         if (self->n && saved.n) {
                 DANGER_BEGIN;
@@ -6029,11 +6029,11 @@ py_blist_sort(PyBListRoot *self, PyObject *args, PyObject *kwds)
         else
                 PyMem_Free(self->children);
 
-	ext_dealloc(self);
+        ext_dealloc(self);
         assert(!self->n);
   err:
-	memcpy(&self->BLIST_FIRST_FIELD, &saved.BLIST_FIRST_FIELD,
-	       sizeof(*self) - offsetof(PyBListRoot, BLIST_FIRST_FIELD));
+        memcpy(&self->BLIST_FIRST_FIELD, &saved.BLIST_FIRST_FIELD,
+               sizeof(*self) - offsetof(PyBListRoot, BLIST_FIRST_FIELD));
 
         Py_XINCREF(result);
 
