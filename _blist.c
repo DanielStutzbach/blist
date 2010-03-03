@@ -3145,6 +3145,51 @@ forest_append(Forest *forest, PyBList *leaf)
         return 0;
 }
 
+BLIST_LOCAL(int)
+blist_init_from_child_array(PyBList **children, int num_children)
+{
+        int i, j, k;
+
+        assert(num_children);
+        if (num_children == 1)
+                return 1;
+
+        for (k = i = 0; i < num_children; i += LIMIT) {
+                PyBList *parent = blist_new();
+                int stop = (LIMIT < (num_children - i))
+                        ? LIMIT : (num_children - i);
+                if (parent == NULL)
+                        return -1;
+                parent->leaf = 0;
+                for (j = 0; j < stop; j++) {
+                        parent->children[j] = (PyObject *) children[i+j];
+                        assert(children[i+j]->num_children >= HALF);
+                        children[i+j] = NULL;
+                }
+                parent->num_children = j;
+                blist_adjust_n(parent);
+                children[k++] = parent;
+        }
+
+        if (k <= 1)
+                return k;
+
+        if (children[k-1]->num_children < HALF) {
+                PyBList *left = children[k-2];
+                PyBList *right = children[k-1];
+                int needed = HALF - right->num_children;
+
+                shift_right(right, 0, needed);
+                copy(right, 0, left, LIMIT-needed, needed);
+                left->num_children -= needed;
+                right->num_children += needed;
+                blist_adjust_n(left);
+                blist_adjust_n(right);
+        }
+
+        return blist_init_from_child_array(children, k);
+}
+
 #if 0
 /* Like forest_append(), but handles the case where the previously
  * added leaf is in an underflow state. */
@@ -4201,17 +4246,120 @@ blist_append(PyBList *self, PyObject *v)
  *
  ************************************************************************/
 
+typedef struct
+{
+        PyObject_HEAD
+        PyObject *key;
+        PyObject *value;
+} sortwrapperobject;
+
+static PyObject *
+sortwrapper_richcompare(sortwrapperobject *a, sortwrapperobject *b, int op)
+{
+        return PyObject_RichCompare(a->key, b->key, op);
+}
+
+static PyTypeObject PyBListSortWrapper_Type = {
+        PyVarObject_HEAD_INIT(&PyType_Type, 0)
+        "blistsortwrapper",                     /* tp_name */
+        sizeof(sortwrapperobject),              /* tp_basicsize */
+        0,                                      /* tp_itemsize */
+        /* methods */
+        0,                                      /* tp_dealloc */
+        0,                                      /* tp_print */
+        0,                                      /* tp_getattr */
+        0,                                      /* tp_setattr */
+        0,                                      /* tp_reserved */
+        0,                                      /* tp_repr */
+        0,                                      /* tp_as_number */
+        0,                                      /* tp_as_sequence */
+        0,                                      /* tp_as_mapping */
+        0,                                      /* tp_hash */
+        0,                                      /* tp_call */
+        0,                                      /* tp_str */
+        PyObject_GenericGetAttr,                /* tp_getattro */
+        0,                                      /* tp_setattro */
+        0,                                      /* tp_as_buffer */
+        Py_TPFLAGS_DEFAULT,                     /* tp_flags */
+        0,                                      /* tp_doc */
+        0,                                      /* tp_traverse */
+        0,                                      /* tp_clear */
+        (richcmpfunc)sortwrapper_richcompare,   /* tp_richcompare */
+};
+
+static sortwrapperobject *
+wrap_leaf_array(PyBList **leafs, int leafs_n, int n, PyObject *keyfunc)
+{
+        sortwrapperobject *array;
+        int i, j, k;
+
+        array = PyMem_New(sortwrapperobject, n);
+        if (array == NULL)
+                return NULL;
+
+        for (k = i = 0; i < leafs_n; i++) {
+                PyBList *leaf = leafs[i];
+                for (j = 0; j < leaf->num_children; j++) {
+                        Py_TYPE(&array[k]) = &PyBListSortWrapper_Type;
+                        Py_REFCNT(&array[k]) = 1;
+                        array[k].value = leaf->children[j];
+                        DANGER_BEGIN;
+                        array[k].key = PyObject_CallFunctionObjArgs(
+                                keyfunc, array[k].value, NULL);
+                        DANGER_END;
+                        if (array[k].key == NULL) {
+                                int m;
+                                DANGER_BEGIN;
+                                for (m = 0; m < k; m++) {
+                                        Py_DECREF(array[m].key);
+                                        Py_DECREF(&array[m]);
+                                }
+                                Py_DECREF(&array[k]);
+                                PyMem_Free(array);
+                                DANGER_END;
+                                return NULL;
+                        }
+                        leaf->children[j] = (PyObject*) &array[k];
+                        k++;
+                }
+        }
+
+        assert(k == n);
+
+        return array;
+}
+
+static void
+unwrap_leaf_array(PyBList **leafs, int leafs_n, int n,sortwrapperobject *array)
+{
+        int i, j;
+
+        for (i = 0; i < leafs_n; i++) {
+                PyBList *leaf = leafs[i];
+                for (j = 0; j < leaf->num_children; j++) {
+                        sortwrapperobject *wrapper;
+                        assert(Py_TYPE(leaf->children[j])
+                               == &PyBListSortWrapper_Type);
+                        wrapper = (sortwrapperobject *) leaf->children[j];
+                        leaf->children[j] = wrapper->value;
+                        DANGER_BEGIN;
+                        Py_DECREF(wrapper->key);
+                        DANGER_END;
+                }
+        }
+
+        PyMem_Free(array);
+}
+
 /* If COMPARE is NULL, calls PyObject_RichCompareBool with Py_LT, else calls
  * islt.  This avoids a layer of function call in the usual case, and
  * sorting does many comparisons.
  * Returns -1 on error, 1 if x < y, 0 if x >= y.
+ *
+ * In Python 3, COMPARE is always NULL.
  */
 
-#ifndef Py_DEBUG
-#define ISLT(X, Y, COMPARE) ((COMPARE) == NULL ?                        \
-                             PyObject_RichCompareBool(X, Y, Py_LT) :    \
-                             islt(X, Y, COMPARE))
-#else
+#ifdef Py_DEBUG
 BLIST_LOCAL(int)
 _rich_compare_bool(PyObject *x, PyObject *y)
 {
@@ -4221,59 +4369,42 @@ _rich_compare_bool(PyObject *x, PyObject *y)
         DANGER_END;
         return ret;
 }
+#endif
 
+#if PY_MAJOR_VERSION < 3
+#ifndef Py_DEBUG
+#define ISLT(X, Y, COMPARE) ((COMPARE) == NULL ?                        \
+                             PyObject_RichCompareBool(X, Y, Py_LT) :    \
+                             islt(X, Y, COMPARE))
+#else
 #define ISLT(X, Y, COMPARE) ((COMPARE) == NULL ?                        \
                              _rich_compare_bool(X, Y) :    \
                              islt(X, Y, COMPARE))
 #endif
+#else
+#ifndef Py_DEBUG
+#define ISLT(X, Y, COMPARE) (PyObject_RichCompareBool(X, Y, Py_LT))
+#else
+#define ISLT(X, Y, COMPARE) (_rich_compare_bool(X, Y))
+#endif
+#endif
 
-typedef struct {
-        PyObject *compare;
-        PyObject *keyfunc;
-} compare_t;
-
+#if PY_MAJOR_VERSION < 3
 /* XXX
 
    Efficiency improvement:
-   Keep one PyTuple in compare_t and just change what it points to.
+   Keep one PyTuple in a global spot and just change what it points to.
    We can also skip all the INCREF/DECREF stuff then and just borrow
    references
 */
-static int islt(PyObject *x, PyObject *y, const compare_t *compare)
+static int islt(PyObject *x, PyObject *y, PyObject *compare)
 {
         PyObject *res;
         PyObject *args;
         Py_ssize_t i;
 
-        if (compare->keyfunc != NULL) {
-                DANGER_BEGIN;
-                x = PyObject_CallFunctionObjArgs(compare->keyfunc, x, NULL);
-                DANGER_END;
-                if (x == NULL) return -1;
-                DANGER_BEGIN;
-                y = PyObject_CallFunctionObjArgs(compare->keyfunc, y, NULL);
-                DANGER_END;
-                if (y == NULL) {
-                        DANGER_BEGIN;
-                        Py_DECREF(x);
-                        DANGER_END;
-                        return -1;
-                }
-        } else {
-                Py_INCREF(x);
-                Py_INCREF(y);
-        }
-
-        if (compare->compare == NULL) {
-                DANGER_BEGIN;
-                i = PyObject_RichCompareBool(x, y, Py_LT);
-                Py_DECREF(x);
-                Py_DECREF(y);
-                DANGER_END;
-                if (i < 0)
-                        return -1;
-                return i;
-        }
+        Py_INCREF(x);
+        Py_INCREF(y);
 
         DANGER_BEGIN;
         args = PyTuple_New(2);
@@ -4290,7 +4421,7 @@ static int islt(PyObject *x, PyObject *y, const compare_t *compare)
         PyTuple_SET_ITEM(args, 0, x);
         PyTuple_SET_ITEM(args, 1, y);
         DANGER_BEGIN;
-        res = PyObject_Call(compare->compare, args, NULL);
+        res = PyObject_Call(compare, args, NULL);
         Py_DECREF(args);
         DANGER_END;
         if (res == NULL)
@@ -4306,6 +4437,7 @@ static int islt(PyObject *x, PyObject *y, const compare_t *compare)
         Py_DECREF(res);
         return i < 0;
 }
+#endif
 
 #define INSERTION_THRESH 0
 #define BINARY_THRESH 10
@@ -4322,7 +4454,7 @@ static int islt(PyObject *x, PyObject *y, const compare_t *compare)
 #define TESTSWAP(x, y) IFLT(y, x) SWAP(x, y)
 
 BLIST_LOCAL(int)
-network_sort(PyObject **array, int n, const compare_t *compare)
+network_sort(PyObject **array, int n, PyObject *compare)
 {
         int k;
 
@@ -4367,7 +4499,7 @@ network_sort(PyObject **array, int n, const compare_t *compare)
 }
 
 #if 0
-static int insertion_sort(PyObject **array, int n, const compare_t *compare)
+static int insertion_sort(PyObject **array, int n, PyObject *compare)
 {
         int i, j;
         PyObject *tmp;
@@ -4389,7 +4521,7 @@ static int insertion_sort(PyObject **array, int n, const compare_t *compare)
         return 0;
 }
 
-static int binary_sort(PyObject **array, int n, const compare_t *compare)
+static int binary_sort(PyObject **array, int n, PyObject *compare)
 {
         int i, j, low, high, mid, c;
         PyObject *tmp;
@@ -4429,7 +4561,7 @@ static int binary_sort(PyObject **array, int n, const compare_t *compare)
 #endif
 
 BLIST_LOCAL(int)
-mini_merge(PyObject **array, int middle, int n, const compare_t *compare)
+mini_merge(PyObject **array, int middle, int n, PyObject *compare)
 {
         int c, ret = 0;
 
@@ -4486,9 +4618,9 @@ mini_merge(PyObject **array, int middle, int n, const compare_t *compare)
 #define RUN_THRESH 5
 
 BLIST_LOCAL(int)
-gallop_sort(PyObject **array, int n, const compare_t *compare)
+gallop_sort(PyObject **array, int n, PyObject *compare)
 {
-        int i, j;
+        int i;
         int run_start = 0, run_dir = 2;
         PyObject **runs[LIMIT/RUN_THRESH+2];
         int ns[LIMIT/RUN_THRESH+2];
@@ -4515,6 +4647,7 @@ gallop_sort(PyObject **array, int n, const compare_t *compare)
                         run_start = i;
                         run_dir = 2;
                 } else {
+                        int j;
                         int low = run - array;
                         int high = i-1;
                         int mid;
@@ -4543,9 +4676,9 @@ gallop_sort(PyObject **array, int n, const compare_t *compare)
         }
 
         if (run_dir > 0)
-                reverse_slice(run, &array[i]);
+                reverse_slice(run, &array[n]);
         runs[num_runs] = run;
-        ns[num_runs++] = i - run_start;
+        ns[num_runs++] = n - run_start;
 
         while(num_runs > 1) {
                 for (i = 0; i < num_runs/2; i++) {
@@ -4575,7 +4708,7 @@ gallop_sort(PyObject **array, int n, const compare_t *compare)
 
 #if 0
 BLIST_LOCAL(int)
-mini_merge_sort(PyObject **array, int n, const compare_t *compare)
+mini_merge_sort(PyObject **array, int n, PyObject *compare)
 {
         int i, run_size = BINARY_THRESH;
 
@@ -4638,7 +4771,7 @@ do_fast_merge(PyBList **restrict out, PyBList **in1, PyBList **in2,
 BLIST_LOCAL(int)
 try_fast_merge(PyBList **restrict out, PyBList **in1, PyBList **in2,
                Py_ssize_t n1, Py_ssize_t n2,
-               const compare_t *compare, int *err)
+               PyObject *compare, int *err)
 {
         int c;
         PyBList *end;
@@ -4669,15 +4802,15 @@ try_fast_merge(PyBList **restrict out, PyBList **in1, PyBList **in2,
                 return 1;
         }
 
-        return 0;                
+        return 0;
 }
 
 /* Merge two sorted forests.  Each forest must contain on leafs.  The
  * forests will be deleted at the end. */
 BLIST_LOCAL(int)
-sub_merge(PyBList **restrict out, PyBList **in1, PyBList **in2, 
+sub_merge(PyBList **restrict out, PyBList **in1, PyBList **in2,
           Py_ssize_t n1, Py_ssize_t n2,
-          const compare_t *compare, int *err)
+          PyObject *compare, int *err)
 {
         int c;
         Py_ssize_t i, j;
@@ -4788,44 +4921,64 @@ sub_merge(PyBList **restrict out, PyBList **in1, PyBList **in2,
         return nout;
 }
 
+/* If swap is true, place the output in scratch.
+ * Otherwise, place the output in "in" */
 BLIST_LOCAL(Py_ssize_t)
-sub_sort(PyBList **restrict scratch, PyBList **in, const compare_t *compare,
-         Py_ssize_t n, int *err)
+sub_sort(PyBList **restrict scratch, PyBList **in, PyObject *compare,
+         Py_ssize_t n, int *err, int swap)
 {
         Py_ssize_t half, n1, n2;
 
-        if (!n || *err) return n;
+        if (!n) return n;
+        if (*err) {
+                if (swap)
+                        memcpy(scratch, in, n * sizeof(PyBList *));
+                return n;
+        }
         if (n == 1) {
+                *err |= gallop_sort(in[0]->children, in[0]->num_children,
+                                    compare);
                 *scratch = *in;
                 return 1;
         }
 
         half = n / 2;
 
-        n1 = sub_sort(scratch, in, compare, half, err);
-        n2 = sub_sort(&scratch[half], &in[half], compare, n-half, err);
+        n1 = sub_sort(scratch, in, compare, half, err, !swap);
+        n2 = sub_sort(&scratch[half], &in[half], compare, n-half, err, !swap);
 
-	if (!*err) {
-		/* XXX If in[n1] < in[half], we needlessly copy the list
-		   twice */
-		n = sub_merge(scratch, in, &in[half], n1, n2, compare, err);
-		memcpy(in, scratch, sizeof(PyBList *) * n);
-	} else {
-		if (n1 < half)
-			memmove(&in[n1], &in[half], sizeof(PyBList *) * n2);
-		n = n1 + n2;
-	}
+        /* If swap is true, the output is currently in "in".
+         * Otherwise, the output is currently in scratch.
+         *
+         * sub_merge() will reverse it.
+        */
+
+        if (!*err) {
+                if (swap)
+                        n = sub_merge(scratch, in, &in[half], n1, n2, compare, err);
+                else
+                        n = sub_merge(in, scratch, &scratch[half], n1, n2, compare, err);
+        } else {
+                if (swap) {
+                        memcpy(scratch, in, n1 * sizeof(PyBList *));
+                        memcpy(&scratch[n1], &in[half], n2 * sizeof(PyBList *));
+                } else {
+                        memcpy(in, scratch, n1 * sizeof(PyBList *));
+                        memcpy(&in[n1], &scratch[half], n2 * sizeof(PyBList *));
+                }
+                n = n1 + n2;
+        }
         return n;
 }
 
 BLIST_LOCAL(Py_ssize_t)
-sort(PyBListRoot *self, const compare_t *compare)
+sort(PyBListRoot *restrict self, PyObject *compare, PyObject *keyfunc)
 {
-        Forest builder;
-        PyBList *other, *leaf;
-        PyBList **leafs, **scratch;
+        PyBList *leaf;
+        PyBList **restrict leafs, **scratch;
         int err=0;
         Py_ssize_t i, leafs_n = 0;
+        sortwrapperobject *sortarray;
 
         leafs = PyMem_New(PyBList *, self->n / HALF + 1);
         if (!leafs)
@@ -4836,35 +4989,48 @@ sort(PyBListRoot *self, const compare_t *compare)
                 return -1;
         }
 
-	linearize_rw(self);
-	assert(INDEX_LENGTH(self) <= self->index_allocated);
-	for (i = 0; i < INDEX_LENGTH(self)-1; i++) {
-		leaf = self->index_list[i];
-		if (leaf == self->index_list[i+1])
-			continue;
-		leafs[leafs_n++] = leaf;
-	}
-	leafs[leafs_n++] = self->index_list[INDEX_LENGTH(self)-1];
+        linearize_rw(self);
+        assert(INDEX_LENGTH(self) <= self->index_allocated);
+        for (i = 0; i < INDEX_LENGTH(self)-1; i++) {
+                leaf = self->index_list[i];
+                if (leaf == self->index_list[i+1])
+                        continue;
+                leafs[leafs_n++] = leaf;
+                Py_INCREF(leaf);
+        }
+        leaf = self->index_list[i];
+        leafs[leafs_n++] = leaf;
+        Py_INCREF(leaf);
 
-        for (i = 0; i < leafs_n; i++) {
-                leaf = leafs[i];
-		Py_INCREF(leaf);
-		if (!err)
-			err = gallop_sort(leaf->children, leaf->num_children,compare);
+        if (keyfunc != NULL) {
+                sortarray = wrap_leaf_array(leafs, leafs_n, self->n, keyfunc);
+                if (sortarray == NULL) {
+                        for (i = 0; i < leafs_n; i++)
+                                SAFE_DECREF(leaf);
+                        PyMem_Free(scratch);
+                        PyMem_Free(leafs);
+                        return -1;
+                }
         }
 
-        leafs_n = sub_sort(scratch, leafs, compare, leafs_n, &err);
+        leafs_n = sub_sort(scratch, leafs, compare, leafs_n, &err, 0);
         PyMem_Free(scratch);
 
-        forest_init(&builder);
-        for (i = 0; i < leafs_n && leafs[i]; i++) {
-                leafs[i]->n = leafs[i]->num_children;
-                forest_append(&builder, leafs[i]);
+        if (keyfunc != NULL)
+                unwrap_leaf_array(leafs, leafs_n, self->n, sortarray);
+
+        i = blist_init_from_child_array(leafs, leafs_n);
+
+        if (i < 0) {
+                /* XXX leaking memory here when out of memory */
+                return -1;
+        } else {
+                assert(i == 1);
+                blist_become_and_consume((PyBList *) self, leafs[0]);
+                blist_CLEAR(leafs[0]);
         }
+        SAFE_DECREF(leafs[0]);
         PyMem_Free(leafs);
-        other = forest_finish(&builder);
-	blist_become_and_consume((PyBList *) self, other);
-        SAFE_DECREF(other);
         return err;
 }
 
@@ -5747,8 +5913,6 @@ py_blist_debug(PyBList *self)
 BLIST_PYAPI(PyObject *)
 py_blist_sort(PyBListRoot *self, PyObject *args, PyObject *kwds)
 {
-        compare_t compare = {NULL, NULL};
-        compare_t *pcompare = &compare;
 #if PY_MAJOR_VERSION < 3
         static char *kwlist[] = {"cmp", "key", "reverse", 0};
 #else
@@ -5758,6 +5922,7 @@ py_blist_sort(PyBListRoot *self, PyObject *args, PyObject *kwds)
         int ret;
         PyBListRoot saved;
         PyObject *result = NULL;
+        PyObject *compare = NULL, *keyfunc = NULL;
         static PyObject **extra_list = NULL;
 
         invariants(self, VALID_USER|VALID_RW | VALID_DECREF);
@@ -5767,16 +5932,14 @@ py_blist_sort(PyBListRoot *self, PyObject *args, PyObject *kwds)
                 DANGER_BEGIN;
 #if PY_MAJOR_VERSION < 3
                 err = PyArg_ParseTupleAndKeywords(args, kwds, "|OOi:sort",
-                                                  kwlist, &compare.compare,
-                                                  &compare.keyfunc,
+                                                  kwlist, &compare, &keyfunc,
                                                   &reverse);
                 DANGER_END;
                 if (!err)
                         return _ob(NULL);
 #else
                 err = PyArg_ParseTupleAndKeywords(args, kwds, "|Oi:sort",
-                                                  kwlist, &compare.keyfunc,
-                                                  &reverse);
+                                                  kwlist, &keyfunc, &reverse);
                 DANGER_END;
                 if (!err)
                         return _ob(NULL);
@@ -5792,19 +5955,17 @@ py_blist_sort(PyBListRoot *self, PyObject *args, PyObject *kwds)
                 Py_RETURN_NONE;
 
 #if PY_MAJOR_VERSION < 3
-        if (is_default_cmp(compare.compare))
-                compare.compare = NULL;
+        if (is_default_cmp(compare))
+                compare = NULL;
 #endif
-        if (compare.keyfunc == Py_None)
-                compare.keyfunc = NULL;
-        if (compare.compare == NULL && compare.keyfunc == NULL)
-                pcompare = NULL;
+        if (keyfunc == Py_None)
+                keyfunc = NULL;
 
-	memset(&saved, 0, offsetof(PyBListRoot, BLIST_FIRST_FIELD));
-	memcpy(&saved.BLIST_FIRST_FIELD, &self->BLIST_FIRST_FIELD,
-	       sizeof(*self) - offsetof(PyBListRoot, BLIST_FIRST_FIELD));
-	Py_TYPE(&saved) = &PyRootBList_Type;
-	Py_REFCNT(&saved) = 1;
+        memset(&saved, 0, offsetof(PyBListRoot, BLIST_FIRST_FIELD));
+        memcpy(&saved.BLIST_FIRST_FIELD, &self->BLIST_FIRST_FIELD,
+               sizeof(*self) - offsetof(PyBListRoot, BLIST_FIRST_FIELD));
+        Py_TYPE(&saved) = &PyRootBList_Type;
+        Py_REFCNT(&saved) = 1;
 
         if (extra_list != NULL) {
                 self->children = extra_list;
@@ -5826,10 +5987,22 @@ py_blist_sort(PyBListRoot *self, PyObject *args, PyObject *kwds)
         if (reverse)
                 blist_reverse(&saved);
 
-        if (saved.leaf)
-                ret = gallop_sort(saved.children,saved.num_children,pcompare);
-        else
-                ret = sort(&saved, pcompare);
+        if (saved.leaf) {
+                sortwrapperobject *sortarray;
+                PyBList *leaf = (PyBList *)&saved;
+                if (keyfunc != NULL) {
+                        sortarray = wrap_leaf_array(&leaf, 1,saved.n,keyfunc);
+                        if (sortarray == NULL) {
+                                ret = -1;
+                                goto skipsort;
+                        }
+                }
+                ret = gallop_sort(saved.children, saved.num_children, compare);
+                if (keyfunc != NULL)
+                        unwrap_leaf_array(&leaf, 1, saved.n, sortarray);
+        } else
+                ret = sort(&saved, compare, keyfunc);
+  skipsort:
 
         if (reverse)
                 blist_reverse(&saved);
