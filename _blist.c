@@ -6689,7 +6689,7 @@ init_blist(void)
 
 static struct PyModuleDef blist_module = {
         PyModuleDef_HEAD_INIT,
-        "blist",
+        "_blist",
         NULL,
         -1,
         module_methods,
