@@ -3090,6 +3090,7 @@ typedef struct Forest
         PyBList **list;
 } Forest;
 
+#if 0
 /* Remove the right-most element.  If it's a leaf, return it.
  * Otherwise, add all of its childrent to the forest *in reverse
  * order* and try again.  Assuming only one BList was added to the
@@ -3125,6 +3126,7 @@ forest_get_leaf(Forest *forest)
 
         return node;
 }
+#endif
 
 #define MAX_FREE_FORESTS 20
 static PyBList **forest_saved[MAX_FREE_FORESTS];
