@@ -95,6 +95,16 @@ static int num_free_ulists = 0;
 static blistiterobject *free_iters[MAXFREELISTS];
 static int num_free_iters = 0;
 
+typedef struct sortwrapperobject
+{
+        PyObject_HEAD
+        PyObject *key;
+        PyObject *value;
+} sortwrapperobject;
+
+static PyTypeObject PyBListSortWrapper_Type;
+struct sortwrapperobject;
+
 #define PyBList_Check(op) (PyObject_TypeCheck((op), &PyBList_Type) || (PyObject_TypeCheck((op), &PyRootBList_Type)))
 #define PyRootBList_Check(op) (PyObject_TypeCheck((op), &PyRootBList_Type))
 #define PyRootBList_CheckExact(op) (Py_TYPE((op)) == &PyRootBList_Type)
@@ -221,46 +231,6 @@ balance_leafs(PyBList *restrict leaf1, PyBList *restrict leaf2)
 }
 
 /************************************************************************
- */
-
-static PyObject * (*pgc_disable)(PyObject *self, PyObject *noargs);
-static PyObject * (*pgc_enable)(PyObject *self, PyObject *noargs);
-static PyObject * (*pgc_isenabled)(PyObject *self, PyObject *noargs);
-#ifdef Py_DEBUG
-static int gc_pause_count = 0;
-#endif
-
-BLIST_LOCAL(void)
-gc_unpause(int previous)
-{
-#ifdef Py_DEBUG
-        assert(gc_pause_count > 0);
-        gc_pause_count--;
-#endif
-        if (previous) {
-                PyObject *rv = pgc_enable(NULL, NULL);
-                Py_DECREF(rv);
-        }
-}
-
-BLIST_LOCAL(int)
-gc_pause(void)
-{
-        int rv;
-        PyObject *enabled = pgc_isenabled(NULL, NULL);
-        rv = (enabled == Py_True);
-        Py_DECREF(enabled);
-        if (rv) {
-                PyObject *none = pgc_disable(NULL, NULL);
-                Py_DECREF(none);
-        }
-#ifdef Py_DEBUG
-        gc_pause_count++;
-#endif
-        return rv;
-}
-
-/************************************************************************
  * Macros for O(1) iteration over a BList via Depth-First-Search.  If
  * the root is also a leaf, it will skip the memory allocation and
  * just use a for loop.
@@ -371,6 +341,115 @@ static int blist_danger = 0;
 #define DANGER_GC_END while(0)
 
 #endif
+
+/************************************************************************
+ * Functions we wish CPython's API provided :-)
+ */
+
+static PyObject * (*pgc_disable)(PyObject *self, PyObject *noargs);
+static PyObject * (*pgc_enable)(PyObject *self, PyObject *noargs);
+static PyObject * (*pgc_isenabled)(PyObject *self, PyObject *noargs);
+#ifdef Py_DEBUG
+static int gc_pause_count = 0;
+#endif
+
+BLIST_LOCAL(void)
+gc_unpause(int previous)
+{
+#ifdef Py_DEBUG
+        assert(gc_pause_count > 0);
+        gc_pause_count--;
+#endif
+        if (previous) {
+                PyObject *rv = pgc_enable(NULL, NULL);
+                Py_DECREF(rv);
+        }
+}
+
+BLIST_LOCAL(int)
+gc_pause(void)
+{
+        int rv;
+        PyObject *enabled = pgc_isenabled(NULL, NULL);
+        rv = (enabled == Py_True);
+        Py_DECREF(enabled);
+        if (rv) {
+                PyObject *none = pgc_disable(NULL, NULL);
+                Py_DECREF(none);
+        }
+#ifdef Py_DEBUG
+        gc_pause_count++;
+#endif
+        return rv;
+}
+
+/* If fast_type == v->ob_type == w->ob_type, then we can assume:
+ * 1) tp_richcompare != NULL
+ * 2) tp_richcompare will not recurse
+ * 3) tp_richcompare(v, w, op) == tp_richcompare(w, v, symmetric_op)
+ * 4) tp_richcompare(v, w, op) can return only Py_True or Py_False
+ *
+ * These assumptions hold for built-in, immutable, non-container types.
+ */
+BLIST_LOCAL_INLINE(int)
+fast_eq(PyObject *v, PyObject *w, PyTypeObject *fast_type)
+{
+        if (v == w) return 1;
+        if (v->ob_type == w->ob_type && v->ob_type == fast_type) {
+                PyObject *res;
+
+                DANGER_BEGIN;
+                res = v->ob_type->tp_richcompare(v, w, Py_EQ);
+                Py_DECREF(res);
+                DANGER_END;
+
+                return res == Py_True;
+        } else {
+                int rv;
+                DANGER_BEGIN;
+                rv = PyObject_RichCompareBool(v, w, Py_EQ);
+                DANGER_END;
+                return rv;
+        }
+}
+
+BLIST_LOCAL_INLINE(int)
+fast_lt(PyObject *v, PyObject *w, PyTypeObject *fast_type)
+{
+        assert(v->ob_type != &PyBListSortWrapper_Type);
+        if (v->ob_type == w->ob_type && v->ob_type == fast_type) {
+                PyObject *res;
+
+                DANGER_BEGIN;
+                res = v->ob_type->tp_richcompare(v, w, Py_LT);
+                Py_DECREF(res);
+                DANGER_END;
+
+                return res == Py_True;
+        }
+        else {
+                int rv;
+                DANGER_BEGIN;
+                rv = PyObject_RichCompareBool(v, w, Py_LT);
+                DANGER_END;
+                return rv;
+        }
+}
+
+BLIST_LOCAL(PyTypeObject *)
+check_fast_cmp_type(PyObject *ob)
+{
+        if (ob->ob_type == &PyBListSortWrapper_Type)
+                ob = ((sortwrapperobject *)ob)->key;
+        if (ob->ob_type == &PyBool_Type
+            || ob->ob_type == &PyBytes_Type
+            || ob->ob_type == &PyComplex_Type
+            || ob->ob_type == &PyFloat_Type
+            || ob->ob_type == &PyLong_Type
+            || ob->ob_type == &PyUnicode_Type)
+                return ob->ob_type;
+        return NULL;
+}
 
 /************************************************************************
  * Utility functions for removal items from a BList
@@ -3703,7 +3782,7 @@ blist_richcompare_list(PyBList *v, PyListObject *w, int op)
                 }
 
                 DANGER_BEGIN;
-                cmp = PyObject_RichCompareBool(item, w->ob_item[i], Py_EQ);
+                cmp = fast_eq(item, w->ob_item[i], NULL);
                 DANGER_END;
 
                 if (cmp < 0) {
@@ -3790,19 +3869,22 @@ static PyObject *blist_richcompare_len(PyBList *v, PyBList *w, int op)
         }
 }
 
-static PyObject *blist_richcompare_slow(PyBList *v, PyBList *w, int op)
+BLIST_LOCAL(PyObject *)
+blist_richcompare_slow(PyBList *v, PyBList *w, int op)
 {
         /* Search for the first index where items are different */
         PyObject *item1, *item2;
         iter_t it1, it2;
         int c;
         PyBList *leaf1, *leaf2;
+        PyTypeObject *fast_cmp_type;
 
         iter_init(&it1, v);
         iter_init(&it2, w);
 
         leaf1 = it1.leaf;
         leaf2 = it2.leaf;
+        fast_cmp_type = check_fast_cmp_type(it1.leaf->children[0]);
         do {
                 if (it1.i < leaf1->num_children) {
                         item1 = leaf1->children[it1.i++];
@@ -3827,7 +3909,7 @@ static PyObject *blist_richcompare_slow(PyBList *v, PyBList *w, int op)
                 }
 
                 DANGER_BEGIN;
-                c = PyObject_RichCompareBool(item1, item2, Py_EQ);
+                c = fast_eq(item1, item2, fast_cmp_type);
                 DANGER_END;
         } while (c >= 1);
 
@@ -3840,6 +3922,7 @@ BLIST_LOCAL(PyObject *)
 blist_richcompare_blist(PyBList *v, PyBList *w, int op)
 {
         int i, c;
+        PyTypeObject *fast_cmp_type;
 
         if (v->n != w->n) {
                 /* Shortcut: if the lengths differ, the lists differ */
@@ -3850,14 +3933,15 @@ blist_richcompare_blist(PyBList *v, PyBList *w, int op)
                 }
         }
 
+        if (!v->n)
+                Py_RETURN_TRUE;
+
         if (!v->leaf || !w->leaf)
                 return blist_richcompare_slow(v, w, op);
 
+        fast_cmp_type = check_fast_cmp_type(v->children[0]);
         for (i = 0; i < v->num_children && i < w->num_children; i++) {
-                DANGER_BEGIN;
-                c = PyObject_RichCompareBool(v->children[i],
-                                             w->children[i],Py_EQ);
-                DANGER_END;
+                c = fast_eq(v->children[i], w->children[i], fast_cmp_type);
                 if (c < 1)
                         return blist_richcompare_item(c, op, v->children[i],
                                                       w->children[i]);
@@ -4246,13 +4330,6 @@ blist_append(PyBList *self, PyObject *v)
  *
  ************************************************************************/
 
-typedef struct
-{
-        PyObject_HEAD
-        PyObject *key;
-        PyObject *value;
-} sortwrapperobject;
-
 static PyObject *
 sortwrapper_richcompare(sortwrapperobject *a, sortwrapperobject *b, int op)
 {
@@ -4359,34 +4436,21 @@ unwrap_leaf_array(PyBList **leafs, int leafs_n, int n,sortwrapperobject *array)
  * In Python 3, COMPARE is always NULL.
  */
 
-#ifdef Py_DEBUG
-BLIST_LOCAL(int)
-_rich_compare_bool(PyObject *x, PyObject *y)
-{
-        int ret;
-        DANGER_BEGIN;
-        ret = PyObject_RichCompareBool(x, y, Py_LT);
-        DANGER_END;
-        return ret;
-}
-#endif
+#define FAST_ISLT(X, Y, fast_cmp_type)                          \
+        (((X)->ob_type == &PyBListSortWrapper_Type) ?           \
+         fast_lt(((sortwrapperobject *)(X))->key,               \
+                 ((sortwrapperobject *)(Y))->key,               \
+                 (fast_cmp_type))                               \
+         : (fast_lt((X), (Y), (fast_cmp_type))))
 
 #if PY_MAJOR_VERSION < 3
-#ifndef Py_DEBUG
-#define ISLT(X, Y, COMPARE) ((COMPARE) == NULL ?                        \
-                             PyObject_RichCompareBool(X, Y, Py_LT) :    \
-                             islt(X, Y, COMPARE))
+#define ISLT(X, Y, COMPARE, fast_cmp_type)      \
+        ((COMPARE) == NULL ?                    \
+         FAST_ISLT(X, Y, fast_cmp_type) :       \
+         islt(X, Y, COMPARE))
 #else
-#define ISLT(X, Y, COMPARE) ((COMPARE) == NULL ?                        \
-                             _rich_compare_bool(X, Y) :    \
-                             islt(X, Y, COMPARE))
-#endif
-#else
-#ifndef Py_DEBUG
-#define ISLT(X, Y, COMPARE) (PyObject_RichCompareBool(X, Y, Py_LT))
-#else
-#define ISLT(X, Y, COMPARE) (_rich_compare_bool(X, Y))
-#endif
+#define ISLT(X, Y, COMPARE, fast_cmp_type)              \
+        (FAST_ISLT((X), (Y), (fast_cmp_type)))
 #endif
 
 #if PY_MAJOR_VERSION < 3
@@ -4572,11 +4636,14 @@ mini_merge(PyObject **array, int middle, int n, PyObject *compare)
         PyObject **lend = &copy[middle];
         PyObject **src;
         PyObject **dst;
+        PyTypeObject *fast_cmp_type;
 
         assert (middle <= LIMIT);
 
+        fast_cmp_type = check_fast_cmp_type(array[0]);
+
         for (left = array; left < right; left++) {
-                c = ISLT(*right, *left, compare);
+                c = ISLT(*right, *left, compare, fast_cmp_type);
                 if (c < 0)
                         return -1;
                 if (c)
@@ -4597,7 +4664,7 @@ mini_merge(PyObject **array, int middle, int n, PyObject *compare)
         *dst++ = *right++;
 
         for (left = copy; left < lend && right < rend; dst++) {
-                c = ISLT(*right, *left, compare);
+                c = ISLT(*right, *left, compare, fast_cmp_type);
                 if (c < 0) {
                         ret = -1;
                         goto done;
@@ -4626,11 +4693,14 @@ gallop_sort(PyObject **array, int n, PyObject *compare)
         int ns[LIMIT/RUN_THRESH+2];
         int num_runs = 0;
         PyObject **run = array;
+        PyTypeObject *fast_cmp_type;
 
         if (n < 2) return 0;
 
+        fast_cmp_type = check_fast_cmp_type(array[0]);
+
         for (i = 1; i < n; i++) {
-                int c = ISLT(array[i], array[i-1], compare);
+                int c = ISLT(array[i], array[i-1], compare, fast_cmp_type);
                 assert(c < 0 || c == 0 || c == 1);
                 if (c == run_dir)
                         continue;
@@ -4658,7 +4728,8 @@ gallop_sort(PyObject **array, int n, PyObject *compare)
 
                         while (low < high) {
                                 mid = low + (high - low)/2;
-                                c = ISLT(tmp, array[mid], compare);
+                                c = ISLT(tmp, array[mid], compare,
+                                         fast_cmp_type);
                                 assert(c < 0 || c == 0 || c == 1);
                                 if (c == run_dir)
                                         low = mid+1;
@@ -4779,7 +4850,7 @@ try_fast_merge(PyBList **restrict out, PyBList **in1, PyBList **in2,
         end = in1[n1-1];
 
         c = ISLT(end->children[end->num_children-1],
-                 in2[0]->children[0], compare);
+                 in2[0]->children[0], compare, NULL);
 
         if (c < 0) {
         error:
@@ -4794,7 +4865,7 @@ try_fast_merge(PyBList **restrict out, PyBList **in1, PyBList **in2,
         end = in2[n2-1];
 
         c = ISLT(end->children[end->num_children-1],
-                 in1[0]->children[0], compare);
+                 in1[0]->children[0], compare, NULL);
         if (c < 0)
                 goto error;
         else if (c) {
@@ -4817,6 +4888,7 @@ sub_merge(PyBList **restrict out, PyBList **in1, PyBList **in2,
         PyBList *restrict leaf1, *restrict leaf2, *restrict output;
         int leaf1_i = 0, leaf2_i = 0;
         Py_ssize_t nout = 0;
+        PyTypeObject *fast_cmp_type;
 
         if (try_fast_merge(out, in1, in2, n1, n2, compare, err))
                 return n1 + n2;
@@ -4828,6 +4900,8 @@ sub_merge(PyBList **restrict out, PyBList **in1, PyBList **in2,
         j = 0; /* Index into leaf 2 */
 
         output = blist_new();
+
+        fast_cmp_type = check_fast_cmp_type(leaf1->children[0]);
 
         while ((leaf1_i < n1 || i < leaf1->num_children)
                && (leaf2_i < n2 || j < leaf2->num_children)) {
@@ -4857,7 +4931,8 @@ sub_merge(PyBList **restrict out, PyBList **in1, PyBList **in2,
                 }
 
                 /* Figure out which input leaf has the lower element */
-                c = ISLT(leaf2->children[j], leaf1->children[i], compare);
+                c = ISLT(leaf2->children[j], leaf1->children[i], compare,
+                        fast_cmp_type);
                 if (c < 0) {
                         *err = -1;
                         goto done;
@@ -5582,7 +5657,7 @@ py_blist_contains(PyObject *oself, PyObject *el)
 
         ITER(self, item, {
                 DANGER_BEGIN;
-                c = PyObject_RichCompareBool(el, item, Py_EQ);
+                c = fast_eq(el, item, NULL);
                 DANGER_END;
                 if (c < 0) {
                         ret = -1;
@@ -5988,7 +6063,7 @@ py_blist_sort(PyBListRoot *self, PyObject *args, PyObject *kwds)
                 blist_reverse(&saved);
 
         if (saved.leaf) {
-                sortwrapperobject *sortarray;
+                sortwrapperobject *sortarray = NULL;
                 PyBList *leaf = (PyBList *)&saved;
                 if (keyfunc != NULL) {
                         sortarray = wrap_leaf_array(&leaf, 1,saved.n,keyfunc);
@@ -6066,9 +6141,7 @@ py_blist_count(PyBList *self, PyObject *v)
         invariants(self, VALID_USER | VALID_DECREF);
 
         ITER(self, item, {
-                DANGER_BEGIN;
-                c = PyObject_RichCompareBool(item, v, Py_EQ);
-                DANGER_END;
+                c = fast_eq(item, v, NULL);
                 if (c > 0)
                         count++;
                 else if (c < 0) {
@@ -6114,9 +6187,7 @@ py_blist_index(PyBList *self, PyObject *args)
 
         i = start;
         ITER2(self, item, start, stop, {
-                DANGER_BEGIN;
-                c = PyObject_RichCompareBool(item, v, Py_EQ);
-                DANGER_END;
+                c = fast_eq(item, v, NULL);
                 if (c > 0) {
                         ITER_CLEANUP();
                         decref_flush();
@@ -6145,9 +6216,7 @@ py_blist_remove(PyBList *self, PyObject *v)
 
         i = 0;
         ITER(self, item, {
-                DANGER_BEGIN;
-                c = PyObject_RichCompareBool(item, v, Py_EQ);
-                DANGER_END;
+                c = fast_eq(item, v, NULL);
                 if (c > 0) {
                         ITER_CLEANUP();
                         blist_delitem(self, i);

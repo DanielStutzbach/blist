@@ -96,6 +96,8 @@ typedef struct PyBListRoot {
 #endif
 } PyBListRoot;
 
+#define PyBList_GET_ITEM(op, i) (((PyBList *)(op))->leaf ? (((PyBList *)(op))->children[(i)]) : _PyBList_GET_ITEM_FAST2((PyBListRoot*) (op), (i)))
+
 /************************************************************************
  * Code used when building BList into the interpreter
  */
@@ -131,7 +133,7 @@ PyAPI_FUNC(PyObject *) _PyList_Extend(PyBListRoot *, PyObject *);
 PyAPI_FUNC(void) _PyList_SetItemFast(PyObject *, Py_ssize_t, PyObject *);
 
 /* Macro, trading safety for speed */
-#define PyList_GET_ITEM(op, i) (((PyBList *)(op))->leaf ? (((PyBList *)(op))->children[(i)]) : _PyBList_GET_ITEM_FAST2((PyBListRoot*) (op), (i)))
+#define PyList_GET_ITEM(op, i) (PyBList_GET_ITEM((op), (i)))
 //#define PyList_SET_ITEM(op, i, v) (((PyBList *)(op))->leaf ? (void) (((PyBList *)(op))->children[(i)] = (v)) : (void) _PyList_SetItemFast((PyObject *) (op), (i), (v)))
 #define PyList_SET_ITEM(self, i, v) (((PyBList *)self)->leaf ? (void) (((PyBList*)self)->children[(i)] = (v)) : (void) blist_ass_item_return2((PyBListRoot*)(self), (i), (v)))
 
