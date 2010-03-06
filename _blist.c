@@ -1,4 +1,4 @@
-/* Copyright 2007-2009 Stutzbach Enterprises, LLC
+/* Copyright 2007-2010 Stutzbach Enterprises, LLC
  * daniel@stutzbachenterprises.com
  *
  * Redistribution and use in source and binary forms, with or without
