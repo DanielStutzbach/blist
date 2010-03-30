@@ -22,7 +22,8 @@ class sorteddict(collections.MutableMapping):
 
     def __setitem__(self, key, value):
         try:
-            self._sortedkeys.add(key)
+            if key not in self._map:
+                self._sortedkeys.add(key)
             self._map[key] = value
         except:
             if key not in self._map:
