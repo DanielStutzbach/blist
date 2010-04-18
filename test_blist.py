@@ -341,6 +341,10 @@ class BListTest(list_tests.CommonTest):
             self.assertRaises(StopIteration, it.next)
         self.assertEqual(it.__length_hint__(), 0)
 
+    def test_sort_floats(self):
+        x = blist.blist([0.1, 0.2, 0.3])
+        x.sort()
+
 tests = [BListTest, 
          sortedlist_tests.SortedListTest,
          sortedlist_tests.WeakSortedListTest,
