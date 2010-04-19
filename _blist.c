@@ -5002,8 +5002,7 @@ try_fast_merge(PyBList **restrict out, PyBList **in1, PyBList **in2,
         return 0;
 }
 
-/* Merge two sorted forests.  Each forest must contain on leafs.  The
- * forests will be deleted at the end. */
+/* Merge two arrays of leaf nodes. */
 BLIST_LOCAL(int)
 sub_merge(PyBList **restrict out, PyBList **in1, PyBList **in2,
           Py_ssize_t n1, Py_ssize_t n2,
@@ -5075,7 +5074,7 @@ sub_merge(PyBList **restrict out, PyBList **in1, PyBList **in2,
         }
 
  done:
-        /* Append our partially-complete output leaf node to the forest */
+        /* Append our partially-complete output leaf node */
         nout = append_and_squish(out, nout, output);
 
         /* Append a partially-consumed input leaf node, if one exists */
@@ -5101,8 +5100,8 @@ sub_merge(PyBList **restrict out, PyBList **in1, PyBList **in2,
 
         nout = balance_last_2(out, nout);
 
+        /* Append the rest of any input that still has nodes. */
         if (leaf1_i < n1) {
-                /* Append the rest of any input forests still has nodes. */
                 memcpy(&out[nout], &in1[leaf1_i],
                        sizeof(PyBList *) * (n1 - leaf1_i));
                 nout += n1 - leaf1_i;
@@ -5424,6 +5423,8 @@ py_blist_dealloc(PyObject *oself)
 
         Py_TRASHCAN_SAFE_BEGIN(self)
 
+        /* Py_XDECREF() is needed here because the Python C API allows list
+         * items to be NULL. */
         for (i = 0; i < self->num_children; i++)
                 Py_XDECREF(self->children[i]);
 
@@ -6225,20 +6226,20 @@ py_blist_sort(PyBListRoot *self, PyObject *args, PyObject *kwds)
                 ret = sort(&saved, compare, keyfunc);
   skipsort:
 
-        if (reverse)
-                blist_reverse(&saved);
-
         if (ret >= 0) {
                 result = Py_None;
-                ext_reindex_set_all(&saved);
+                if (reverse) {
+                        ext_mark((PyBList*)&saved, 0, DIRTY);
+                        blist_reverse(&saved);
+                }
         } else
                 ext_mark((PyBList*)&saved, 0, DIRTY);
 
         if (self->n && saved.n) {
                 DANGER_BEGIN;
                 /* An error may also have been raised by a comparison
-                 * function.  Since may decref that traceback, it can
-                 * execute arbitrary python code */
+                 * function.  Since this may decref that traceback, it can
+                 * execute arbitrary python code. */
                 PyErr_SetString(PyExc_ValueError, "list modified during sort");
                 DANGER_END;
                 result = NULL;
