@@ -4088,6 +4088,9 @@ reverse_slice(register PyObject **restrict lo, register PyObject **restrict hi)
         register PyObject *t;
         assert(lo && hi);
 
+        /* slice of length 0 */
+        if (hi == lo) return;
+
         /* Use Duff's Device
          * http://en.wikipedia.org/wiki/Duff%27s_device
          */
