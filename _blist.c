@@ -7159,7 +7159,7 @@ int PyList_Sort(PyObject *ob)
                 return -1;
         }
 
-        ret = py_blist_sort((PyBList *) ob, NULL, NULL);
+        ret = py_blist_sort((PyBListRoot *) ob, NULL, NULL);
         if (ret == NULL)
                 return -1;
 
@@ -7176,8 +7176,7 @@ int PyList_Reverse(PyObject *ob)
 
         invariants((PyBList *) ob, VALID_USER|VALID_RW);
 
-        blist_reverse((PyBList *) ob);
-        ext_index_set_all((PyBListRoot *) ob);
+        blist_reverse((PyBListRoot *) ob);
 
         return _int(0);
 }
