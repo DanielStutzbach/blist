@@ -4047,15 +4047,30 @@ blist_richcompare_blist(PyBList *v, PyBList *w, int op)
                 } else if (op == Py_NE) {
                         Py_RETURN_TRUE;
                 }
-        }
 
-        if (!v->n)
-                Py_RETURN_TRUE;
+                if (!v->n) {
+                /* Shortcut: first list empty, second un-empty. */
+                switch (op) {
+                case Py_LT: case Py_LE: Py_RETURN_TRUE;
+                case Py_GT: case Py_GE: Py_RETURN_FALSE;
+                default: return NULL; /* cannot happen */
+                }
+                }
+        } else if (!v->n) {
+                /* Shortcut: two empty lists */
+                switch (op) {
+                case Py_NE: case Py_GT: case Py_LT: Py_RETURN_FALSE;
+                case Py_LE: case Py_EQ: case Py_GE: Py_RETURN_TRUE;
+                default: return NULL; /* cannot happen */
+                }
+        }
 
         if (!v->leaf || !w->leaf)
                 return blist_richcompare_slow(v, w, op);
 
+        /* Due to the shortcuts above, we know that v->n > 0 */
         fast_cmp_type = check_fast_cmp_type(v->children[0], Py_EQ);
+
         for (i = 0; i < v->num_children && i < w->num_children; i++) {
                 c = fast_eq(v->children[i], w->children[i], fast_cmp_type);
                 if (c < 1)
