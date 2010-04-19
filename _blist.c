@@ -6141,7 +6141,7 @@ py_blist_sort(PyBListRoot *self, PyObject *args, PyObject *kwds)
         static char *kwlist[] = {"key", "reverse", 0};
 #endif
         int reverse = 0;
-        int ret;
+        int ret = -1;
         PyBListRoot saved;
         PyObject *result = NULL;
         PyObject *compare = NULL, *keyfunc = NULL;
@@ -6260,6 +6260,13 @@ py_blist_sort(PyBListRoot *self, PyObject *args, PyObject *kwds)
         Py_XINCREF(result);
 
         decref_flush();
+
+        /* This must come after the decref_flush(); otherwise, we may have
+         * extra temporary references to internal nodes, which throws off the
+         * debug-mode sanity checking. */
+        if (ret >= 0)
+                ext_reindex_set_all(&saved);
+
         return _ob(result);
 }
 
