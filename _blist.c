@@ -4498,6 +4498,28 @@ static PyTypeObject PyBListSortWrapper_Type = {
         (richcmpfunc)sortwrapper_richcompare,   /* tp_richcompare */
 };
 
+static void
+unwrap_leaf_array(PyBList **leafs, int leafs_n, int n,sortwrapperobject *array)
+{
+        int i, j, k = 0;
+
+        for (i = 0; i < leafs_n; i++) {
+                PyBList *leaf = leafs[i];
+                for (j = 0; j < leaf->num_children && k < n; j++, k++) {
+                        sortwrapperobject *wrapper;
+                        assert(Py_TYPE(leaf->children[j])
+                               == &PyBListSortWrapper_Type);
+                        wrapper = (sortwrapperobject *) leaf->children[j];
+                        leaf->children[j] = wrapper->value;
+                        DANGER_BEGIN;
+                        Py_DECREF(wrapper->key);
+                        DANGER_END;
+                }
+        }
+
+        PyMem_Free(array);
+}
+
 static sortwrapperobject *
 wrap_leaf_array(PyBList **leafs, int leafs_n, int n, PyObject *keyfunc)
 {
@@ -4519,12 +4541,7 @@ wrap_leaf_array(PyBList **leafs, int leafs_n, int n, PyObject *keyfunc)
                                 keyfunc, array[k].value, NULL);
                         DANGER_END;
                         if (array[k].key == NULL) {
-                                int m;
-                                DANGER_BEGIN;
-                                for (m = 0; m < k; m++)
-                                        Py_DECREF(array[m].key);
-                                PyMem_Free(array);
-                                DANGER_END;
+                                unwrap_leaf_array(leafs, leafs_n, k, array);
                                 return NULL;
                         }
                         leaf->children[j] = (PyObject*) &array[k];
@@ -4535,28 +4552,6 @@ wrap_leaf_array(PyBList **leafs, int leafs_n, int n, PyObject *keyfunc)
         assert(k == n);
 
         return array;
-}
-
-static void
-unwrap_leaf_array(PyBList **leafs, int leafs_n, int n,sortwrapperobject *array)
-{
-        int i, j;
-
-        for (i = 0; i < leafs_n; i++) {
-                PyBList *leaf = leafs[i];
-                for (j = 0; j < leaf->num_children; j++) {
-                        sortwrapperobject *wrapper;
-                        assert(Py_TYPE(leaf->children[j])
-                               == &PyBListSortWrapper_Type);
-                        wrapper = (sortwrapperobject *) leaf->children[j];
-                        leaf->children[j] = wrapper->value;
-                        DANGER_BEGIN;
-                        Py_DECREF(wrapper->key);
-                        DANGER_END;
-                }
-        }
-
-        PyMem_Free(array);
 }
 
 /* If COMPARE is NULL, calls PyObject_RichCompareBool with Py_LT, else calls
@@ -5228,7 +5223,7 @@ sort(PyBListRoot *restrict self, PyObject *compare, PyObject *keyfunc)
                 sortarray = wrap_leaf_array(leafs, leafs_n, self->n, keyfunc);
                 if (sortarray == NULL) {
                         for (i = 0; i < leafs_n; i++)
-                                SAFE_DECREF(leaf);
+                                SAFE_DECREF(leafs[i]);
                         PyMem_Free(scratch);
                         PyMem_Free(leafs);
                         return -1;
