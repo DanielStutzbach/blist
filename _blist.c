@@ -398,6 +398,61 @@ gc_pause(void)
 }
 #endif
 
+BLIST_LOCAL(int)
+do_eq(PyObject *v, PyObject *w)
+{
+        richcmpfunc f;
+        PyObject *res;
+        int rv;
+
+        if (Py_EnterRecursiveCall(" in cmp"))
+                return -1;
+
+        if (v->ob_type != w->ob_type &&
+            PyType_IsSubtype(w->ob_type, v->ob_type) &&
+            (f = w->ob_type->tp_richcompare) != NULL) {
+                res = (*f)(w, v, Py_EQ);
+                if (res != Py_NotImplemented) {
+                  ob_to_int:
+                        if (res == Py_False)
+                                rv = 0;
+                        else if (res == Py_True)
+                                rv = 1;
+                        else if (res == NULL) {
+                                Py_LeaveRecursiveCall();
+                                return -1;
+                        } else
+                                rv = PyObject_IsTrue(res);
+                        Py_DECREF(res);
+                        Py_LeaveRecursiveCall();
+                        return rv;
+                }
+                Py_DECREF(res);
+        }
+        if ((f = v->ob_type->tp_richcompare) != NULL) {
+                res = (*f)(v, w, Py_EQ);
+                if (res != Py_NotImplemented)
+                        goto ob_to_int;
+                Py_DECREF(res);
+        }
+        if ((f = w->ob_type->tp_richcompare) != NULL) {
+                res = (*f)(w, v, Py_EQ);
+                if (res != Py_NotImplemented)
+                        goto ob_to_int;
+                Py_DECREF(res);
+        }
+
+        Py_LeaveRecursiveCall();
+#if PY_MAJOR_VERSION < 3
+        rv = PyObject_Compare(v, w);
+        if (PyErr_Occurred())
+                return -1;
+        if (rv == 0)
+                return 1;
+#endif
+        return 0;
+}
+
 /* If fast_type == v->ob_type == w->ob_type, then we can assume:
  * 1) tp_richcompare != NULL
  * 2) tp_richcompare will not recurse
@@ -410,7 +465,7 @@ BLIST_LOCAL_INLINE(int)
 fast_eq_richcompare(PyObject *v, PyObject *w, PyTypeObject *fast_type)
 {
         if (v == w) return 1;
-        if (v->ob_type == w->ob_type && v->ob_type == fast_type) {
+        if (v->ob_type == fast_type && w->ob_type == fast_type) {
                 PyObject *res = v->ob_type->tp_richcompare(v, w, Py_EQ);
                 Py_DECREF(res);
 
@@ -418,7 +473,7 @@ fast_eq_richcompare(PyObject *v, PyObject *w, PyTypeObject *fast_type)
         } else {
                 int rv;
                 DANGER_BEGIN;
-                rv = PyObject_RichCompareBool(v, w, Py_EQ);
+                rv = do_eq(v, w);
                 DANGER_END;
                 return rv;
         }
@@ -3878,6 +3933,7 @@ blist_richcompare_list(PyBList *v, PyListObject *w, int op)
         Py_ssize_t i;
         int v_stopped = 0;
         int w_stopped = 0;
+        fast_compare_data_t fast_cmp_type = no_fast_eq;
 
         invariants(v, VALID_RW);
 
@@ -3902,10 +3958,10 @@ blist_richcompare_list(PyBList *v, PyListObject *w, int op)
                         w_stopped = 1;
                         break;
                 }
+                if (i == 0)
+                        fast_cmp_type = check_fast_cmp_type(item, Py_EQ);
 
-                DANGER_BEGIN;
-                cmp = PyObject_RichCompareBool(item, w->ob_item[i], Py_EQ);
-                DANGER_END;
+                cmp = fast_eq(item, w->ob_item[i], fast_cmp_type);
 
                 if (cmp < 0) {
                         ITER_CLEANUP();
@@ -4030,9 +4086,7 @@ blist_richcompare_slow(PyBList *v, PyBList *w, int op)
                                 goto compare_len;
                 }
 
-                DANGER_BEGIN;
                 c = fast_eq(item1, item2, fast_cmp_type);
-                DANGER_END;
         } while (c >= 1);
 
         iter_cleanup(&it1);
@@ -5803,15 +5857,15 @@ py_blist_contains(PyObject *oself, PyObject *el)
         int c, ret = 0;
         PyObject *item;
         PyBList *self;
+        fast_compare_data_t fast_cmp_type;
 
         invariants(oself, VALID_USER | VALID_DECREF);
 
         self = (PyBList *) oself;
+        fast_cmp_type = check_fast_cmp_type(el, Py_EQ);
 
         ITER(self, item, {
-                DANGER_BEGIN;
-                c = PyObject_RichCompareBool(el, item, Py_EQ);
-                DANGER_END;
+                c = fast_eq(el, item, fast_cmp_type);
                 if (c < 0) {
                         ret = -1;
                         break;
@@ -6297,13 +6351,14 @@ py_blist_count(PyBList *self, PyObject *v)
         Py_ssize_t count = 0;
         PyObject *item;
         int c;
+        fast_compare_data_t fast_cmp_type;
 
         invariants(self, VALID_USER | VALID_DECREF);
 
+        fast_cmp_type = check_fast_cmp_type(v, Py_EQ);
+
         ITER(self, item, {
-                DANGER_BEGIN;
-                c = PyObject_RichCompareBool(item, v, Py_EQ);
-                DANGER_END;
+                c = fast_eq(item, v, fast_cmp_type);
                 if (c > 0)
                         count++;
                 else if (c < 0) {
@@ -6324,6 +6379,7 @@ py_blist_index(PyBList *self, PyObject *args)
         PyObject *v;
         int c, err;
         PyObject *item;
+        fast_compare_data_t fast_cmp_type;
 
         invariants(self, VALID_USER|VALID_DECREF);
 
@@ -6347,11 +6403,10 @@ py_blist_index(PyBList *self, PyObject *args)
         } else if (stop > self->n)
                 stop = self->n;
 
+        fast_cmp_type = check_fast_cmp_type(v, Py_EQ);
         i = start;
         ITER2(self, item, start, stop, {
-                DANGER_BEGIN;
-                c = PyObject_RichCompareBool(item, v, Py_EQ);
-                DANGER_END;
+                c = fast_eq(item, v, fast_cmp_type);
                 if (c > 0) {
                         ITER_CLEANUP();
                         decref_flush();
@@ -6375,14 +6430,14 @@ py_blist_remove(PyBList *self, PyObject *v)
         Py_ssize_t i;
         int c;
         PyObject *item;
+        fast_compare_data_t fast_cmp_type;
 
         invariants(self, VALID_USER|VALID_RW|VALID_DECREF);
 
+        fast_cmp_type = check_fast_cmp_type(v, Py_EQ);
         i = 0;
         ITER(self, item, {
-                DANGER_BEGIN;
-                c = PyObject_RichCompareBool(item, v, Py_EQ);
-                DANGER_END;
+                c = fast_eq(item, v, fast_cmp_type);
                 if (c > 0) {
                         ITER_CLEANUP();
                         blist_delitem(self, i);
