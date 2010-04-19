@@ -5248,7 +5248,6 @@ sort(PyBListRoot *restrict self, PyObject *compare, PyObject *keyfunc)
         } else {
                 assert(i == 1);
                 blist_become_and_consume((PyBList *) self, leafs[0]);
-                blist_CLEAR(leafs[0]);
         }
         SAFE_DECREF(leafs[0]);
         PyMem_Free(leafs);
