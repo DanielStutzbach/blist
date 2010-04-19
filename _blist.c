@@ -502,7 +502,7 @@ _check_fast_cmp_type(PyObject *ob, int op)
                 else
                         return rv;
 
-                if (ob->ob_type == &PyComplex_Type
+                if ((ob->ob_type == &PyComplex_Type && (op == Py_EQ || op == Py_NE))
                     || ob->ob_type == &PyFloat_Type
                     || ob->ob_type == &PyLong_Type
                     || ob->ob_type == &PyUnicode_Type
@@ -533,12 +533,12 @@ static const fast_compare_data_t no_fast_eq = { NULL, fast_eq_richcompare };
 typedef PyTypeObject *fast_compare_data_t;
 
 BLIST_LOCAL(fast_compare_data_t)
-_check_fast_cmp_type(PyObject *ob)
+_check_fast_cmp_type(PyObject *ob, int op)
 {
         if (ob->ob_type == &PyBListSortWrapper_Type)
                 ob = ((sortwrapperobject *)ob)->key;
 
-        if (ob->ob_type == &PyComplex_Type
+        if ((ob->ob_type == &PyComplex_Type && (op == Py_EQ || op == Py_NE))
             || ob->ob_type == &PyFloat_Type
             || ob->ob_type == &PyLong_Type
             || ob->ob_type == &PyUnicode_Type
@@ -548,7 +548,7 @@ _check_fast_cmp_type(PyObject *ob)
         return NULL;
 }
 
-#define check_fast_cmp_type(ob, op) (_check_fast_cmp_type(ob))
+#define check_fast_cmp_type(ob, op) (_check_fast_cmp_type((ob), (op)))
 
 #define fast_eq(v, w, name) (fast_eq_richcompare((v), (w), (name)))
 #define fast_lt(v, w, name) (fast_lt_richcompare((v), (w), (name)))
