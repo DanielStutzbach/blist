@@ -355,12 +355,17 @@ static int blist_danger = 0;
  * Functions we wish CPython's API provided :-)
  */
 
-static PyObject * (*pgc_disable)(PyObject *self, PyObject *noargs);
-static PyObject * (*pgc_enable)(PyObject *self, PyObject *noargs);
-static PyObject * (*pgc_isenabled)(PyObject *self, PyObject *noargs);
 #ifdef Py_DEBUG
 static int gc_pause_count = 0;
 #endif
+
+#ifdef BLIST_IN_PYTHON
+#define gc_pause() (0)
+#define gc_unpause(previous) do {} while (0)
+#else
+static PyObject * (*pgc_disable)(PyObject *self, PyObject *noargs);
+static PyObject * (*pgc_enable)(PyObject *self, PyObject *noargs);
+static PyObject * (*pgc_isenabled)(PyObject *self, PyObject *noargs);
 
 BLIST_LOCAL(void)
 gc_unpause(int previous)
@@ -391,6 +396,7 @@ gc_pause(void)
 #endif
         return rv;
 }
+#endif
 
 /* If fast_type == v->ob_type == w->ob_type, then we can assume:
  * 1) tp_richcompare != NULL
@@ -6901,8 +6907,10 @@ init_blist_types2(void)
 PyMODINIT_FUNC
 init_blist(void)
 {
+#ifndef BLIST_IN_PYTHON
         PyCFunctionObject *meth;
         PyObject *gc_module;
+#endif
 
         PyObject *m;
         PyObject *limit = PyInt_FromLong(LIMIT);
@@ -6917,6 +6925,7 @@ init_blist(void)
         PyModule_AddObject(m, "__internal_blist", (PyObject *)
                 &PyBList_Type);
 
+#ifndef BLIST_IN_PYTHON
         gc_module = PyImport_ImportModule("gc");
 
         meth = (PyCFunctionObject*)PyObject_GetAttrString(gc_module, "enable");
@@ -6928,6 +6937,7 @@ init_blist(void)
         meth = (PyCFunctionObject*)PyObject_GetAttrString(gc_module,
                                                           "isenabled");
         pgc_isenabled = meth->m_ml->ml_meth;
+#endif
 }
 #else
 
@@ -6946,9 +6956,11 @@ static struct PyModuleDef blist_module = {
 PyMODINIT_FUNC
 PyInit__blist(void)
 {
+#ifndef BLIST_IN_PYTHON
         PyModuleDef *gc_module_def;
         PyMethodDef *gc_methods;
         PyObject *gc_module;
+#endif
         PyObject *m;
         PyObject *limit = PyInt_FromLong(LIMIT);
 
@@ -6964,6 +6976,7 @@ PyInit__blist(void)
         PyModule_AddObject(m, "__internal_blist", (PyObject *)
                            &PyBList_Type);
 
+#ifndef BLIST_IN_PYTHON
         gc_module = PyImport_ImportModule("gc");
         gc_module_def = PyModule_GetDef(gc_module);
         gc_methods = gc_module_def->m_methods;
@@ -6976,7 +6989,7 @@ PyInit__blist(void)
                         pgc_isenabled = gc_methods->ml_meth;
                 gc_methods++;
         }
-
+#endif
         return m;
 }
 #endif
