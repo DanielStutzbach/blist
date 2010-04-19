@@ -42,7 +42,15 @@
 #define restrict
 #endif
 
-#if PY_MAJOR_VERSION == 2 && PY_MINOR_VERSION < 6
+#if PY_MAJOR_VERSION == 2
+
+/* This macro is defined in Python 3.  We need it since calling
+ * PyObject_GC_UnTrack twice is unsafe. */
+/* True if the object is currently tracked by the GC. */
+#define _PyObject_GC_IS_TRACKED(o)              \
+        ((_Py_AS_GC(o))->gc.gc_refs != _PyGC_REFS_UNTRACKED)
+
+#if PY_MINOR_VERSION < 6
 /* Backward compatibility with Python 2.5 */
 #define PyUnicode_FromString PyString_FromString
 #define Py_REFCNT(ob)           (((PyObject*)(ob))->ob_refcnt)
@@ -51,6 +59,7 @@
 #define PyVarObject_HEAD_INIT(type, size)       \
         PyObject_HEAD_INIT(type) size,
 #define PyUnicode_FromFormat PyString_FromFormat
+#endif
 
 #elif PY_MAJOR_VERSION == 3
 /* Backward compatibility with Python 3 */
@@ -1019,6 +1028,13 @@ static PyBList *blist_new(void)
 
         PyObject_GC_Track(self);
 
+        return self;
+}
+
+static PyBList *blist_new_no_GC(void)
+{
+        PyBList *self = blist_new();
+        PyObject_GC_UnTrack(self);
         return self;
 }
 
@@ -4996,7 +5012,7 @@ sub_merge(PyBList **restrict out, PyBList **in1, PyBList **in2,
         i = 0; /* Index into leaf 1 */
         j = 0; /* Index into leaf 2 */
 
-        output = blist_new();
+        output = blist_new_no_GC();
 
         fast_cmp_type = check_fast_cmp_type(leaf1->children[0], Py_LT);
 
@@ -5024,7 +5040,7 @@ sub_merge(PyBList **restrict out, PyBList **in1, PyBList **in2,
                 /* Check if we have filled up an output leaf node */
                 if (output->n == LIMIT) {
                         out[nout++] = output;
-                        output = blist_new();
+                        output = blist_new_no_GC();
                 }
 
                 /* Figure out which input leaf has the lower element */
@@ -5143,6 +5159,22 @@ sub_sort(PyBList **restrict scratch, PyBList **in, PyObject *compare,
         return n;
 }
 
+BLIST_LOCAL_INLINE(void)
+array_disable_GC(PyBList **leafs, Py_ssize_t num_leafs)
+{
+        Py_ssize_t i;
+        for (i = 0; i < num_leafs; i++)
+                PyObject_GC_UnTrack(leafs[i]);
+}
+
+BLIST_LOCAL_INLINE(void)
+array_enable_GC(PyBList **leafs, Py_ssize_t num_leafs)
+{
+        Py_ssize_t i;
+        for (i = 0; i < num_leafs; i++)
+                PyObject_GC_Track(leafs[i]);
+}
+
 BLIST_LOCAL(Py_ssize_t)
 sort(PyBListRoot *restrict self, PyObject *compare, PyObject *keyfunc)
 {
@@ -5185,8 +5217,12 @@ sort(PyBListRoot *restrict self, PyObject *compare, PyObject *keyfunc)
                 }
         }
 
+        array_disable_GC(leafs, leafs_n);
+
         leafs_n = sub_sort(scratch, leafs, compare, leafs_n, &err, 0);
         PyMem_Free(scratch);
+
+        array_enable_GC(leafs, leafs_n);
 
         if (keyfunc != NULL)
                 unwrap_leaf_array(leafs, leafs_n, self->n, sortarray);
@@ -5371,7 +5407,8 @@ py_blist_dealloc(PyObject *oself)
         assert(PyBList_Check(oself));
         self = (PyBList *) oself;
 
-        PyObject_GC_UnTrack(self);
+        if (_PyObject_GC_IS_TRACKED(self))
+                PyObject_GC_UnTrack(self);
 
         Py_TRASHCAN_SAFE_BEGIN(self)
 
