@@ -332,7 +332,7 @@ class BListTest(list_tests.CommonTest):
             self.assertRaises(StopIteration, it.next)
         self.assertEqual(it.__length_hint__(), 0)
 
-tests = [BListTest, 
+tests = [BListTest,
          sortedlist_tests.SortedListTest,
          sortedlist_tests.WeakSortedListTest,
          sortedlist_tests.SortedSetTest,
@@ -345,7 +345,7 @@ def test_suite():
     suite = unittest.TestSuite()
     for test in tests:
         suite.addTest(unittest.TestLoader().loadTestsFromTestCase(test))
-    return suite                                            
+    return suite
 
 def test_main(verbose=None):
     test_support.run_unittest(*tests)
