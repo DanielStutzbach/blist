@@ -16,8 +16,7 @@ def CmpToKey(mycmp):
             return mycmp(self.obj, other.obj) == -1
     return K
 
-class SortedListTest(seq_tests.CommonTest):
-    type2test = blist.sortedlist
+class SortedBase(seq_tests.CommonTest):
     def not_applicable(self):
         pass
     test_repeat = not_applicable
@@ -27,6 +26,99 @@ class SortedListTest(seq_tests.CommonTest):
     test_getslice = not_applicable
     test_contains_order = not_applicable
     test_contains_fake = not_applicable
+
+    def build_items(self, n):
+        return list(range(n))
+
+    def test_cmp(self):
+        items = self.build_items(20)
+        u = self.type2test(items)
+        low = items[:10]
+        high = items[10:]
+        self.assertNotEqual(low, high)
+        self.assertEqual(low, low)
+        self.assert_(low < high)
+        self.assert_(low <= high)
+        self.assert_(high > low)
+        self.assert_(high >= low)
+        self.assertFalse(high < low)
+        self.assertFalse(high <= low)
+        self.assertFalse(low > high)
+        self.assertFalse(low >= high)
+
+    def test_pop(self):
+        lst = list(range(20))
+        random.shuffle(lst)
+        u = self.type2test(lst)
+        for i in range(20-1,-1,-1):
+            x = u.pop(i)
+            self.assertEqual(x, i)
+        self.assertEqual(0, len(u))
+
+    def test_delitem(self):
+        items = self.build_items(2)
+        a = self.type2test(items)
+        del a[1]
+        self.assertEqual(a, self.type2test(items[:1]))
+        del a[0]
+        self.assertEqual(a, self.type2test([]))
+
+        a = self.type2test(items)
+        del a[-2]
+        self.assertEqual(a, self.type2test(items[1:]))
+        del a[-1]
+        self.assertEqual(a, self.type2test([]))
+
+        a = self.type2test(items)
+        self.assertRaises(IndexError, a.__delitem__, -3)
+        self.assertRaises(IndexError, a.__delitem__, 2)
+
+        a = self.type2test([])
+        self.assertRaises(IndexError, a.__delitem__, 0)
+
+        self.assertRaises(TypeError, a.__delitem__)
+
+    def test_delslice(self):
+        items = self.build_items(2)
+        a = self.type2test(items)
+        del a[1:2]
+        del a[0:1]
+        self.assertEqual(a, self.type2test([]))
+
+        a = self.type2test(items)
+        del a[1:2]
+        del a[0:1]
+        self.assertEqual(a, self.type2test([]))
+
+        a = self.type2test(items)
+        del a[-2:-1]
+        self.assertEqual(a, self.type2test(items[1:]))
+
+        a = self.type2test(items)
+        del a[-2:-1]
+        self.assertEqual(a, self.type2test(items[1:]))
+
+        a = self.type2test(items)
+        del a[1:]
+        del a[:1]
+        self.assertEqual(a, self.type2test([]))
+
+        a = self.type2test(items)
+        del a[1:]
+        del a[:1]
+        self.assertEqual(a, self.type2test([]))
+
+        a = self.type2test(items)
+        del a[-1:]
+        self.assertEqual(a, self.type2test(items[:1]))
+
+        a = self.type2test(items)
+        del a[-1:]
+        self.assertEqual(a, self.type2test(items[:1]))
+
+        a = self.type2test(items)
+        del a[:]
+        self.assertEqual(a, self.type2test([]))
 
     def test_sort(self):
         # based on list_tests.py
@@ -143,24 +235,6 @@ class SortedListTest(seq_tests.CommonTest):
             self.assertRaises(ZeroDivisionError, self.type2test,
                               seq_tests.IterGenExc(s))
 
-class SortedSetMixin:
-    def test_duplicates(self):
-        u = self.type2test
-        ss = u()
-        stuff = [weak_int(random.randrange(100000)) for i in range(10)]
-        sorted_stuff = list(sorted(stuff))
-        for x in stuff:
-            ss.add(x)
-        for x in stuff:
-            ss.add(x)
-        self.assertEqual(sorted_stuff, list(ss))
-        x = sorted_stuff.pop(len(stuff)//2)
-        ss.discard(x)
-        self.assertEqual(sorted_stuff, list(ss))
-
-class SortedSetTest(SortedListTest, SortedSetMixin):
-    type2test = blist.sortedset
-
 class weak_int:
     def __init__(self, v):
         self.value = v
@@ -174,6 +248,8 @@ class weak_int:
         if isinstance(other, int):
             return self.value % other
         return self.value % other.value
+    def __neg__(self):
+        return weak_int(-self.value)
 
 class weak_manager():
     def __init__(self):
@@ -188,8 +264,9 @@ class weak_manager():
         del self.all
         gc.collect()
 
-class WeakSortedListTest(unittest.TestCase):
-    type2test = blist.weaksortedlist
+class WeakSortedBase(unittest.TestCase):
+    def build_items(self, n):
+        return [weak_int(i) for i in range(n)]
 
     def test_sort(self):
         # based on list_tests.py
@@ -299,5 +376,62 @@ class WeakSortedListTest(unittest.TestCase):
             wsl = self.type2test(m.all)
         self.assertEqual(m.live, list(wsl[:]))
 
-class WeakSortedSetTest(WeakSortedListTest, SortedSetMixin):
+class SortedListMixin:
+    def test_eq(self):
+        items = self.build_items(20)
+        u = self.type2test(items)
+        v = self.type2test(items, key=lambda x: -x)
+        self.assertNotEqual(u, v)
+
+    def test_merge(self):
+        items = self.build_items(20)
+        u = self.type2test()
+        u.merge(items)
+        self.assertEqual(u, self.type2test(items))
+
+    def test_remove(self):
+        items = self.build_items(20)
+        u = self.type2test(items)
+        u.remove(items[-1])
+        self.assertEqual(u, self.type2test(items[:19]))
+        self.assertRaises(ValueError, u.remove, items[-1])
+
+class SortedSetMixin:
+    def test_duplicates(self):
+        u = self.type2test
+        ss = u()
+        stuff = [weak_int(random.randrange(100000)) for i in range(10)]
+        sorted_stuff = list(sorted(stuff))
+        for x in stuff:
+            ss.add(x)
+        for x in stuff:
+            ss.add(x)
+        self.assertEqual(sorted_stuff, list(ss))
+        x = sorted_stuff.pop(len(stuff)//2)
+        ss.discard(x)
+        self.assertEqual(sorted_stuff, list(ss))
+
+    def test_eq(self):
+        items = self.build_items(20)
+        u = self.type2test(items)
+        v = self.type2test(items, key=lambda x: -x)
+        self.assertEqual(u, v)
+
+    def test_remove(self):
+        items = self.build_items(20)
+        u = self.type2test(items)
+        u.remove(items[-1])
+        self.assertEqual(u, self.type2test(items[:19]))
+        self.assertRaises(KeyError, u.remove, items[-1])
+
+class SortedListTest(SortedBase, SortedListMixin):
+    type2test = blist.sortedlist
+
+class WeakSortedListTest(WeakSortedBase, SortedListMixin):
+    type2test = blist.weaksortedlist
+
+class WeakSortedSetTest(WeakSortedBase, SortedSetMixin):
     type2test = blist.weaksortedset
+
+class SortedSetTest(SortedBase, SortedSetMixin):
+    type2test = blist.sortedset

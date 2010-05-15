@@ -1,9 +1,13 @@
 from _blist import blist
-import collections, bisect, weakref
+import collections, bisect, weakref, operator, itertools
+try:
+    izip = itertools.izip
+except AttributeError:
+    izip = zip
 
 __all__ = ['sortedlist', 'weaksortedlist', 'sortedset', 'weaksortedset']
 
-class sortedlist(collections.MutableSet, collections.Sequence):
+class _sortedbase(collections.Sequence):
     def __init__(self, seq=(), key=None):
         self._key = key
         self._blist = blist()
@@ -143,20 +147,18 @@ class sortedlist(collections.MutableSet, collections.Sequence):
             count += 1
             i += 1
 
-    def __repr__(self):
-        return ('sortedlist([%s])'
-                % ', '.join(repr(self._i2u(v)) for v in self._blist))
+    def pop(self, index):
+        rv = self[index]
+        del self[index]
+        return rv
 
-class sortedset(sortedlist):
-    def add(self, value):
-        if value in self: return
-        sortedlist.add(self, value)
+    def __delslice__(self, i, j):
+        del self._blist[i:j]
 
-    def __repr__(self):
-        return ('sortedset([%s])'
-                % ', '.join(repr(self._i2u(v)) for v in self._blist))
+    def __delitem__(self, i):
+        del self._blist[i]
 
-class weaksortedlist(sortedlist):
+class _weaksortedbase(_sortedbase):
     def _bisect(self, value):
         key = self._u2key(value)
         lo = 0
@@ -211,7 +213,7 @@ class weaksortedlist(sortedlist):
 
     def __getitem__(self, index):
         if isinstance(index, slice):
-            return sortedlist.__getitem__(self, index)
+            return _sortedbase.__getitem__(self, index)
         n, v = self._squeeze(index)
         if v is None:
             raise IndexError('list index out of range')
@@ -239,17 +241,82 @@ class weaksortedlist(sortedlist):
             i += 1
         return -1
 
-    def __repr__(self):
-        store = [self._i2u(r) for r in self._blist]
-        store = [r for r in store if r is not None]
-        return 'weakreflist(%s)' % repr(store)
+class _listmixin(object):
+    def remove(self, value):
+        del self[self.index(value)]
 
-class weaksortedset(weaksortedlist):
+    def merge(self, other):
+        for item in other:
+            self.add(item)
+
+    def __eq__(self, other):
+        return self._cmp_op(other, operator.eq)
+    def __ne__(self, other):
+        return self._cmp_op(other, operator.ne)
+    def __lt__(self, other):
+        return self._cmp_op(other, operator.lt)
+    def __gt__(self, other):
+        return self._cmp_op(other, operator.gt)
+    def __le__(self, other):
+        return self._cmp_op(other, operator.le)
+    def __ge__(self, other):
+        return self._cmp_op(other, operator.ge)
+
+class _setmixin(object):
     def add(self, value):
         if value in self: return
-        weaksortedlist.add(self, value)
+        super(_setmixin, self).add(value)
 
+class _setmixin2(collections.MutableSet):
+    difference = collections.MutableSet.__sub__
+    difference_update = collections.MutableSet.__isub__
+    intersection = collections.MutableSet.__and__
+    intersection_update = collections.MutableSet.__iand__
+    issubset = collections.MutableSet.__le__
+    issuperset = collections.MutableSet.__ge__
+    symmetric_difference = collections.MutableSet.__xor__
+    symmetric_difference_update = collections.MutableSet.__ixor__
+    union = collections.MutableSet.__or__
+    update = collections.MutableSet.__ior__
+
+    def copy(self):
+        return self[:]
+
+class sortedlist(_sortedbase, _listmixin):
     def __repr__(self):
-        store = [self._i2u(r) for r in self._blist]
-        store = [r for r in store if r is not None]
-        return 'weakrefset(%s)' % repr(store)
+        return ('sortedlist([%s])'
+                % ', '.join(repr(self._i2u(v)) for v in self._blist))
+
+    def _cmp_op(self, other, op):
+        if not (isinstance(other,type(self)) or isinstance(self,type(other))):
+            return NotImplemented
+        if len(self) != len(other):
+            if op is operator.eq:
+                return False
+            if op is operator.ne:
+                return True
+        for x, y in izip(self, other):
+            if x != y:
+                return op(x, y)
+        return op in (operator.eq, operator.le, operator.ge)
+
+class weaksortedlist(_listmixin, _weaksortedbase):
+    def __repr__(self):
+        return 'weakreflist(%s)' % repr(list(self))
+
+    def _cmp_op(self, other, op):
+        if not (isinstance(other,type(self)) or isinstance(self,type(other))):
+            return NotImplemented
+        for x, y in izip(self, other):
+            if x != y:
+                return op(x, y)
+        return op in (operator.eq, operator.le, operator.ge)
+
+class sortedset(_setmixin, _sortedbase, _setmixin2):
+    def __repr__(self):
+        return ('sortedset([%s])'
+                % ', '.join(repr(self._i2u(v)) for v in self._blist))
+
+class weaksortedset(_setmixin, _weaksortedbase, _setmixin2):
+    def __repr__(self):
+        return 'weakrefset(%s)' % repr(list(self))
