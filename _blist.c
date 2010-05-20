@@ -6102,7 +6102,7 @@ static PySequenceMethods blist_as_sequence = {
 
 PyDoc_STRVAR(blist_doc,
 "blist() -> new list\n"
-"blist(sequence) -> new list initialized from sequence's items");
+"blist(iterable) -> new list initialized from iterable's items");
 
 static PyMappingMethods blist_as_mapping = {
         py_blist_length,
