@@ -492,10 +492,10 @@ class SortedListMixin:
         self.assert_(low != high)
         self.assertFalse(low == high)
 
-    def test_merge(self):
+    def test_update(self):
         items = self.build_items(20)
         u = self.type2test()
-        u.merge(items)
+        u.update(items)
         self.assertEqual(u, self.type2test(items))
 
     def test_remove(self):
@@ -546,10 +546,10 @@ class SortedListMixin:
         u = self.type2test()
         self.assertEqual(repr(u), '%s()' % name)
         items = self.build_items(3)
-        u.merge(items)
+        u.update(items)
         self.assertEqual(repr(u), '%s([0, 1, 2])' % name)
         u = self.type2test()
-        u.merge([u])
+        u.update([u])
         self.assertEqual(repr(u), '%s([%s(...)])' % (name, name))
 
 class SortedSetMixin:

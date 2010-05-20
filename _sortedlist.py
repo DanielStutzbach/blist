@@ -309,8 +309,8 @@ class _listmixin(object):
 
         del self[self.index(value)]
 
-    def merge(self, iterable):
-        """L.merge(iterable) -- merge all elements from iterable into the list"""
+    def update(self, iterable):
+        """L.update(iterable) -- add all elements from iterable into the list"""
 
         for item in iterable:
             self.add(item)

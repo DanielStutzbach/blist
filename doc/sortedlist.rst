@@ -13,7 +13,7 @@ sortedlist
    location are not included (e.g., :ref:`append <blist.append>`,
    :ref:`insert <blist.insert>`).  To add an element to the sortedlist, use
    :ref:`add <sortedlist.add>`.  To add several elements, use
-   :ref:`merge <sortedlist.merge>`.  To removal an element, use
+   :ref:`update <sortedlist.update>`.  To removal an element, use
    :ref:`discard <sortedlist.discard>`, :ref:`remove <sortedlist.remove>`, or
    :ref:`del L[i] <sortedlist.delitem>`.
 
@@ -163,15 +163,6 @@ sortedlist
 
       :rtype: :class:`int`
 
-   .. _sortedlist.merge:
-   .. method:: L.merge(iterable)
-
-      Grow the list by inserting all elements from the iterable.
-
-      Requires |theta(m log**2(n + m))| operations and |theta(m log(n
-      + m))| comparisons, where *m* is the size of the iterable and *n* is
-      the size of the list initially.
-
    .. method:: L.pop([index])
 
       Removes and return item at index (default last).  Raises
@@ -190,3 +181,12 @@ sortedlist
 
       In the worst case, requires |theta(log**2 n)| operations and
       |theta(log n)| comparisons.
+
+   .. _sortedlist.update:
+   .. method:: L.update(iterable)
+
+      Grow the list by inserting all elements from the iterable.
+
+      Requires |theta(m log**2(n + m))| operations and |theta(m log(n
+      + m))| comparisons, where *m* is the size of the iterable and *n* is
+      the size of the list initially.
