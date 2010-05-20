@@ -1,0 +1,25 @@
+{% extends "!layout.html" %}
+{% block rootrellink %}
+    <li><a href="http://stutzbachenterprises.com/">Stutzbach Enterpises</a>
+    &raquo;</li>
+    {{ super() }}
+{% endblock %}
+
+{% block footer %}
+    {{ super() }}
+<script type="text/javascript"> 
+      var gaJsHost = (("https:" == document.location.protocol) ?
+      "https://ssl." : "http://www.");
+      document.write(unescape("%3Cscript src='" + gaJsHost +
+      "google-analytics.com/ga.js'
+      type='text/javascript'%3E%3C/script%3E"));
+</script> 
+<script type="text/javascript"> 
+  try {
+  var pageTracker = _gat._getTracker("UA-1152041-5");
+  // Cookied already: 
+  pageTracker._trackPageview();
+  } catch(err) {}
+</script> 
+<!-- End of Google Analytics code --> 
+{% endblock %}

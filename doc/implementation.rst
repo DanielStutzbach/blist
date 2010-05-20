@@ -14,6 +14,7 @@ in a single node (the root).
 
 Wikipedia has a diagram that may be helpful for understanding the
 basic structure of a B+Tree:
+
     http://en.wikipedia.org/wiki/B+_tree
 
 Of course, we don't want a dictionary.  We want a list.  
@@ -166,9 +167,12 @@ children:
 Global Constants
 ----------------
 
-LIMIT:    the maximum size of .children, must be even and >= 8
-HALF:     LIMIT//2, the minimum size of .children for a valid node,
-          other than the root
+LIMIT:
+    the maximum size of .children, must be even and >= 8
+
+HALF:
+    LIMIT//2, the minimum size of .children for a valid node, other
+    than the root
 
 Definitions
 -----------
@@ -230,13 +234,16 @@ Debugging
 The BList implementation contains extensive debugging routines to
 verify the invariants, which only operate if Py_DEBUG is defined.
 Nearly ever function begins with a call like this:
+
     invariants(self, flags);
+
 where "flags" specifies that invariants that the function promises to
 maintain.
 
 When such a function returns, it must hand its return type and value
 to the verification routines.  For example, a function that returns an
 integer would return as follows:
+
     return _int(some_value);
 
 The available flags are as follows:
