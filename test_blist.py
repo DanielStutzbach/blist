@@ -40,7 +40,7 @@ import unittest
 import blist, pickle, _blist
 #BList = list
 from test import test_support, list_tests, sortedlist_tests, btuple_tests
-from test import sorteddict_tests
+from test import sorteddict_tests, test_set
 
 limit = _blist._limit
 n = 512//8 * limit
@@ -68,7 +68,7 @@ class BListTest(list_tests.CommonTest):
         self.assertEqual(len(self.type2test([0])), 1)
         self.assertEqual(len(self.type2test([0, 1, 2])), 3)
 
-    def test_append(self):
+    def test_append2(self):
         lst = self.type2test()
         t = tuple(range(n))
         for i in range(n):
@@ -326,9 +326,9 @@ class BListTest(list_tests.CommonTest):
 
     def test_iterlen_empty(self):
         it = iter(blist.blist())
-        if hasattr(it, '__next__'):
+        if hasattr(it, '__next__'): # pragma: no cover
             self.assertRaises(StopIteration, it.__next__)
-        else:
+        else: # pragma: no cover
             self.assertRaises(StopIteration, it.next)
         self.assertEqual(it.__length_hint__(), 0)
 
@@ -340,6 +340,7 @@ tests = [BListTest,
          btuple_tests.bTupleTest,
          sorteddict_tests.sorteddict_test
          ]
+tests += test_set.test_classes
 
 def test_suite():
     suite = unittest.TestSuite()

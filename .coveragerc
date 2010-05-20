@@ -1,0 +1,7 @@
+[run]
+branch = True
+
+[report]
+omit:
+        test/unittest
+        test/test_support

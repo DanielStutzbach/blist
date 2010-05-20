@@ -16,7 +16,7 @@ class BasicTestMappingProtocol(unittest.TestCase):
     # semantics
     type2test = None # which class is being tested (overwrite in subclasses)
 
-    def _reference(self):
+    def _reference(self): # pragma: no cover
         """Return a dictionary of values which are invariant by storage
         in the object under test."""
         return {1:2, "key1":"value1", "key2":(1,2,3)}
@@ -49,7 +49,7 @@ class BasicTestMappingProtocol(unittest.TestCase):
         p = self._empty_mapping()
         p1 = dict(p) #workaround for singleton objects
         d = self._full_mapping(self.reference)
-        if d is p:
+        if d is p: # pragma: no cover
             p = p1
         #Indexing
         for key, value in self.reference.items():
@@ -74,9 +74,9 @@ class BasicTestMappingProtocol(unittest.TestCase):
         if not d: self.fail("Full mapping must compare to True")
         # keys(), items(), iterkeys() ...
         def check_iterandlist(iter, lst, ref):
-            if sys.version_info[0] < 3: 
+            if sys.version_info[0] < 3: # pragma: no cover
                 self.assert_(hasattr(iter, 'next'))
-            else:
+            else: # pragma: no cover
                 self.assert_(hasattr(iter, '__next__'))
             self.assert_(hasattr(iter, '__iter__'))
             x = list(iter)
@@ -256,7 +256,8 @@ class BasicTestMappingProtocol(unittest.TestCase):
                             rtn = chr(self.i)
                             self.i += 1
                             return rtn
-                        raise StopIteration
+                        else: # pragma: no cover
+                            raise StopIteration
                     next = __next__
                 return BogonIter()
             def __getitem__(self, key):
@@ -559,7 +560,7 @@ class TestHashMappingProtocol(TestMappingProtocol):
         class Exc(Exception): pass
 
         class BadEq(object):
-            def __eq__(self, other):
+            def __eq__(self, other): # pragma: no cover
                 raise Exc()
             def __hash__(self):
                 return 24
@@ -610,7 +611,7 @@ class TestHashMappingProtocol(TestMappingProtocol):
         x.fail = True
         self.assertRaises(Exc, d.pop, x)
 
-    def test_mutatingiteration(self):
+    def test_mutatingiteration(self): # pragma: no cover
         d = self._empty_mapping()
         d[1] = 1
         try:
@@ -621,7 +622,7 @@ class TestHashMappingProtocol(TestMappingProtocol):
         else:
             self.fail("changing dict size during iteration doesn't raise Error")
 
-    def test_repr(self):
+    def test_repr(self): # pragma: no cover
         d = self._empty_mapping()
         self.assertEqual(repr(d), '{}')
         d[1] = 2

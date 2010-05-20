@@ -201,6 +201,21 @@ class TestCase:
             raise ValueError("no such test method in %s: %s" % \
                   (self.__class__, methodName))
 
+    def assertIn(self, member, container, msg=None):
+        """Just like self.assertTrue(a in b), but with a nicer default message."""
+        if member not in container:
+            standardMsg = '%s not found in %s' % (repr(member),
+                                                  repr(container))
+            self.fail(str((msg, standardMsg)))
+
+    def assertNotIn(self, member, container, msg=None):
+        """Just like self.assertTrue(a not in b), but with a nicer default message."""
+        if member in container:
+            standardMsg = '%s unexpectedly found in %s' % (repr(member),
+                                                        repr(container))
+            self.fail(str((msg, standardMsg)))
+
+
     def setUp(self):
         "Hook method for setting up the test fixture before exercising it."
         pass
