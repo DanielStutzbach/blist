@@ -3,7 +3,7 @@
 from __future__ import print_function
 
 import unittest
-import test_support as support
+from . import test_support as support
 import gc
 import weakref
 import operator
@@ -226,7 +226,10 @@ class TestJointOps(unittest.TestCase):
     def test_gc(self):
         # Create a nest of cycles to exercise overall ref count check
         class A:
-            pass
+            def __lt__(self, other):
+                return id(self) < id(other)
+            def __gt__(self, other):
+                return id(self) > id(other)
         s = set(A() for i in range(1000))
         for elem in s:
             elem.cycle = s
@@ -271,7 +274,10 @@ class TestJointOps(unittest.TestCase):
     def test_container_iterator(self):
         # Bug #3680: tp_traverse was not implemented for set iterator object
         class C(object):
-            pass
+            def __lt__(self, other):
+                return id(self) < id(other)
+            def __gt__(self, other):
+                return id(self) > id(other)
         obj = C()
         ref = weakref.ref(obj)
         container = set([obj, 1])
@@ -1260,7 +1266,7 @@ class TestOnlySetsTuple(TestOnlySetsInBinaryOps):
 
 class TestOnlySetsString(TestOnlySetsInBinaryOps):
     def setUp(self):
-        self.set   = set((1, 2, 3))
+        self.set   = set('xyz')
         self.other = 'abc'
         self.otherIsIterable = True
 
@@ -1312,7 +1318,7 @@ class TestCopyingSingleton(TestCopying):
 
 class TestCopyingTriple(TestCopying):
     def setUp(self):
-        self.set = set(["zero", 0, None])
+        self.set = set([-1, 0, 1])
 
 #------------------------------------------------------------------------------
 
@@ -1455,8 +1461,8 @@ def L(seqn):
 class TestVariousIteratorArgs(unittest.TestCase):
 
     def test_constructor(self):
-        for cons in (set, frozenset):
-            for s in ("123", "", range(1000), ('do', 1.2), range(2000,2200,5)):
+        for cons in (set,):
+            for s in (range(3), (), range(1000), (1.1, 1.2), range(2000,2200,5), range(10)):
                 for g in (G, I, Ig, S, L, R):
                     self.assertEqual(sorted(cons(g(s)), key=repr), sorted(g(s), key=repr))
                 self.assertRaises(TypeError, cons , X(s))
@@ -1464,8 +1470,8 @@ class TestVariousIteratorArgs(unittest.TestCase):
                 self.assertRaises(ZeroDivisionError, cons , E(s))
 
     def test_inline_methods(self):
-        s = set('november')
-        for data in ("123", "", range(1000), ('do', 1.2), range(2000,2200,5), 'december'):
+        s = set([-1,-2,-3])
+        for data in (range(3), (), range(1000), (1.1, 1.2), range(2000,2200,5), range(10)):
             for meth in (s.union, s.intersection, s.difference, s.symmetric_difference, s.isdisjoint):
                 for g in (G, I, Ig, L, R):
                     expected = meth(data)
@@ -1479,19 +1485,19 @@ class TestVariousIteratorArgs(unittest.TestCase):
                 self.assertRaises(ZeroDivisionError, meth, E(s))
 
     def test_inplace_methods(self):
-        for data in ("123", "", range(1000), ('do', 1.2), range(2000,2200,5), 'december'):
+        for data in (range(3), (), range(1000), (1.1, 1.2), range(2000,2200,5), range(10)):
             for methname in ('update', 'intersection_update',
                              'difference_update', 'symmetric_difference_update'):
                 for g in (G, I, Ig, S, L, R):
-                    s = set('january')
+                    s = set([1,2,3])
                     t = s.copy()
                     getattr(s, methname)(list(g(data)))
                     getattr(t, methname)(g(data))
                     self.assertEqual(sorted(s, key=repr), sorted(t, key=repr))
 
-                self.assertRaises(TypeError, getattr(set('january'), methname), X(data))
-                self.assertRaises(TypeError, getattr(set('january'), methname), N(data))
-                self.assertRaises(ZeroDivisionError, getattr(set('january'), methname), E(data))
+                self.assertRaises(TypeError, getattr(set([1,2,3]), methname), X(data))
+                self.assertRaises(TypeError, getattr(set([1,2,3]), methname), N(data))
+                self.assertRaises(ZeroDivisionError, getattr(set([1,2,3]), methname), E(data))
 
 #==============================================================================
 

@@ -28,7 +28,7 @@ class ReprRecursion(object):
 class _sortedbase(collections.Sequence):
     def __init__(self, iterable=(), key=None):
         self._key = key
-        if key is not None and not callable(key):
+        if key is not None and not hasattr(key, '__call__'):
             raise TypeError("'%s' object is not callable" % str(type(key)))
         if ((isinstance(iterable,type(self))
              or isinstance(self,type(iterable)))
@@ -366,7 +366,7 @@ class _setmixin(object):
     def __iter__(self):
         it = super(_setmixin, self).__iter__()
         while True:
-            item = it.next()
+            item = next(it)
             n = len(self)
             yield item
             if n != len(self):
