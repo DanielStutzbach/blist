@@ -4531,7 +4531,7 @@ sortwrapper_richcompare(sortwrapperobject *a, sortwrapperobject *b, int op)
 }
 
 static PyTypeObject PyBListSortWrapper_Type = {
-        PyVarObject_HEAD_INIT(&PyType_Type, 0)
+        PyVarObject_HEAD_INIT(NULL, 0)
         "blistsortwrapper",                     /* tp_name */
         sizeof(sortwrapperobject),              /* tp_basicsize */
         0,                                      /* tp_itemsize */
@@ -6938,11 +6938,13 @@ init_blist_types1(void)
         Py_TYPE(&PyRootBList_Type) = &PyType_Type;
         Py_TYPE(&PyBListIter_Type) = &PyType_Type;
         Py_TYPE(&PyBListReverseIter_Type) = &PyType_Type;
+        Py_TYPE(&PyBListSortWrapper_Type) = &PyType_Type;
 
         Py_INCREF(&PyBList_Type);
         Py_INCREF(&PyRootBList_Type);
         Py_INCREF(&PyBListIter_Type);
         Py_INCREF(&PyBListReverseIter_Type);
+        Py_INCREF(&PyBListSortWrapper_Type);
 
         return 0;
 }
@@ -6954,6 +6956,7 @@ init_blist_types2(void)
         if (PyType_Ready(&PyBList_Type) < 0) return -1;
         if (PyType_Ready(&PyBListIter_Type) < 0) return -1;
         if (PyType_Ready(&PyBListReverseIter_Type) < 0) return -1;
+        if (PyType_Ready(&PyBListSortWrapper_Type) < 0) return -1;
 
         return 0;
 }
