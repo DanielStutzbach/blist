@@ -64,6 +64,7 @@
 #define PY_INT32_T int32_t
 #endif
 #endif
+
 #if (defined INT64_MAX || defined int64_t)
 #ifndef PY_INT64_T
 #define HAVE_INT64_T 1
@@ -95,12 +96,6 @@
 #define PyInt_AsLong PyLong_AsLong
 #define PyInt_AsSsize_t PyLong_AsSsize_t
 #define PyInt_FromLong PyLong_FromLong
-#endif
-
-#if ((defined(__IEEE_BIG_ENDIAN) && defined(WORDS_BIGENDIAN) && !defined(__IEEE_BYTES_LITTLE_ENDIAN) \
-      || defined(__IEEE_LITTLE_ENDIAN) && !defined(WORDS_BIGENDIAN))    \
-     && defined(HAVE_UINT64_T) && !defined(_DOUBLE_IS_32BITS))
-#define BLIST_RADIX_FLOAT 1
 #endif
 
 #ifndef BLIST_IN_PYTHON
@@ -141,7 +136,7 @@ typedef struct sortwrapperobject
 {
         union {
                 unsigned long k_ulong;
-#ifdef BLIST_RADIX_FLOAT
+#ifdef BLIST_FLOAT_RADIX_SORT
                 PY_UINT64_T k_uint64;
 #endif
         } fkey;
@@ -4610,7 +4605,7 @@ wrap_leaf_array(sortwrapperobject *restrict array,
                                 }
                         }
                         type = key->ob_type;
-#ifdef BLIST_RADIX_FLOAT
+#ifdef BLIST_FLOAT_RADIX_SORT
                         if (type == &PyFloat_Type) {
                                 double d = PyFloat_AS_DOUBLE(key);
                                 PY_UINT64_T di = *(PY_UINT64_T *) &d;
@@ -4748,7 +4743,7 @@ network_sort(PyObject **sortarray, Py_ssize_t n)
         switch(n) {
         case 0:
         case 1:
-                die();
+                assert(0);
         case 2:
                 TESTSWAP(0, 1);
                 return 0;
@@ -4801,6 +4796,7 @@ network_sort(PyObject **sortarray, Py_ssize_t n)
         }
 }
 
+#ifdef BLIST_FLOAT_RADIX_SORT
 BLIST_LOCAL_INLINE(int)
 insertion_sort_uint64(sortwrapperobject *array, Py_ssize_t n)
 {
@@ -4822,6 +4818,7 @@ insertion_sort_uint64(sortwrapperobject *array, Py_ssize_t n)
 
         return 0;
 }
+#endif
 
 BLIST_LOCAL_INLINE(int)
 insertion_sort_ulong(sortwrapperobject *restrict array, Py_ssize_t n)
@@ -4836,7 +4833,7 @@ insertion_sort_ulong(sortwrapperobject *restrict array, Py_ssize_t n)
                 for (j = i; j >= 1; j--) {
                         if (tmp_key >= array[j-1].fkey.k_ulong)
                                 break;
-                        array[j].fkey.k_uint64 = array[j-1].fkey.k_ulong;
+                        array[j].fkey.k_ulong = array[j-1].fkey.k_ulong;
                         array[j].value = array[j-1].value;
                 }
                 array[j].fkey.k_ulong = tmp_key;
@@ -5394,7 +5391,7 @@ sort_ulong(sortwrapperobject *restrict sortarray, Py_ssize_t n)
         return 0;
 }
 
-#ifdef BLIST_RADIX_FLOAT
+#ifdef BLIST_FLOAT_RADIX_SORT
 #if SIZEOF_LONG == 8
 #define sort_uint64 sort_ulong
 #else
@@ -5518,7 +5515,7 @@ sort(PyBListRoot *restrict self, PyObject *compare, PyObject *keyfunc)
         }
 
         if (key_flags && compare == NULL) {
-#ifdef BLIST_RADIX_FLOAT
+#ifdef BLIST_FLOAT_RADIX_SORT
                 if (key_flags & KEY_ALL_DOUBLE) {
                         if (self->n < 40)
                                 err = insertion_sort_uint64(sortarray,self->n);
@@ -6530,7 +6527,6 @@ py_blist_sort(PyBListRoot *self, PyObject *args, PyObject *kwds)
                 blist_reverse(&saved);
 
         ret = sort(&saved, compare, keyfunc);
-  skipsort:
 
         if (ret >= 0) {
                 result = Py_None;

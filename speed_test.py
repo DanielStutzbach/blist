@@ -63,7 +63,7 @@ def timeit(stmt, setup, rep):
         return timeit_cache[key]
     try:
         n = NUM_POINTS
-        args =[sys.executable + '.exe', timeit_path,
+        args =[sys.executable, timeit_path,
                '-r', str(n), '-v', '-n', str(rep), '-s', setup, '--', stmt]
         p = subprocess.Popen(args,
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -307,8 +307,17 @@ add_timing('sort random key', 'import random\nx = [random.randrange(n*4) for i i
 add_timing('sort sorted', None, 'x.sort()')
 add_timing('sort sorted key', None, 'x.sort(key=int)')
 add_timing('sort reversed', 'x = list(range(n))\nx.reverse()', 'y = TypeToTest(x)\ny.sort()')
+add_timing('sort reversed key', 'x = list(range(n))\nx.reverse()', 'y = TypeToTest(x)\ny.sort(key=int)')
 
 add_timing('sort random tuples', 'import random\nx = [(random.random(), random.random()) for i in range(n)]', 'y = TypeToTest(x)\ny.sort()')
+add_timing('sort objects', '''
+class ob:
+    def __init__(self, v):
+        self.v = v
+    def __lt__(self, other):
+        return self.v < other.v
+x = list(ob(i) for i in range(n))
+''', 'y = TypeToTest(x)\ny.sort()')
 
 add_timing('init from list', 'x = list(range(n))', 'y = TypeToTest(x)')
 add_timing('init from tuple', 'x = tuple(range(n))', 'y = TypeToTest(x)')
