@@ -44,6 +44,33 @@
 
 #if PY_MAJOR_VERSION == 2
 
+#if (defined UINT32_MAX || defined uint32_t)
+#ifndef PY_UINT32_T
+#define HAVE_UINT32_T 1
+#define PY_UINT32_T uint32_t
+#endif
+#endif
+
+#if (defined UINT64_MAX || defined uint64_t)
+#ifndef PY_UINT64_T
+#define HAVE_UINT64_T 1
+#define PY_UINT64_T uint64_t
+#endif
+#endif
+
+#if (defined INT32_MAX || defined int32_t)
+#ifndef PY_INT32_T
+#define HAVE_INT32_T 1
+#define PY_INT32_T int32_t
+#endif
+#endif
+#if (defined INT64_MAX || defined int64_t)
+#ifndef PY_INT64_T
+#define HAVE_INT64_T 1
+#define PY_INT64_T int64_t
+#endif
+#endif
+
 /* This macro is defined in Python 3.  We need it since calling
  * PyObject_GC_UnTrack twice is unsafe. */
 /* True if the object is currently tracked by the GC. */
@@ -68,6 +95,12 @@
 #define PyInt_AsLong PyLong_AsLong
 #define PyInt_AsSsize_t PyLong_AsSsize_t
 #define PyInt_FromLong PyLong_FromLong
+#endif
+
+#if ((defined(__IEEE_BIG_ENDIAN) && defined(WORDS_BIGENDIAN) && !defined(__IEEE_BYTES_LITTLE_ENDIAN) \
+      || defined(__IEEE_LITTLE_ENDIAN) && !defined(WORDS_BIGENDIAN))    \
+     && defined(HAVE_UINT64_T) && !defined(_DOUBLE_IS_32BITS))
+#define BLIST_RADIX_FLOAT 1
 #endif
 
 #ifndef BLIST_IN_PYTHON
@@ -106,13 +139,15 @@ static int num_free_iters = 0;
 
 typedef struct sortwrapperobject
 {
-        PyObject_HEAD
+        union {
+                unsigned long k_ulong;
+#ifdef BLIST_RADIX_FLOAT
+                PY_UINT64_T k_uint64;
+#endif
+        } fkey;
         PyObject *key;
         PyObject *value;
 } sortwrapperobject;
-
-static PyTypeObject PyBListSortWrapper_Type;
-struct sortwrapperobject;
 
 #define PyBList_Check(op) (PyObject_TypeCheck((op), &PyBList_Type) || (PyObject_TypeCheck((op), &PyRootBList_Type)))
 #define PyRootBList_Check(op) (PyObject_TypeCheck((op), &PyRootBList_Type))
@@ -461,7 +496,7 @@ do_eq(PyObject *v, PyObject *w)
  *
  * These assumptions hold for built-in, immutable, non-container types.
  */
-BLIST_LOCAL_INLINE(int)
+static int
 fast_eq_richcompare(PyObject *v, PyObject *w, PyTypeObject *fast_type)
 {
         if (v == w) return 1;
@@ -480,7 +515,7 @@ fast_eq_richcompare(PyObject *v, PyObject *w, PyTypeObject *fast_type)
 }
 
 #if PY_MAJOR_VERSION < 3
-BLIST_LOCAL_INLINE(int)
+static int
 fast_eq_compare(PyObject *v, PyObject *w, PyTypeObject *fast_type)
 {
         if (v == w) return 1;
@@ -496,10 +531,9 @@ fast_eq_compare(PyObject *v, PyObject *w, PyTypeObject *fast_type)
 }
 #endif
 
-BLIST_LOCAL_INLINE(int)
+static int
 fast_lt_richcompare(PyObject *v, PyObject *w, PyTypeObject *fast_type)
 {
-        assert(v->ob_type != &PyBListSortWrapper_Type);
         if (v->ob_type == w->ob_type && v->ob_type == fast_type) {
                 PyObject *res = v->ob_type->tp_richcompare(v, w, Py_LT);
                 Py_DECREF(res);
@@ -516,10 +550,9 @@ fast_lt_richcompare(PyObject *v, PyObject *w, PyTypeObject *fast_type)
 
 #if PY_MAJOR_VERSION < 3
 
-BLIST_LOCAL_INLINE(int)
+static int
 fast_lt_compare(PyObject *v, PyObject *w, PyTypeObject *fast_type)
 {
-        assert(v->ob_type != &PyBListSortWrapper_Type);
         if (v->ob_type == w->ob_type && v->ob_type == fast_type)
                 return v->ob_type->tp_compare(v, w) < 0;
         else {
@@ -542,9 +575,6 @@ BLIST_LOCAL(fast_compare_data_t)
 _check_fast_cmp_type(PyObject *ob, int op)
 {
         fast_compare_data_t rv = { NULL, NULL };
-
-        if (ob->ob_type == &PyBListSortWrapper_Type)
-                ob = ((sortwrapperobject *)ob)->key;
 
         if (ob->ob_type == &PyInt_Type
             || ob->ob_type == &PyLong_Type) {
@@ -596,9 +626,6 @@ typedef PyTypeObject *fast_compare_data_t;
 BLIST_LOCAL(fast_compare_data_t)
 _check_fast_cmp_type(PyObject *ob, int op)
 {
-        if (ob->ob_type == &PyBListSortWrapper_Type)
-                ob = ((sortwrapperobject *)ob)->key;
-
         if ((ob->ob_type == &PyComplex_Type && (op == Py_EQ || op == Py_NE))
             || ob->ob_type == &PyFloat_Type
             || ob->ob_type == &PyLong_Type
@@ -4524,51 +4551,18 @@ blist_append(PyBList *self, PyObject *v)
  *
  ************************************************************************/
 
-static PyObject *
-sortwrapper_richcompare(sortwrapperobject *a, sortwrapperobject *b, int op)
-{
-        return PyObject_RichCompare(a->key, b->key, op);
-}
-
-static PyTypeObject PyBListSortWrapper_Type = {
-        PyVarObject_HEAD_INIT(NULL, 0)
-        "blistsortwrapper",                     /* tp_name */
-        sizeof(sortwrapperobject),              /* tp_basicsize */
-        0,                                      /* tp_itemsize */
-        /* methods */
-        0,                                      /* tp_dealloc */
-        0,                                      /* tp_print */
-        0,                                      /* tp_getattr */
-        0,                                      /* tp_setattr */
-        0,                                      /* tp_reserved */
-        0,                                      /* tp_repr */
-        0,                                      /* tp_as_number */
-        0,                                      /* tp_as_sequence */
-        0,                                      /* tp_as_mapping */
-        0,                                      /* tp_hash */
-        0,                                      /* tp_call */
-        0,                                      /* tp_str */
-        PyObject_GenericGetAttr,                /* tp_getattro */
-        0,                                      /* tp_setattro */
-        0,                                      /* tp_as_buffer */
-        Py_TPFLAGS_DEFAULT,                     /* tp_flags */
-        0,                                      /* tp_doc */
-        0,                                      /* tp_traverse */
-        0,                                      /* tp_clear */
-        (richcmpfunc)sortwrapper_richcompare,   /* tp_richcompare */
-};
-
 static void
-unwrap_leaf_array(PyBList **leafs, int leafs_n, int n,sortwrapperobject *array)
+unwrap_leaf_array(PyBList **leafs, int leafs_n, int n,
+                  sortwrapperobject *array)
 {
         int i, j, k = 0;
 
         for (i = 0; i < leafs_n; i++) {
                 PyBList *leaf = leafs[i];
+                if (leafs_n > 1 && !_PyObject_GC_IS_TRACKED(leafs[i]))
+                        PyObject_GC_Track(leafs[i]);
                 for (j = 0; j < leaf->num_children && k < n; j++, k++) {
                         sortwrapperobject *wrapper;
-                        assert(Py_TYPE(leaf->children[j])
-                               == &PyBListSortWrapper_Type);
                         wrapper = (sortwrapperobject *) leaf->children[j];
                         leaf->children[j] = wrapper->value;
                         DANGER_BEGIN;
@@ -4576,42 +4570,89 @@ unwrap_leaf_array(PyBList **leafs, int leafs_n, int n,sortwrapperobject *array)
                         DANGER_END;
                 }
         }
-
-        PyMem_Free(array);
 }
 
-static sortwrapperobject *
-wrap_leaf_array(PyBList **leafs, int leafs_n, int n, PyObject *keyfunc)
-{
-        sortwrapperobject *array;
-        int i, j, k;
+#define KEY_ALL_DOUBLE 1
+#define KEY_ALL_LONG 2
+#define KEY_ALL_INT32 4
 
-        array = PyMem_New(sortwrapperobject, n);
-        if (array == NULL)
-                return NULL;
+static int
+wrap_leaf_array(sortwrapperobject *restrict array,
+                PyBList **leafs, int leafs_n, int n,
+                PyObject *restrict keyfunc,
+                int *restrict pkey_flags)
+{
+        int i, j, k;
+        int key_flags;
+
+        key_flags = KEY_ALL_DOUBLE | KEY_ALL_LONG | KEY_ALL_INT32;
 
         for (k = i = 0; i < leafs_n; i++) {
-                PyBList *leaf = leafs[i];
+                PyBList *restrict leaf = leafs[i];
+                if (leafs_n > 1)
+                        PyObject_GC_UnTrack(leaf);
+
                 for (j = 0; j < leaf->num_children; j++) {
-                        Py_TYPE(&array[k]) = &PyBListSortWrapper_Type;
-                        Py_REFCNT(&array[k]) = 1;
-                        array[k].value = leaf->children[j];
-                        DANGER_BEGIN;
-                        array[k].key = PyObject_CallFunctionObjArgs(
-                                keyfunc, array[k].value, NULL);
-                        DANGER_END;
-                        if (array[k].key == NULL) {
-                                unwrap_leaf_array(leafs, leafs_n, k, array);
-                                return NULL;
+                        sortwrapperobject *restrict pair = &array[k];
+                        PyObject *restrict key, *value = leaf->children[j];
+                        PyTypeObject *type;
+                        if (keyfunc == NULL) {
+                                key = value;
+                                Py_INCREF(key);
+                        } else {
+                                DANGER_BEGIN;
+                                key = PyObject_CallFunctionObjArgs(
+                                        keyfunc, value, NULL);
+                                DANGER_END;
+                                if (key == NULL) {
+                                        unwrap_leaf_array(leafs, leafs_n, k, array);
+                                        return -1;
+                                }
                         }
-                        leaf->children[j] = (PyObject*) &array[k];
+                        type = key->ob_type;
+#ifdef BLIST_RADIX_FLOAT
+                        if (type == &PyFloat_Type) {
+                                double d = PyFloat_AS_DOUBLE(key);
+                                PY_UINT64_T di = *(PY_UINT64_T *) &d;
+                                PY_UINT64_T mask = (-(PY_INT64_T) (di >> 63))
+                                        | (1ull << 63ull);
+                                pair->fkey.k_uint64 = di ^ mask;
+                                key_flags &= KEY_ALL_DOUBLE;
+                        } else
+#endif
+#if PY_MAJOR_VERSION < 3
+                        if (type == &PyInt_Type) {
+                                long i = PyInt_AS_LONG(key);
+                                unsigned long u = i;
+                                const unsigned long mask = 1ul << (sizeof(long)*8-1);
+                                pair->fkey.k_ulong = u ^ mask;
+                                key_flags &= KEY_ALL_LONG;
+                        } else
+#endif
+                        if (type == &PyLong_Type) {
+                                unsigned long x = PyLong_AsLong(key);
+                                if (x == (unsigned long) (long) -1
+                                    && PyErr_Occurred()) {
+                                        PyErr_Clear();
+                                        key_flags = 0;
+                                } else {
+                                        const unsigned long mask = 1ul << (sizeof(long)*8-1);
+                                        pair->fkey.k_ulong = x ^ mask;
+                                        key_flags &= KEY_ALL_LONG;
+                                }
+                        } else
+                                key_flags = 0;
+                        pair->key = key;
+                        pair->value = value;
+                        leaf->children[j] = (PyObject*) pair;
                         k++;
                 }
         }
 
         assert(k == n);
 
-        return array;
+        *pkey_flags = key_flags;
+        return 0;
 }
 
 /* If COMPARE is NULL, calls PyObject_RichCompareBool with Py_LT, else calls
@@ -4623,11 +4664,9 @@ wrap_leaf_array(PyBList **leafs, int leafs_n, int n, PyObject *keyfunc)
  */
 
 #define FAST_ISLT(X, Y, fast_cmp_type)                          \
-        (((X)->ob_type == &PyBListSortWrapper_Type) ?           \
-         fast_lt(((sortwrapperobject *)(X))->key,               \
+        (fast_lt(((sortwrapperobject *)(X))->key,               \
                  ((sortwrapperobject *)(Y))->key,               \
-                 (fast_cmp_type))                               \
-         : (fast_lt((X), (Y), (fast_cmp_type))))
+                 (fast_cmp_type)))
 
 #if PY_MAJOR_VERSION < 3
 #define ISLT(X, Y, COMPARE, fast_cmp_type)      \
@@ -4692,94 +4731,131 @@ static int islt(PyObject *x, PyObject *y, PyObject *compare)
 #define INSERTION_THRESH 0
 #define BINARY_THRESH 10
 
-#if 0
-/* Compare X to Y via "<".  Goto "fail" if the comparison raises an
-   error.  Else "k" is set to true iff X<Y, and an "if (k)" block is
-   started.  It makes more sense in context <wink>.  X and Y are PyObject*s.
-*/
-#define IFLT(X, Y) if ((k = ISLT(X, Y, compare)) < 0) goto fail;  \
-                   if (k)
-
-#define SWAP(x, y) {PyObject *_tmp = x; x = y; y = _tmp;}
-#define TESTSWAP(x, y) IFLT(y, x) SWAP(x, y)
+#define TESTSWAP(i, j) { \
+        if (fast_lt(sortarray[j], sortarray[i], fast_cmp_type)) {       \
+                PyObject *t = sortarray[j];                             \
+                sortarray[j] = sortarray[i];                            \
+                sortarray[i] = t;                                       \
+        }                                                               \
+        }
 
 BLIST_LOCAL(int)
-network_sort(PyObject **array, int n, PyObject *compare)
+network_sort(PyObject **sortarray, Py_ssize_t n)
 {
-        int k;
+        fast_compare_data_t fast_cmp_type;
+        fast_cmp_type = check_fast_cmp_type(sortarray[0], Py_LT);
 
         switch(n) {
         case 0:
         case 1:
-                return 0;
+                die();
         case 2:
-                TESTSWAP(array[0], array[1]);
+                TESTSWAP(0, 1);
                 return 0;
         case 3:
-                TESTSWAP(array[0], array[1]);
-                TESTSWAP(array[0], array[2]);
-                TESTSWAP(array[1], array[2]);
+                TESTSWAP(0, 1);
+                TESTSWAP(0, 2);
+                TESTSWAP(1, 2);
                 return 0;
         case 4:
-                TESTSWAP(array[0], array[1]);
-                TESTSWAP(array[2], array[3]);
-                TESTSWAP(array[0], array[2]);
-                TESTSWAP(array[1], array[3]);
-                TESTSWAP(array[1], array[2]);
+                TESTSWAP(0, 1);
+                TESTSWAP(2, 3);
+                TESTSWAP(0, 2);
+                TESTSWAP(1, 3);
+                TESTSWAP(1, 2);
                 return 0;
         case 5:
-                TESTSWAP(array[0], array[1]);
-                TESTSWAP(array[3], array[4]);
-                TESTSWAP(array[0], array[2]);
-                TESTSWAP(array[1], array[2]);
-                TESTSWAP(array[0], array[3]);
-                TESTSWAP(array[2], array[3]);
-                TESTSWAP(array[1], array[4]);
-                TESTSWAP(array[1], array[2]);
-                TESTSWAP(array[3], array[4]);
+                TESTSWAP(0, 1);
+                TESTSWAP(3, 4);
+                TESTSWAP(2, 4);
+                TESTSWAP(2, 3);
+                TESTSWAP(1, 4);
+                TESTSWAP(0, 3);
+                TESTSWAP(0, 2);
+                TESTSWAP(1, 3);
+                TESTSWAP(1, 2);
+                return 0;
+        case 6:
+                TESTSWAP(1, 2);
+                TESTSWAP(4, 5);
+
+                TESTSWAP(0, 2);
+                TESTSWAP(3, 5);
+
+                TESTSWAP(0, 1);
+                TESTSWAP(3, 4);
+                TESTSWAP(2, 5);
+
+                TESTSWAP(0, 3);
+                TESTSWAP(1, 4);
+
+                TESTSWAP(2, 4);
+                TESTSWAP(1, 3);
+
+                TESTSWAP(2, 3);
                 return 0;
         default:
                 /* Should not be possible */
                 assert (0);
                 abort();
         }
-
- fail:
-        return -1;
 }
 
-#if 0
-static int insertion_sort(PyObject **array, int n, PyObject *compare)
+BLIST_LOCAL_INLINE(int)
+insertion_sort_uint64(sortwrapperobject *array, Py_ssize_t n)
 {
         int i, j;
-        PyObject *tmp;
+        PY_UINT64_T tmp_key;
+        PyObject *tmp_value;
         for (i = 1; i < n; i++) {
-                tmp = array[i];
+                tmp_key = array[i].fkey.k_uint64;
+                tmp_value = array[i].value;
                 for (j = i; j >= 1; j--) {
-                        int c = ISLT(tmp, array[j-1], compare);
-                        if (c < 0) {
-                                array[j] = tmp;
-                                return -1;
-                        }
-                        if (c == 0)
+                        if (tmp_key >= array[j-1].fkey.k_uint64)
                                 break;
-                        array[j] = array[j-1];
+                        array[j].fkey.k_uint64 = array[j-1].fkey.k_uint64;
+                        array[j].value = array[j-1].value;
                 }
-                array[j] = tmp;
+                array[j].fkey.k_uint64 = tmp_key;
+                array[j].value = tmp_value;
         }
 
         return 0;
 }
 
-static int binary_sort(PyObject **array, int n, PyObject *compare)
+BLIST_LOCAL_INLINE(int)
+insertion_sort_ulong(sortwrapperobject *restrict array, Py_ssize_t n)
+{
+        int i, j;
+        unsigned long tmp_key;
+        PyObject *tmp_value;
+
+        for (i = 1; i < n; i++) {
+                tmp_key = array[i].fkey.k_ulong;
+                tmp_value = array[i].value;
+                for (j = i; j >= 1; j--) {
+                        if (tmp_key >= array[j-1].fkey.k_ulong)
+                                break;
+                        array[j].fkey.k_uint64 = array[j-1].fkey.k_ulong;
+                        array[j].value = array[j-1].value;
+                }
+                array[j].fkey.k_ulong = tmp_key;
+                array[j].value = tmp_value;
+        }
+
+        return 0;
+}
+
+#if 0
+static int binary_sort_int64(sortwrapperobject *array, int n)
 {
         int i, j, low, high, mid, c;
-        PyObject *tmp;
+        sortwrapperobject tmp;
 
         for (i = 1; i < n; i++) {
                 tmp = array[i];
 
-                c = ISLT(tmp, array[i-1], compare);
+                c = INT64_LT(tmp, array[i-1]);
                 if (c < 0)
                         return -1;
                 if (c == 0)
@@ -4790,7 +4866,7 @@ static int binary_sort(PyObject **array, int n, PyObject *compare)
 
                 while (low < high) {
                         mid = low + (high - low)/2;
-                        c = ISLT(tmp, array[mid], compare);
+                        c = INT64_LT(tmp, array[mid]);
                         if (c < 0)
                                 return -1;
                         if (c == 0)
@@ -4807,7 +4883,6 @@ static int binary_sort(PyObject **array, int n, PyObject *compare)
 
         return 0;
 }
-#endif
 #endif
 
 BLIST_LOCAL(int)
@@ -5247,69 +5322,254 @@ array_enable_GC(PyBList **leafs, Py_ssize_t num_leafs)
                 PyObject_GC_Track(leafs[i]);
 }
 
+BLIST_LOCAL_INLINE(int)
+flsl(Py_ssize_t n)
+{
+        int count = 0;
+        while (n >> count) count++;
+        return count;
+}
+
+#define BITS_PER_PASS 8
+#define HISTOGRAM_SIZE (((Py_ssize_t) 1) << BITS_PER_PASS)
+#define MASK (HISTOGRAM_SIZE - 1)
+
+BLIST_LOCAL_INLINE(int)
+sort_ulong(sortwrapperobject *restrict sortarray, Py_ssize_t n)
+{
+        const unsigned NUM_PASSES = ((sizeof(unsigned long)*8-1)
+                                     / BITS_PER_PASS)+1;
+        sortwrapperobject *restrict scratch, *from, *to, *tmp;
+        Py_ssize_t histograms[HISTOGRAM_SIZE][NUM_PASSES];
+        Py_ssize_t i, j, sums[NUM_PASSES], count[NUM_PASSES], tsum;
+
+        memset(sums, 0, sizeof sums);
+        memset(count, 0, sizeof count);
+
+        scratch = PyMem_New(sortwrapperobject, n);
+        if (scratch == NULL)
+                return -1;
+
+        memset(histograms, 0, sizeof histograms);
+        for (i = 0; i < n; i++) {
+                unsigned long v = sortarray[i].fkey.k_ulong;
+                for (j = 0; j < NUM_PASSES; j++) {
+                        histograms[(v >> (BITS_PER_PASS * j)) & MASK][j]++;
+                }
+        }
+
+        for (i = 0; i < HISTOGRAM_SIZE; i++) {
+                for (j = 0; j < NUM_PASSES; j++) {
+                        count[j] += !!histograms[i][j];
+                        tsum = histograms[i][j] + sums[j];
+                        histograms[i][j] = sums[j] - 1;
+                        sums[j] = tsum;
+                }
+        }
+
+        from = sortarray;
+        to = scratch;
+        for (j = 0; j < NUM_PASSES; j++) {
+                sortwrapperobject *restrict f = from;
+                sortwrapperobject *restrict t = to;
+                if (count[j] == 1) continue;
+                for (i = 0; i < n; i++) {
+                        unsigned long fi = f[i].fkey.k_ulong;
+                        Py_ssize_t pos = (fi >> (BITS_PER_PASS * j)) & MASK;
+                        pos = ++histograms[pos][j];
+                        t[pos].fkey.k_ulong = fi;
+                        t[pos].value = f[i].value;
+                }
+
+                tmp = from;
+                from = to;
+                to = tmp;
+        }
+
+        if (from != sortarray)
+                for (i = 0; i < n; i++)
+                        sortarray[i].value = scratch[i].value;
+
+        PyMem_Free(scratch);
+        return 0;
+}
+
+#ifdef BLIST_RADIX_FLOAT
+#if SIZEOF_LONG == 8
+#define sort_uint64 sort_ulong
+#else
+BLIST_LOCAL_INLINE(int)
+sort_uint64(sortwrapperobject *restrict sortarray, Py_ssize_t n)
+{
+        const unsigned NUM_PASSES = ((64-1) / BITS_PER_PASS)+1;
+        sortwrapperobject *restrict scratch, *from, *to, *tmp;
+        Py_ssize_t histograms[HISTOGRAM_SIZE][NUM_PASSES];
+        Py_ssize_t i, j, sums[NUM_PASSES], count[NUM_PASSES], tsum;
+
+        memset(sums, 0, sizeof sums);
+        memset(count, 0, sizeof count);
+
+        scratch = PyMem_New(sortwrapperobject, n);
+        if (scratch == NULL)
+                return -1;
+
+        memset(histograms, 0, sizeof histograms);
+        for (i = 0; i < n; i++) {
+                PY_UINT64_T v = sortarray[i].fkey.k_uint64;
+                for (j = 0; j < NUM_PASSES; j++) {
+                        histograms[(v >> (BITS_PER_PASS * j)) & MASK][j]++;
+                }
+        }
+
+        for (i = 0; i < HISTOGRAM_SIZE; i++) {
+                for (j = 0; j < NUM_PASSES; j++) {
+                        count[j] += !!histograms[i][j];
+                        tsum = histograms[i][j] + sums[j];
+                        histograms[i][j] = sums[j] - 1;
+                        sums[j] = tsum;
+                }
+        }
+
+        from = sortarray;
+        to = scratch;
+        for (j = 0; j < NUM_PASSES; j++) {
+                if (count[j] == 1) continue;
+                for (i = 0; i < n; i++) {
+                        PY_UINT64_T fi = from[i].fkey.k_uint64;
+                        Py_ssize_t pos = (fi >> (BITS_PER_PASS * j)) & MASK;
+                        pos = ++histograms[pos][j];
+                        to[pos].fkey.k_uint64 = fi;
+                        to[pos].value = from[i].value;
+                }
+
+                tmp = from;
+                from = to;
+                to = tmp;
+        }
+
+        if (from != sortarray)
+                for (i = 0; i < n; i++)
+                        sortarray[i].value = scratch[i].value;
+
+        PyMem_Free(scratch);
+        return 0;
+}
+#endif
+#endif
+
 BLIST_LOCAL(Py_ssize_t)
 sort(PyBListRoot *restrict self, PyObject *compare, PyObject *keyfunc)
 {
         PyBList *leaf;
-        PyBList **restrict leafs, **scratch;
+        PyBList **leafs;
         int err=0;
         Py_ssize_t i, leafs_n = 0;
-        sortwrapperobject *sortarray;
+        sortwrapperobject sortarraystack[10];
+        sortwrapperobject *sortarray = sortarraystack;
+        int key_flags;
 
-        leafs = PyMem_New(PyBList *, self->n / HALF + 1);
-        if (!leafs)
-                return -1;
-        scratch = PyMem_New(PyBList *, self->n / HALF + 1);
-        if (!scratch) {
-                PyMem_Free(leafs);
-                return -1;
+        if (self->leaf)
+                leafs = &leaf;
+        else {
+                leafs = PyMem_New(PyBList *, self->n / HALF + 1);
+                if (!leafs)
+                        return -1;
         }
 
-        linearize_rw(self);
-        assert(INDEX_LENGTH(self) <= self->index_allocated);
-        for (i = 0; i < INDEX_LENGTH(self)-1; i++) {
+        if (self->leaf) {
+                leaf = (PyBList *) self;
+                leafs_n = 1;
+        } else {
+                linearize_rw(self);
+
+                assert(INDEX_LENGTH(self) <= self->index_allocated);
+                for (i = 0; i < INDEX_LENGTH(self)-1; i++) {
+                        leaf = self->index_list[i];
+                        if (leaf == self->index_list[i+1])
+                                continue;
+                        leafs[leafs_n++] = leaf;
+                        Py_INCREF(leaf);
+                }
                 leaf = self->index_list[i];
-                if (leaf == self->index_list[i+1])
-                        continue;
                 leafs[leafs_n++] = leaf;
                 Py_INCREF(leaf);
         }
-        leaf = self->index_list[i];
-        leafs[leafs_n++] = leaf;
-        Py_INCREF(leaf);
 
-        if (keyfunc != NULL) {
-                sortarray = wrap_leaf_array(leafs, leafs_n, self->n, keyfunc);
+        if (self->n > 10) {
+                sortarray = PyMem_New(sortwrapperobject, self->n);
                 if (sortarray == NULL) {
-                        for (i = 0; i < leafs_n; i++)
-                                SAFE_DECREF(leafs[i]);
-                        PyMem_Free(scratch);
-                        PyMem_Free(leafs);
-                        return -1;
+                        sortarray = sortarraystack;
+                        goto error;
                 }
         }
 
-        array_disable_GC(leafs, leafs_n);
-
-        leafs_n = sub_sort(scratch, leafs, compare, leafs_n, &err, 0);
-        PyMem_Free(scratch);
-
-        array_enable_GC(leafs, leafs_n);
-
-        if (keyfunc != NULL)
-                unwrap_leaf_array(leafs, leafs_n, self->n, sortarray);
-
-        i = blist_init_from_child_array(leafs, leafs_n);
-
-        if (i < 0) {
-                /* XXX leaking memory here when out of memory */
+        err = wrap_leaf_array(sortarray, leafs, leafs_n, self->n, keyfunc,
+                              &key_flags);
+        if (err < 0) {
+        error:
+                if (!self->leaf) {
+                        for (i = 0; i < leafs_n; i++)
+                                SAFE_DECREF(leafs[i]);
+                        PyMem_Free(leafs);
+                }
+                if (sortarray != sortarraystack)
+                        PyMem_Free(sortarray);
                 return -1;
-        } else {
-                assert(i == 1);
-                blist_become_and_consume((PyBList *) self, leafs[0]);
         }
-        SAFE_DECREF(leafs[0]);
-        PyMem_Free(leafs);
+
+        if (key_flags && compare == NULL) {
+#ifdef BLIST_RADIX_FLOAT
+                if (key_flags & KEY_ALL_DOUBLE) {
+                        if (self->n < 40)
+                                err = insertion_sort_uint64(sortarray,self->n);
+                        else
+                                err = sort_uint64(sortarray, self->n);
+                } else
+#endif
+                if (key_flags & KEY_ALL_LONG) {
+                        if (self->n < 40)
+                                err = insertion_sort_ulong(sortarray, self->n);
+                        else
+                                err = sort_ulong(sortarray, self->n);
+                }
+                else
+                        assert(0); /* Should not be possible */
+                unwrap_leaf_array(leafs, leafs_n, self->n, sortarray);
+                if (!self->leaf) {
+                        for (i = 0; i < leafs_n; i++)
+                                SAFE_DECREF(leafs[i]);
+                        PyMem_Free(leafs);
+                }
+        } else if (self->leaf) {
+                err = gallop_sort(self->children, self->num_children, compare);
+                unwrap_leaf_array(leafs, 1, self->n, sortarray);
+        } else {
+                PyBList **scratch = PyMem_New(PyBList *, self->n / HALF + 1);
+                if (!scratch) {
+                        PyMem_Free(leafs);
+                        PyMem_Free(sortarray);
+                        return -1;
+                }
+                leafs_n = sub_sort(scratch, leafs, compare, leafs_n, &err, 0);
+                array_enable_GC(leafs, leafs_n);
+                PyMem_Free(scratch);
+                unwrap_leaf_array(leafs, leafs_n, self->n, sortarray);
+                i = blist_init_from_child_array(leafs, leafs_n);
+
+                if (i < 0) {
+                        /* XXX leaking memory here when out of memory */
+                        PyMem_Free(sortarray);
+                        return -1;
+                } else {
+                        assert(i == 1);
+                        blist_become_and_consume((PyBList *) self, leafs[0]);
+                }
+                SAFE_DECREF(leafs[0]);
+                PyMem_Free(leafs);
+        }
+
+        if (sortarray != sortarraystack)
+                PyMem_Free(sortarray);
         return err;
 }
 
@@ -6269,21 +6529,7 @@ py_blist_sort(PyBListRoot *self, PyObject *args, PyObject *kwds)
         if (reverse)
                 blist_reverse(&saved);
 
-        if (saved.leaf) {
-                sortwrapperobject *sortarray = NULL;
-                PyBList *leaf = (PyBList *)&saved;
-                if (keyfunc != NULL) {
-                        sortarray = wrap_leaf_array(&leaf, 1,saved.n,keyfunc);
-                        if (sortarray == NULL) {
-                                ret = -1;
-                                goto skipsort;
-                        }
-                }
-                ret = gallop_sort(saved.children, saved.num_children, compare);
-                if (keyfunc != NULL)
-                        unwrap_leaf_array(&leaf, 1, saved.n, sortarray);
-        } else
-                ret = sort(&saved, compare, keyfunc);
+        ret = sort(&saved, compare, keyfunc);
   skipsort:
 
         if (ret >= 0) {
@@ -6938,13 +7184,11 @@ init_blist_types1(void)
         Py_TYPE(&PyRootBList_Type) = &PyType_Type;
         Py_TYPE(&PyBListIter_Type) = &PyType_Type;
         Py_TYPE(&PyBListReverseIter_Type) = &PyType_Type;
-        Py_TYPE(&PyBListSortWrapper_Type) = &PyType_Type;
 
         Py_INCREF(&PyBList_Type);
         Py_INCREF(&PyRootBList_Type);
         Py_INCREF(&PyBListIter_Type);
         Py_INCREF(&PyBListReverseIter_Type);
-        Py_INCREF(&PyBListSortWrapper_Type);
 
         return 0;
 }
@@ -6956,7 +7200,6 @@ init_blist_types2(void)
         if (PyType_Ready(&PyBList_Type) < 0) return -1;
         if (PyType_Ready(&PyBListIter_Type) < 0) return -1;
         if (PyType_Ready(&PyBListReverseIter_Type) < 0) return -1;
-        if (PyType_Ready(&PyBListSortWrapper_Type) < 0) return -1;
 
         return 0;
 }

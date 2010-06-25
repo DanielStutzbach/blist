@@ -6,9 +6,11 @@ from math import *
 
 # The tests to run are near the bottom
 
-MIN_REPS = 3
-MIN_TIME = 0.1
+MIN_REPS = 1
+NUM_POINTS = 1
+MIN_TIME = 0.01
 MAX_TIME = 1.0
+MAX_X = 100000
 
 def makedir(x):
     try:
@@ -40,7 +42,7 @@ setup = 'from blist import blist'
 ns = []
 for i in range(50+1):
     ns.append(int(floor(10**(i*0.1))))
-ns = list(sorted(set(ns)))
+ns = list(i for i in sorted(set(ns)) if i <= MAX_X)
 
 def smart_timeit(stmt, setup, hint):
     n = hint
@@ -60,10 +62,10 @@ def timeit(stmt, setup, rep):
     if key in timeit_cache:
         return timeit_cache[key]
     try:
-        n = 9
-        args =[sys.executable, timeit_path,
+        n = NUM_POINTS
+        args =[sys.executable + '.exe', timeit_path,
                '-r', str(n), '-v', '-n', str(rep), '-s', setup, '--', stmt]
-        p = subprocess.Popen(args, 
+        p = subprocess.Popen(args,
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         so, se = p.communicate()
         try:
@@ -73,7 +75,7 @@ def timeit(stmt, setup, rep):
             times = [float(x) / number for x in raw.split()[2:]]
             times.sort()
             # median, lower quartile, upper quartile
-            v = (times[n//2+1], times[n//4+1], times[(3*n)//4+1])
+            v = (times[n//2], times[n//4], times[3*n//4])
             timeit_cache[key] = v
             return v
         except:
@@ -300,8 +302,10 @@ add_timing('reverse', None, 'x.reverse()')
 add_timing('delslice', None, 'del x[len(x)//4:3*len(x)//4]\nx *= 2')
 add_timing('setslice', None, 'x[:] = x')
 
-add_timing('sort random', 'import random\nx = [random.random() for i in range(n)]', 'y = TypeToTest(x)\ny.sort()')
+add_timing('sort random', 'import random\nx = [random.randrange(n*4) for i in range(n)]', 'y = TypeToTest(x)\ny.sort()')
+add_timing('sort random key', 'import random\nx = [random.randrange(n*4) for i in range(n)]', 'y = TypeToTest(x)\ny.sort(key=float)')
 add_timing('sort sorted', None, 'x.sort()')
+add_timing('sort sorted key', None, 'x.sort(key=int)')
 add_timing('sort reversed', 'x = list(range(n))\nx.reverse()', 'y = TypeToTest(x)\ny.sort()')
 
 add_timing('sort random tuples', 'import random\nx = [(random.random(), random.random()) for i in range(n)]', 'y = TypeToTest(x)\ny.sort()')
