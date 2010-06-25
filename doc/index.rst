@@ -19,6 +19,13 @@ Documentations contents:
    weaksortedset.rst
    implementation.rst
 
+Other resources:
+
+* `Download <http://pypi.python.org/pypi/blist/>`_
+* `Browse source code <http://github.com/DanielStutzbach/blist>`_
+* `Issue tracker <http://github.com/DanielStutzbach/blist/issues>`_
+* `Performance analysis <http://stutzbachenterprises.com/performance-blist>`_
+
 Indices and tables
 ==================
 
