@@ -51,7 +51,7 @@ class IterNextOnly:
     def __init__(self, seqn):
         self.seqn = seqn
         self.i = 0
-    def __next__(self):
+    def __next__(self): # pragma: no cover
         if self.i >= len(self.seqn): raise StopIteration
         v = self.seqn[self.i]
         self.i += 1
@@ -223,7 +223,7 @@ class CommonTest(unittest.TestCase):
             # So instances of AllEq must be found in all non-empty sequences.
             def __eq__(self, other):
                 return True
-            def __hash__(self):
+            def __hash__(self): # pragma: no cover
                 raise NotImplemented
         self.assert_(AllEq() not in self.type2test([]))
         self.assert_(AllEq() in self.type2test([1]))
@@ -303,7 +303,7 @@ class CommonTest(unittest.TestCase):
     def test_getitemoverwriteiter(self):
         # Verify that __getitem__ overrides are not recognized by __iter__
         class T(self.type2test):
-            def __getitem__(self, key):
+            def __getitem__(self, key): # pragma: no cover
                 return str(key) + '!!!'
         self.assertEqual(next(iter(T((1,2)))), 1)
 

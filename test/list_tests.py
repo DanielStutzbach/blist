@@ -91,9 +91,9 @@ class CommonTest(seq_tests.CommonTest):
         a = self.type2test(list(range(20)))
         r = reversed(a)
         self.assertEqual(list(r), self.type2test(list(range(19, -1, -1))))
-        if hasattr(r, '__next__'):
+        if hasattr(r, '__next__'): # pragma: no cover
             self.assertRaises(StopIteration, r.__next__)
-        else:
+        else: # pragma: no cover
             self.assertRaises(StopIteration, r.next)
         self.assertEqual(list(reversed(self.type2test())),
                          self.type2test())
@@ -444,7 +444,7 @@ class CommonTest(seq_tests.CommonTest):
         a.sort()
         self.assertEqual(a, self.type2test(list(range(512))))
         
-        def revcmp(a, b):
+        def revcmp(a, b): # pragma: no cover
             if a == b:
                 return 0
             elif a < b:

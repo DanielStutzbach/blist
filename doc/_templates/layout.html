@@ -1,0 +1,157 @@
+{% extends "!layout.html" %}
+{% block rootrellink %}
+    <li><a href="http://stutzbachenterprises.com/">Stutzbach Enterpises</a>
+    &raquo;</li>
+    {{ super() }}
+{% endblock %}
+
+{% block footer %}
+<div class="footer">
+&copy; Copyright
+2010, <a href="http://stutzbachenterprises.com/">Stutzbach
+Enterprises, LLC</a>, creators
+of <a href="http://pokersleuth.com/">Poker Sleuth</a>.
+</div>
+<script type="text/javascript">
+      var gaJsHost = (("https:" == document.location.protocol) ?
+      "https://ssl." : "http://www.");
+      document.write(unescape("%3Cscript src='" + gaJsHost +
+      "google-analytics.com/ga.js'
+      type='text/javascript'%3E%3C/script%3E"));
+</script>
+<script type="text/javascript">
+  try {
+  var pageTracker = _gat._getTracker("UA-1152041-5");
+  // Cookied already:
+  pageTracker._trackPageview();
+  } catch(err) {}
+</script>
+<!-- End of Google Analytics code -->
+{% endblock %}
+
+{% block extrahead %}
+<style type="text/css">
+.stutz_module a {
+background-repeat: no-repeat;
+background-position: 0 0;
+ display: list-item;
+    list-style-type: none;
+padding-left: 20px;
+}
+.stutz_download a {
+  background-image:
+url('http://c0399471.cdn.cloudfiles.rackspacecloud.com/silk/icons/arrow_down.png');
+}
+.stutz_hand_converter a {
+  background-image:
+url('http://c0399471.cdn.cloudfiles.rackspacecloud.com/silk/icons/page_white_gear.png');
+}
+.stutz_calculator a {
+  background-image:
+url('http://c0399471.cdn.cloudfiles.rackspacecloud.com/silk/icons/calculator.png');
+}
+.stutz_hud a {
+  background-image:
+url('http://c0399471.cdn.cloudfiles.rackspacecloud.com/silk/icons/monitor_add.png');
+}
+.stutz_help a {
+  background-image:
+url('http://c0399471.cdn.cloudfiles.rackspacecloud.com/silk/icons/help.png');
+}
+.stutz_issues a {
+  background-image:
+url('http://c0399471.cdn.cloudfiles.rackspacecloud.com/silk/icons/bug.png');
+}
+.stutz_bullet .item {
+  background-image:
+url('http://c0399471.cdn.cloudfiles.rackspacecloud.com/silk/icons/bullet_red.png');
+}
+.stutz_source a {
+  background-image:
+url('http://c0399471.cdn.cloudfiles.rackspacecloud.com/silk/icons/page_white_gear.png');
+}
+.stutz_publications a {
+  background-image:
+url('http://c0399471.cdn.cloudfiles.rackspacecloud.com/silk/icons/page_white_stack.png');
+}
+.stutz_performance a {
+  background-image:
+url('http://c0399471.cdn.cloudfiles.rackspacecloud.com/silk/icons/chart_curve.png');
+}
+.stutz_paper a {
+  background-image:
+url('http://c0399471.cdn.cloudfiles.rackspacecloud.com/silk/icons/page_white_acrobat.png');
+}
+.stutz_doc a {
+  background-image:
+url('http://c0399471.cdn.cloudfiles.rackspacecloud.com/silk/icons/page_white_word.png');
+}
+.stutz_linkedin a {
+  background-image: url('/images/linkedin.ico');
+}
+</style>
+{% endblock %}
+
+{% block sidebartoc %}
+<h3><a href="index.html">Table of contents</a></h3>
+            <ul>
+<li class="toctree-l1"><a class="reference external"
+                          href="blist.html">blist</a></li>
+<li class="toctree-l1"><a class="reference external"
+                          href="sortedlist.html">sortedlist</a></li>
+<li class="toctree-l1"><a class="reference external"
+                          href="sortedset.html">sortedset</a></li>
+<li class="toctree-l1"><a class="reference external"
+                          href="weaksortedlist.html">weaksortedlist</a></li>
+<li class="toctree-l1"><a class="reference external"
+                          href="weaksortedset.html">weaksortedset</a></li>
+<li class="toctree-l1"><a class="reference external"
+                          href="implementation.html">Implementation
+                          Details</a></li>
+</ul>
+
+<h3><a href="http://stutzbachenterprises.com/blist/">blist</a></h3>
+<ul class="stutz_module">
+<div class="stutz_help"><a href="http://stutzbachenterprises.com/blist/">Documentation</a></div>
+<div class="stutz_download"><a href="http://pypi.python.org/pypi/blist/">Download</a></div>
+<div class="stutz_source"><a href="http://github.com/DanielStutzbach/blist">Browse
+    source code</a></div>
+<div class="stutz_issues"><a href="http://github.com/DanielStutzbach/blist/issues">Issue
+    tracker</a></div>
+<div class="stutz_performance"><a href="/performance-blist">Performance
+    analysis</a></div>
+</ul>
+
+<h3>heapdict</h3>
+<ul class="stutz_module">
+<div class="stutz_download"><a href="http://pypi.python.org/pypi/HeapDict">Download</a></div>
+<div class="stutz_source"><a href="http://github.com/DanielStutzbach/heapdict">Browse
+    source code</a></div>
+<div class="stutz_issues"><a href="http://github.com/DanielStutzbach/heapdict/issues">Issue
+    tracker</a></div>
+</ul>
+
+<h3><a href="http://pokersleuth.com/">Poker Sleuth</a></h3>
+<ul class="stutz_module">
+<div class="stutz_hand_converter"><a href="http://pokersleuth.com/poker-hand-converter.shtml">Hand Converter</a></div>
+<div class="stutz_calculator"><a href="http://pokersleuth.com/poker-equity-calculator.shtml">Equity Calculator</a></div>
+<div class="stutz_hud"><a href="http://pokersleuth.com/poker-HUD.shtml">Heads-Up
+    Display (HUD)</a></div>
+<div class="stutz_download"><a href="http://pokersleuth.com/tools-download.shtml">Download</a></div>
+<div class="stutz_issues"><a href="http://pokersleuth.com/tracker/">Issue
+    tracker</a></div>
+</ul>
+<h3>ion-sampler</h3>
+    <ul class="stutz_module">
+<div class="stutz_download"><a href="http://github.com/DanielStutzbach/ion-sampler/downloads">Download</a></div>
+<div class="stutz_source"><a href="http://github.com/DanielStutzbach/ion-sampler">Browse
+    source code</a></div>
+<div class="stutz_issues"><a href="http://github.com/DanielStutzbach/ion-sampler/issues">Issue
+    tracker</a></div>
+<div class="stutz_paper"><a href="http://stutzbachenterprises.com/publications#_citeulike-5432583">Related
+    paper</a></div>
+</ul>
+
+{% endblock %}
+
+{% block sidebarrel %} {% endblock %}

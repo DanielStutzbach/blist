@@ -93,18 +93,22 @@ class bTupleTest(seq_tests.CommonTest):
         self.assertEqual(repr(a2), "btuple((0, 1, 2))")
 
     def _not_tracked(self, t):
-        if sys.version_info[0] < 3: return
-        # Nested tuples can take several collections to untrack
-        gc.collect()
-        gc.collect()
-        self.assertFalse(gc.is_tracked(t), t)
+        if sys.version_info[0] < 3:
+            return
+        else: # pragma: no cover
+            # Nested tuples can take several collections to untrack
+            gc.collect()
+            gc.collect()
+            self.assertFalse(gc.is_tracked(t), t)
 
     def _tracked(self, t):
-        if sys.version_info[0] < 3: return
-        self.assertTrue(gc.is_tracked(t), t)
-        gc.collect()
-        gc.collect()
-        self.assertTrue(gc.is_tracked(t), t)
+        if sys.version_info[0] < 3:
+            return
+        else: # pragma: no cover
+            self.assertTrue(gc.is_tracked(t), t)
+            gc.collect()
+            gc.collect()
+            self.assertTrue(gc.is_tracked(t), t)
 
     def test_track_literals(self):
         # Test GC-optimization of tuple literals

@@ -1,8 +1,8 @@
 # This file based loosely on Python's list_tests.py.
 
-import unittest
+import unittest, collections, operator
 import sys
-from . import seq_tests
+from . import list_tests, seq_tests
 import blist
 import random
 import gc
@@ -16,62 +16,165 @@ def CmpToKey(mycmp):
             return mycmp(self.obj, other.obj) == -1
     return K
 
-class SortedListTest(seq_tests.CommonTest):
-    type2test = blist.sortedlist
-    def not_applicable(self):
-        pass
-    test_repeat = not_applicable
-    test_imul = not_applicable
-    test_addmul = not_applicable
-    test_iadd = not_applicable
-    test_getslice = not_applicable
-    test_contains_order = not_applicable
-    test_contains_fake = not_applicable
+class SortedBase(object):
+    def build_items(self, n):
+        return list(range(n))
 
-    def test_sort(self):
-        # based on list_tests.py
-        u = self.type2test([1, 0])
-        self.assertEqual(list(u), [0, 1])
+    def build_item(self, x):
+        return x
 
-        u = self.type2test([2,1,0,-1,-2])
-        self.assertEqual(list(u), [-2,-1,0,1,2])
+    def test_empty_repr(self):
+        self.assertEqual('%s()' % self.type2test.__name__,
+                         repr(self.type2test()))
 
-        a = self.type2test(reversed(list(range(512))))
-        self.assertEqual(list(a), list(range(512)))
+    def validate_comparison(self, instance):
+        if sys.version_info[0] < 3 and isinstance(instance, collections.Set):
+            ops = ['ne', 'or', 'and', 'xor', 'sub']
+        else:
+            ops = ['lt', 'gt', 'le', 'ge', 'ne', 'or', 'and', 'xor', 'sub']
+        operators = {}
+        for op in ops:
+            name = '__'+op+'__'
+            operators['__'+op+'__'] = getattr(operator, name)
 
-        def revcmp(a, b):
-            if a == b:
-                return 0
-            elif a < b:
-                return 1
-            else: # a > b
-                return -1
-        u = self.type2test(u, key=CmpToKey(revcmp))
-        self.assertEqual(list(u), [2,1,0,-1,-2])
+        class Other(object):
+            def __init__(self):
+                self.right_side = False
+            def __eq__(self, other):
+                self.right_side = True
+                return True
+            __lt__ = __eq__
+            __gt__ = __eq__
+            __le__ = __eq__
+            __ge__ = __eq__
+            __ne__ = __eq__
+            __ror__ = __eq__
+            __rand__ = __eq__
+            __rxor__ = __eq__
+            __rsub__ = __eq__
 
-        # The following dumps core in unpatched Python 1.5:
-        def myComparison(x,y):
-           xmod, ymod = x%3, y%7
-           if xmod == ymod:
-               return 0
-           elif xmod < ymod:
-               return -1
-           else: # xmod > ymod
-               return 1
-        z = self.type2test(list(range(12)), key=CmpToKey(myComparison))
+        for name, op in operators.items():
+            if not hasattr(instance, name): continue
+            other = Other()
+            op(instance, other)
+            self.assertTrue(other.right_side,'Right side not called for %s.%s'
+                            % (type(instance), name))
 
-        self.assertRaises(TypeError, self.type2test, 42, 42, 42, 42)
+    def test_right_side(self):
+        self.validate_comparison(self.type2test())
+
+    def test_delitem(self):
+        items = self.build_items(2)
+        a = self.type2test(items)
+        del a[1]
+        self.assertEqual(a, self.type2test(items[:1]))
+        del a[0]
+        self.assertEqual(a, self.type2test([]))
+
+        a = self.type2test(items)
+        del a[-2]
+        self.assertEqual(a, self.type2test(items[1:]))
+        del a[-1]
+        self.assertEqual(a, self.type2test([]))
+
+        a = self.type2test(items)
+        self.assertRaises(IndexError, a.__delitem__, -3)
+        self.assertRaises(IndexError, a.__delitem__, 2)
+
+        a = self.type2test([])
+        self.assertRaises(IndexError, a.__delitem__, 0)
+
+        self.assertRaises(TypeError, a.__delitem__)
+
+    def test_delslice(self):
+        items = self.build_items(2)
+        a = self.type2test(items)
+        del a[1:2]
+        del a[0:1]
+        self.assertEqual(a, self.type2test([]))
+
+        a = self.type2test(items)
+        del a[1:2]
+        del a[0:1]
+        self.assertEqual(a, self.type2test([]))
+
+        a = self.type2test(items)
+        del a[-2:-1]
+        self.assertEqual(a, self.type2test(items[1:]))
+
+        a = self.type2test(items)
+        del a[-2:-1]
+        self.assertEqual(a, self.type2test(items[1:]))
+
+        a = self.type2test(items)
+        del a[1:]
+        del a[:1]
+        self.assertEqual(a, self.type2test([]))
+
+        a = self.type2test(items)
+        del a[1:]
+        del a[:1]
+        self.assertEqual(a, self.type2test([]))
+
+        a = self.type2test(items)
+        del a[-1:]
+        self.assertEqual(a, self.type2test(items[:1]))
+
+        a = self.type2test(items)
+        del a[-1:]
+        self.assertEqual(a, self.type2test(items[:1]))
+
+        a = self.type2test(items)
+        del a[:]
+        self.assertEqual(a, self.type2test([]))
+
+    def test_out_of_range(self):
+        u = self.type2test()
+        def del_test():
+            del u[0]
+        self.assertRaises(IndexError, lambda: u[0])
+        self.assertRaises(IndexError, del_test)
+
+    def test_bad_mul(self):
+        u = self.type2test()
+        self.assertRaises(TypeError, lambda: u * 'q')
+        def imul_test():
+            u = self.type2test()
+            u *= 'q'
+        self.assertRaises(TypeError, imul_test)
+
+    def test_pop(self):
+        lst = self.build_items(20)
+        random.shuffle(lst)
+        u = self.type2test(lst)
+        for i in range(20-1,-1,-1):
+            x = u.pop(i)
+            self.assertEqual(x, i)
+        self.assertEqual(0, len(u))
+
+    def test_reversed(self):
+        lst = list(range(20))
+        a = self.type2test(lst)
+        r = reversed(a)
+        self.assertEqual(list(r), list(range(19, -1, -1)))
+        if hasattr(r, '__next__'): # pragma: no cover
+            self.assertRaises(StopIteration, r.__next__)
+        else: # pragma: no cover
+            self.assertRaises(StopIteration, r.next)
+        self.assertEqual(self.type2test(reversed(self.type2test())),
+                         self.type2test())
 
     def test_mismatched_types(self):
         class NotComparable:
-            def __lt__(self, other):
+            def __lt__(self, other): # pragma: no cover
                 raise TypeError
-            def __cmp__(self, other):
+            def __cmp__(self, other): # pragma: no cover
                 raise TypeError
         NotComparable = NotComparable()
 
+        item = self.build_item(5)
         sl = self.type2test()
-        sl.add(5)
+        sl.add(item)
         self.assertRaises(TypeError, sl.add, NotComparable)
         self.assertFalse(NotComparable in sl)
         self.assertEqual(sl.count(NotComparable), 0)
@@ -79,7 +182,10 @@ class SortedListTest(seq_tests.CommonTest):
         self.assertRaises(ValueError, sl.index, NotComparable)
 
     def test_order(self):
-        stuff = [random.random() for i in range(1000)]
+        stuff = [self.build_item(random.randrange(1000000))
+                 for i in range(1000)]
+        if issubclass(self.type2test, collections.Set):
+            stuff = set(stuff)
         sorted_stuff = list(sorted(stuff))
         u = self.type2test
 
@@ -96,9 +202,9 @@ class SortedListTest(seq_tests.CommonTest):
         # Based on the seq_test, but without adding incomparable types
         # to the list.
 
-        l0 = []
-        l1 = [0]
-        l2 = [0, 1]
+        l0 = self.build_items(0)
+        l1 = self.build_items(1)
+        l2 = self.build_items(2)
 
         u = self.type2test()
         u0 = self.type2test(l0)
@@ -122,6 +228,58 @@ class SortedListTest(seq_tests.CommonTest):
         v0 = self.type2test(s)
         self.assertEqual(len(v0), len(s))
 
+    def test_sort(self):
+        # based on list_tests.py
+        lst = [1, 0]
+        lst = [self.build_item(x) for x in lst]
+        u = self.type2test(lst)
+        self.assertEqual(list(u), [0, 1])
+
+        lst = [2,1,0,-1,-2]
+        lst = [self.build_item(x) for x in lst]
+        u = self.type2test(lst)
+        self.assertEqual(list(u), [-2,-1,0,1,2])
+
+        lst = list(range(512))
+        lst = [self.build_item(x) for x in lst]
+        a = self.type2test(reversed(lst))
+        self.assertEqual(list(a), lst)
+
+        def revcmp(a, b): # pragma: no cover
+            if a == b:
+                return 0
+            elif a < b:
+                return 1
+            else: # a > b
+                return -1
+        u = self.type2test(u, key=CmpToKey(revcmp))
+        self.assertEqual(list(u), [2,1,0,-1,-2])
+
+        # The following dumps core in unpatched Python 1.5:
+        def myComparison(x,y):
+           xmod, ymod = x%3, y%7
+           if xmod == ymod:
+               return 0
+           elif xmod < ymod:
+               return -1
+           else: # xmod > ymod
+               return 1
+        z = self.type2test(list(range(12)), key=CmpToKey(myComparison))
+
+        self.assertRaises(TypeError, self.type2test, 42, 42, 42, 42)
+
+class StrongSortedBase(SortedBase, seq_tests.CommonTest):
+    def not_applicable(self):
+        pass
+    test_repeat = not_applicable
+    test_imul = not_applicable
+    test_addmul = not_applicable
+    test_iadd = not_applicable
+    test_getslice = not_applicable
+    test_contains_order = not_applicable
+    test_contains_fake = not_applicable
+
+    def test_constructors2(self):
         s = "a seq"
         vv = self.type2test(s)
         self.assertEqual(len(vv), len(s))
@@ -143,37 +301,33 @@ class SortedListTest(seq_tests.CommonTest):
             self.assertRaises(ZeroDivisionError, self.type2test,
                               seq_tests.IterGenExc(s))
 
-class SortedSetMixin:
-    def test_duplicates(self):
-        u = self.type2test
-        ss = u()
-        stuff = [weak_int(random.randrange(100000)) for i in range(10)]
-        sorted_stuff = list(sorted(stuff))
-        for x in stuff:
-            ss.add(x)
-        for x in stuff:
-            ss.add(x)
-        self.assertEqual(sorted_stuff, list(ss))
-        x = sorted_stuff.pop(len(stuff)//2)
-        ss.discard(x)
-        self.assertEqual(sorted_stuff, list(ss))
-
-class SortedSetTest(SortedListTest, SortedSetMixin):
-    type2test = blist.sortedset
-
 class weak_int:
     def __init__(self, v):
         self.value = v
-    def __repr__(self):
+    def unwrap(self, other):
+        if isinstance(other, weak_int):
+            return other.value
+        return other
+    def __hash__(self):
+        return hash(self.value)
+    def __repr__(self): # pragma: no cover
         return repr(self.value)
     def __lt__(self, other):
-        return self.value < other.value
+        return self.value < self.unwrap(other)
+    def __le__(self, other):
+        return self.value <= self.unwrap(other)
+    def __gt__(self, other):
+        return self.value > self.unwrap(other)
+    def __ge__(self, other):
+        return self.value >= self.unwrap(other)
     def __eq__(self, other):
-        return self.value == other.value
+        return self.value == self.unwrap(other)
+    def __ne__(self, other):
+        return self.value != self.unwrap(other)
     def __mod__(self, other):
-        if isinstance(other, int):
-            return self.value % other
-        return self.value % other.value
+        return self.value % self.unwrap(other)
+    def __neg__(self):
+        return weak_int(-self.value)
 
 class weak_manager():
     def __init__(self):
@@ -188,8 +342,19 @@ class weak_manager():
         del self.all
         gc.collect()
 
-class WeakSortedListTest(unittest.TestCase):
-    type2test = blist.weaksortedlist
+class WeakSortedBase(SortedBase, unittest.TestCase):
+    def build_items(self, n):
+        return [weak_int(i) for i in range(n)]
+
+    def build_item(self, x):
+        return weak_int(x)
+
+    def test_collapse(self):
+        items = self.build_items(10)
+        u = self.type2test(items)
+        del items
+        gc.collect()
+        self.assertEqual(list(u), [])
 
     def test_sort(self):
         # based on list_tests.py
@@ -205,7 +370,7 @@ class WeakSortedListTest(unittest.TestCase):
         #a = self.type2test(y)
         #self.assertEqual(list(a), list(reversed(y)))
 
-        def revcmp(a, b):
+        def revcmp(a, b): # pragma: no cover
             if a == b:
                 return 0
             elif a < b:
@@ -299,5 +464,142 @@ class WeakSortedListTest(unittest.TestCase):
             wsl = self.type2test(m.all)
         self.assertEqual(m.live, list(wsl[:]))
 
-class WeakSortedSetTest(WeakSortedListTest, SortedSetMixin):
+class SortedListMixin:
+    def test_eq(self):
+        items = self.build_items(20)
+        u = self.type2test(items)
+        v = self.type2test(items, key=lambda x: -x)
+        self.assertNotEqual(u, v)
+
+    def test_cmp(self):
+        items = self.build_items(20)
+        u = self.type2test(items)
+        low = u[:10]
+        high = u[10:]
+        self.assert_(low != high)
+        self.assert_(low == u[:10])
+        self.assert_(low < high)
+        self.assert_(low <= high, str((low, high)))
+        self.assert_(high > low)
+        self.assert_(high >= low)
+        self.assertFalse(low == high)
+        self.assertFalse(high < low)
+        self.assertFalse(high <= low)
+        self.assertFalse(low > high)
+        self.assertFalse(low >= high)
+
+        low = u[:5]
+        self.assert_(low != high)
+        self.assertFalse(low == high)
+
+    def test_update(self):
+        items = self.build_items(20)
+        u = self.type2test()
+        u.update(items)
+        self.assertEqual(u, self.type2test(items))
+
+    def test_remove(self):
+        items = self.build_items(20)
+        u = self.type2test(items)
+        u.remove(items[-1])
+        self.assertEqual(u, self.type2test(items[:19]))
+        self.assertRaises(ValueError, u.remove, items[-1])
+
+    def test_mul(self):
+        items = self.build_items(2)
+        u1 = self.type2test(items[:1])
+        u2 = self.type2test(items)
+        self.assertEqual(self.type2test(), u2*0)
+        self.assertEqual(self.type2test(), 0*u2)
+        self.assertEqual(self.type2test(), u2*0)
+        self.assertEqual(self.type2test(), 0*u2)
+        self.assertEqual(u2, u2*1)
+        self.assertEqual(u2, 1*u2)
+        self.assertEqual(u2, u2*1)
+        self.assertEqual(u2, 1*u2)
+        self.assertEqual(self.type2test(items + items), u2*2)
+        self.assertEqual(self.type2test(items + items), 2*u2)
+        self.assertEqual(self.type2test(items + items + items), 3*u2)
+        self.assertEqual(self.type2test(items + items + items), u2*3)
+
+        class subclass(self.type2test):
+            pass
+        u3 = subclass(items)
+        self.assertEqual(u3, u3*1)
+        self.assert_(u3 is not u3*1)
+
+    def test_imul(self):
+        items = self.build_items(2)
+        items6 = items[:1]*3 + items[1:]*3
+        u = self.type2test(items)
+        u *= 3
+        self.assertEqual(u, self.type2test(items6))
+        u *= 0
+        self.assertEqual(u, self.type2test([]))
+        s = self.type2test([])
+        oldid = id(s)
+        s *= 10
+        self.assertEqual(id(s), oldid)
+
+    def test_repr(self):
+        name = self.type2test.__name__
+        u = self.type2test()
+        self.assertEqual(repr(u), '%s()' % name)
+        items = self.build_items(3)
+        u.update(items)
+        self.assertEqual(repr(u), '%s([0, 1, 2])' % name)
+        u = self.type2test()
+        u.update([u])
+        self.assertEqual(repr(u), '%s([%s(...)])' % (name, name))
+
+class SortedSetMixin:
+    def test_duplicates(self):
+        u = self.type2test
+        ss = u()
+        stuff = [weak_int(random.randrange(100000)) for i in range(10)]
+        sorted_stuff = list(sorted(stuff))
+        for x in stuff:
+            ss.add(x)
+        for x in stuff:
+            ss.add(x)
+        self.assertEqual(sorted_stuff, list(ss))
+        x = sorted_stuff.pop(len(stuff)//2)
+        ss.discard(x)
+        self.assertEqual(sorted_stuff, list(ss))
+
+    def test_eq(self):
+        items = self.build_items(20)
+        u = self.type2test(items)
+        v = self.type2test(items, key=lambda x: -x)
+        self.assertEqual(u, v)
+
+    def test_remove(self):
+        items = self.build_items(20)
+        u = self.type2test(items)
+        u.remove(items[-1])
+        self.assertEqual(u, self.type2test(items[:19]))
+        self.assertRaises(KeyError, u.remove, items[-1])
+
+class SortedListTest(StrongSortedBase, SortedListMixin):
+    type2test = blist.sortedlist
+
+class WeakSortedListTest(WeakSortedBase, SortedListMixin):
+    type2test = blist.weaksortedlist
+
+    def test_advance(self):
+        items = [weak_int(0), weak_int(0)]
+        u = self.type2test(items)
+        del items[0]
+        gc.collect()
+        self.assertEqual(u.count(items[0]), 1)
+
+class SortedSetTest(StrongSortedBase, SortedSetMixin):
+    type2test = blist.sortedset
+
+class WeakSortedSetTest(WeakSortedBase, SortedSetMixin):
     type2test = blist.weaksortedset
+
+    def test_repr(self):
+        items = self.build_items(20)
+        u = self.type2test(items)
+        self.assertEqual(repr(u), 'weaksortedset(%s)' % repr(items))

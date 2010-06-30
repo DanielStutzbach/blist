@@ -1,13 +1,21 @@
 blist: a list-like type with better performance
 ===============================================
 
-The blist is a drop-in replacement for the Python list the provides
-better performance when modifying large lists.  Python's built-in list
-is a dynamically-sized array; to insert or removal an item from the
-beginning or middle of the list, it has to move most of the list in
-memory, i.e., O(n) operations.  The blist uses a flexible, hybrid
-array/tree structure and only needs to move a small portion of items
-in memory, specifically using O(log n) operations.
+The ``blist`` is a drop-in replacement for the Python list the provides
+better performance when modifying large lists.  The blist package also
+provides ``sortedlist``, ``sortedset``, ``weaksortedlist``,
+``weaksortedset``, ``sorteddict``, and ``btuple`` types.
+
+Full documentation is at the link below:
+
+http://stutzbachenterprises.com/blist-doc/
+
+Python's built-in list is a dynamically-sized array; to insert or
+removal an item from the beginning or middle of the list, it has to
+move most of the list in memory, i.e., O(n) operations.  The blist
+uses a flexible, hybrid array/tree structure and only needs to move a
+small portion of items in memory, specifically using O(log n)
+operations.
 
 For small lists, the blist and the built-in list have virtually
 identical performance.
@@ -130,7 +138,7 @@ case, just run:
 
        python setup.py install
 
-The blist module will be installed in the 'site-packages' directory of
+The blist package will be installed in the 'site-packages' directory of
 your Python installation.  (Unless directed elsewhere; see the
 "Installing Python Modules" section of the Python manuals for details
 on customizing installation locations, etc.).

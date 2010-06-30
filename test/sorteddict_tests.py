@@ -50,7 +50,7 @@ class sorteddict_test(mapping_tests.TestHashMappingProtocol):
         a = self.type2test.fromkeys(reversed(list(range(512))))
         self.assertEqual(list(a.keys()), list(range(512)))
         
-        def revcmp(a, b):
+        def revcmp(a, b): # pragma: no cover
             if a == b:
                 return 0
             elif a < b:
