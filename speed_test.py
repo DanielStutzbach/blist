@@ -310,14 +310,19 @@ add_timing('sort reversed', 'x = list(range(n))\nx.reverse()', 'y = TypeToTest(x
 add_timing('sort reversed key', 'x = list(range(n))\nx.reverse()', 'y = TypeToTest(x)\ny.sort(key=int)')
 
 add_timing('sort random tuples', 'import random\nx = [(random.random(), random.random()) for i in range(n)]', 'y = TypeToTest(x)\ny.sort()')
-add_timing('sort objects', '''
+
+ob_def = '''
+import random
 class ob:
     def __init__(self, v):
         self.v = v
     def __lt__(self, other):
         return self.v < other.v
-x = list(ob(i) for i in range(n))
-''', 'y = TypeToTest(x)\ny.sort()')
+x = [ob(random.randrange(n*4)) for i in range(n)]
+'''
+
+add_timing('sort random objects', ob_def, 'y = TypeToTest(x)\ny.sort()')
+add_timing('sort sorted objects', ob_def + 'x.sort()', 'x.sort()')
 
 add_timing('init from list', 'x = list(range(n))', 'y = TypeToTest(x)')
 add_timing('init from tuple', 'x = tuple(range(n))', 'y = TypeToTest(x)')
