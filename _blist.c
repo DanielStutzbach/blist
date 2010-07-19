@@ -7106,6 +7106,49 @@ static PyMappingMethods blist_as_mapping = {
 };
 
 /* All of this, just to get __radd__ to work */
+#if PY_MAJOR_VERSION < 3
+static PyNumberMethods blist_as_number = {
+        py_blist_concat,                    /* nb_add */
+        0,                                  /* nb_subtract */
+        0,                                  /* nb_multiply */
+        0,                                  /* nb_divide */
+        0,                                  /* nb_remainder */
+        0,                                  /* nb_divmod */
+        0,                                  /* nb_power */
+        0,                                  /* nb_negative */
+        0,                                  /* tp_positive */
+        0,                                  /* tp_absolute */
+        0,                                  /* tp_nonzero */
+        0,                                  /* nb_invert */
+        0,                                  /* nb_lshift */
+        0,                                  /* nb_rshift */
+        0,                                  /* nb_and */
+        0,                                  /* nb_xor */
+        0,                                  /* nb_or */
+        0,                                  /* nb_coerce */
+        0,                                  /* nb_int */
+        0,                                  /* nb_long */
+        0,                                  /* nb_float */
+        0,                                  /* nb_oct */
+        0,                                  /* nb_hex */
+        py_blist_inplace_concat,            /* nb_inplace_add */
+        0,                                  /* nb_inplace_subtract */
+        0,                                  /* nb_inplace_multiply */
+        0,                                  /* nb_inplace_divide */
+        0,                                  /* nb_inplace_remainder */
+        0,                                  /* nb_inplace_power */
+        0,                                  /* nb_inplace_lshift */
+        0,                                  /* nb_inplace_rshift */
+        0,                                  /* nb_inplace_and */
+        0,                                  /* nb_inplace_xor */
+        0,                                  /* nb_inplace_or */
+        0,                                  /* nb_floor_divide */
+        0,                                  /* nb_true_divide */
+        0,                                  /* nb_inplace_floor_divide */
+        0,                                  /* nb_inplace_true_divide */
+        0,                                  /* nb_index */
+};
+#else
 static PyNumberMethods blist_as_number = {
         (binaryfunc) py_blist_concat,       /* nb_add */
         0,                                  /* nb_subtract */
@@ -7142,6 +7185,7 @@ static PyNumberMethods blist_as_number = {
         0,                                  /* nb_inplace_true_divide */
         0,                                  /* nb_index */
 };
+#endif
 
 PyTypeObject PyBList_Type = {
         PyVarObject_HEAD_INIT(NULL, 0)
