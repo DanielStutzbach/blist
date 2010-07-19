@@ -5519,14 +5519,14 @@ sort(PyBListRoot *restrict self, PyObject *compare, PyObject *keyfunc)
         if (key_flags && compare == NULL) {
 #ifdef BLIST_FLOAT_RADIX_SORT
                 if (key_flags & KEY_ALL_DOUBLE) {
-                        if (self->n < 40)
+                        if (self->n < 40 && self->leaf)
                                 err = insertion_sort_uint64(sortarray,self->n);
                         else
                                 err = sort_uint64(sortarray, self->n);
                 } else
 #endif
                 if (key_flags & KEY_ALL_LONG) {
-                        if (self->n < 40)
+                        if (self->n < 40 && self->leaf)
                                 err = insertion_sort_ulong(sortarray, self->n);
                         else
                                 err = sort_ulong(sortarray, self->n);
