@@ -36,7 +36,7 @@ POSSIBILITY OF SUCH DAMAGE.
 import sys
 import os
 
-import unittest
+import unittest, operator
 import blist, pickle, _blist
 #BList = list
 from test import test_support, list_tests, sortedlist_tests, btuple_tests
@@ -226,7 +226,7 @@ class BListTest(list_tests.CommonTest):
     def test_badconcat(self):
         x = self.type2test()
         y = 'foo'
-        self.assertRaises(TypeError, x.__add__, y)
+        self.assertRaises(TypeError, operator.add, x, y)
 
     def test_bad_assign(self):
         x = self.type2test(list(range(n)))
