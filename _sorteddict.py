@@ -77,7 +77,7 @@ class sorteddict(collections.MutableMapping):
         def keys(self):
             return self._sortedkeys.copy()
         def items(self):
-            return blist((self, self[key]) for key in self)
+            return blist((key, self[key]) for key in self)
         def values(self):
             return blist(self[key] for key in self)
     else:
