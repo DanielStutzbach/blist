@@ -4734,6 +4734,7 @@ static int islt(PyObject *x, PyObject *y, PyObject *compare)
         }                                                               \
         }
 
+#if 0
 BLIST_LOCAL(int)
 network_sort(PyObject **sortarray, Py_ssize_t n)
 {
@@ -4795,6 +4796,7 @@ network_sort(PyObject **sortarray, Py_ssize_t n)
                 abort();
         }
 }
+#endif
 
 #ifdef BLIST_FLOAT_RADIX_SORT
 BLIST_LOCAL_INLINE(int)
