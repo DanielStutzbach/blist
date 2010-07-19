@@ -16,6 +16,11 @@ iterations = 100000
 lobs = [type1(), type1()]
 blobs = [type2(), type2()]
 
+def get_method(self, name):
+    if name == '__add__':
+        return lambda x: operator.add(self, x)
+    return getattr(self, name)
+
 methods = {
     '__add__': 1,
     '__contains__': 1,
@@ -176,7 +181,7 @@ for _ in range(iterations):
     last = ' list: %s%s' % (method, str(tuple(args)))
     print(method, '(%d, %d)' % (length_left, length_right), end=' ') 
     sys.stdout.flush()
-    f = getattr(left, method)
+    f = get_method(left, method)
     rv1 = call(f, args)
     print('.', end=' ')
     sys.stdout.flush()
@@ -191,7 +196,7 @@ for _ in range(iterations):
         else:
             args2.append(arg)
     #print ('type2: %s%s' % (method, str(tuple(args2))))
-    f = getattr(left, method)
+    f = get_method(left, method)
     rv2 = call(f, args2)
     print('.', end=' ')
     sys.stdout.flush()
