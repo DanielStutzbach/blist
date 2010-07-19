@@ -1,11 +1,62 @@
 from _sortedlist import sortedset
-import collections
+import collections, sys
+from _blist import blist
+
+class missingdict(dict):
+    def __missing__(self, key):
+        return self._missing(key)
+
+class KeysView(collections.KeysView, collections.Sequence):
+    def __getitem__(self, index):
+        return self._mapping._sortedkeys[index]
+    def __reversed__(self):
+        return reversed(self._mapping._sortedkeys)
+    def index(self, key):
+        return self._mapping._sortedkeys.index(key)
+    def count(self, key):
+        return self._mapping.count(key)
+    def _from_iterable(cls, it):
+        return sortedset(key=self._mapping._sortedkeys.key)
+
+class ItemsView(collections.ItemsView, collections.Sequence):
+    def __getitem__(self, index):
+        if isinstance(index, slice):
+            keys = self._mapping._sortedkeys[index]
+            return self._from_iterable((key, self._mapping[key])
+                                       for key in keys)
+        key = self._mapping.sortedkeys[index]
+        return (key, self._mapping[key])
+    def index(self, item):
+        key, value = item
+        i = self._mapping._sortedkeys.index(key)
+        if self._mapping[key] == value:
+            return i
+        raise ValueError
+    def count(self, item):
+        return 1 if item in self else 0
+    def _from_iterable(cls, it):
+        return sortedset(key=lambda item:
+                             self._mapping._sortedkeys.key(item[0]))
+
+class ValuesView(collections.ValuesView, collections.Sequence):
+    def __getitem__(self, index):
+        if isinstance(index, slice):
+            keys = self._mapping._sortedkeys[index]
+            rv = sortedset(key=self._mapping._sortedkeys.key)
+            rv.update(self._mapping[key] for key in keys)
+            return rv
+        key = self._mapping.sortedkeys[index]
+        return self._mapping[key]
 
 class sorteddict(collections.MutableMapping):
     __slots__ = ['_sortedkeys', '_map']
-    
+
     def __init__(self, *args, **kw):
-        self._map = dict()
+        if hasattr(self, '__missing__'):
+            self._map = missingdict()
+            self._map._missing = self.__missing__
+        else:
+            self._map = dict()
         key = None
         if len(args) > 0:
             if hasattr(args[0], '__call__'):
@@ -17,8 +68,25 @@ class sorteddict(collections.MutableMapping):
         if len(args) > 1:
             raise TypeError('sorteddict expected at most 2 arguments, got %d'
                             % len(args))
+        if len(args) == 1 and isinstance(args[0], sorteddict) and key is None:
+            key = args[0]._sortedkeys._key
         self._sortedkeys = sortedset(key=key)
         self.update(*args, **kw)
+
+    if sys.version_info[0] < 3:
+        def keys(self):
+            return self._sortedkeys.copy()
+        def items(self):
+            return blist((self, self[key]) for key in self)
+        def values(self):
+            return blist(self[key] for key in self)
+    else:
+        def keys(self):
+            return KeysView(self)
+        def items(self):
+            return ItemsView(self)
+        def values(self):
+            return ValuesView(self)
 
     def __setitem__(self, key, value):
         try:
