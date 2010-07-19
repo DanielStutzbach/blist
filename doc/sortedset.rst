@@ -18,14 +18,14 @@ sortedset
    a comparison key from each set element: ``key=str.lower``. The
    default value is ``None`` (compare the elements directly).  The
    *key* function must always return the same key for an item or the
-   results are unpredicable.
+   results are unpredictable.
 
    Unlike a :class:`set`, a :class:`sortedset` does not require items
    to be hashable.
 
    .. method:: x in S
 
-      Returns True if and only if x is an element in the set.
+      Returns True if and only if *x* is an element in the set.
 
       Requires |theta(log**2 n)| total operations or |theta(log n)|
       comparisons.
@@ -55,7 +55,7 @@ sortedset
 
       :rtype: :class:`bool`
 
-   .. method: S > S2
+   .. method:: S > S2
 
       Test whether the set is a proper superset of *S2*, that is, ``S
       >= S2 and S != S2``.
@@ -71,7 +71,7 @@ sortedset
       Returns the element at position *i*.
 
       Requires |theta(log n)| operations in the worst case but only
-      |theta(1)| operations if the set's size has not be changed
+      |theta(1)| operations if the set's size has not been changed
       recently.  Requires no comparisons in any case.
 
       :rtype: item
@@ -102,7 +102,7 @@ sortedset
 
       :rtype: iterator
 
-   .. method: len(S)
+   .. method:: len(S)
 
       Returns the number of elements in the set.
 
@@ -110,7 +110,7 @@ sortedset
 
       :rtype: :class:`int`
 
-   .. method: S * k or k * S
+   .. method:: S * k or k * S
 
       Returns a new sorted set containing *k* shallow copies of each
       item in S.
@@ -119,7 +119,7 @@ sortedset
 
       :rtype: :class:`sortedset`
 
-   .. method: reversed(S)
+   .. method:: reversed(S)
 
       Creates an iterator to traverse the set in reverse.
 
@@ -142,7 +142,8 @@ sortedset
 
       Remove all elements from the set.
 
-      Requires |theta(1)| total operations and no comparisons.
+      Requires |theta(n)| total operations and no comparisons in the
+      worst case.
 
    .. method:: S.copy()
 
@@ -168,7 +169,7 @@ sortedset
 
       In the worst case, requires |theta(m log**2(n + m))| operations
       and |theta(m log(n + m))| comparisons, where *m* is the combined
-      size of all the other sets and *n* is the initial size of *S*.
+      size of all the other sets and *n* is the size of *S*.
 
       :rtype: :class:`sortedset`
 
@@ -195,9 +196,9 @@ sortedset
 
       Returns the smallest *k* such that :math:`S[k] == x` and
       :math:`i <= k < j`.  Raises ValueError if *value* is not
-      present.  stop defaults to the end of the set.  start defaults
-      to the beginning.  Negative indexes are supported, as for slice
-      indices.
+      present.  *stop* defaults to the end of the set.  *start*
+      defaults to the beginning.  Negative indexes are supported, as
+      for slice indices.
 
       In the worst case, requires |theta(stop-start)| operations and
       |theta(stop-start)| comparisons.
@@ -211,7 +212,7 @@ sortedset
 
       In the worst case, requires |theta(m log**2(n + m))| operations
       and |theta(m log(n + m))| comparisons, where *m* is the combined
-      size of all the other sets and *n* is the initial size of *S*.
+      size of all the other sets and *n* is the size of *S*.
 
       :rtype: :class:`sortedset`
 
@@ -243,7 +244,7 @@ sortedset
 
       :rtype: :class:`bool`
 
-   .. method: S.issupserset(S2)
+   .. method:: S.issupserset(S2)
               S >= S2
 
       Test whether every element in *S2* is in the set.
@@ -261,7 +262,7 @@ sortedset
 
       In the worst case, requires |theta(m log**2(n + m))| operations
       and |theta(m log(n + m))| comparisons, where *m* is the size of
-      *S2* and *n* is the initial size of *S*.
+      *S2* and *n* is the size of *S*.
 
       :rtype: :class:`sortedset`
 
@@ -303,7 +304,7 @@ sortedset
 
       Requires |theta(m log**2(n + m))| operations or |theta(m log(n +
       m))| comparisons, where *m* is the total size of the other sets
-      and *n* is the initial size of *S*.
+      and *n* is the size of *S*.
 
       :rtype: :class:`sortedset`
 

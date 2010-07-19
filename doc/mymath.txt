@@ -2,10 +2,14 @@
 
 .. |theta(n)| replace:: :math:`\Theta\left(n\right)`
 .. |theta(log n)| replace:: :math:`\Theta\left(\log n\right)`
+.. |theta(log m)| replace:: :math:`\Theta\left(\log m\right)`
 .. |theta(n log n)| replace:: :math:`\Theta\left(n \log n\right)`
 .. |theta(log k)| replace:: :math:`\Theta\left(\log k\right)`
 .. |theta(1)| replace:: :math:`\Theta\left(1\right)`
 .. |theta(log**2 n)| replace:: :math:`\Theta\left(\log^2 n\right)`
+.. |theta(log**2 m)| replace:: :math:`\Theta\left(\log^2 m\right)`
+.. |theta(m log**2 n)| replace:: :math:`\Theta\left(m \log^2 n\right)`
+.. |theta(m log n)| replace:: :math:`\Theta\left(m \log n\right)`
 .. |theta(log m + log n)| replace:: :math:`\Theta\left(\log m + \log n\right)`
 .. |theta(m + log n)| replace:: :math:`\Theta\left(m + \log n\right)`
 .. |theta(stop-start)| replace:: :math:`\Theta\left(\textrm{start}-\textrm{stop}\right)`
@@ -14,3 +18,4 @@
 .. |theta(m log**2(n + m))| replace:: :math:`\Theta\left(m \log^2
    \left(n + m\right)\right)`
 .. |theta(m log(n + m))| replace:: :math:`\Theta\left(m \log\left(n + m\right)\right)`
+.. |theta(j - i + log n)| replace:: :math:`\Theta\left(j - i + \log n\right)`

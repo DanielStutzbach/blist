@@ -1,6 +1,8 @@
 blist: an asymptotically faster list-like type for Python
 =========================================================
 
+.. currentmodule:: blist
+
 The :class:`blist` is a drop-in replacement for the Python list the
 provides better performance when modifying large lists.  The blist
 package also provides :class:`sortedlist`, :class:`sortedset`,
@@ -13,6 +15,8 @@ Documentations contents:
    :maxdepth: 1
 
    blist.rst
+   btuple.rst
+   sorteddict.rst
    sortedlist.rst
    sortedset.rst
    weaksortedlist.rst

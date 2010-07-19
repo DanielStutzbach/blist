@@ -8,7 +8,7 @@ blist
 .. class:: blist(iterable)
 
     The :class:`blist` is a drop-in replacement for the Python
-    :class:`list` the provides better performance when modifying large
+    :class:`list` that provides better performance when modifying large
     lists. For small lists, the :class:`blist` and the built-in
     :class:`list` have virtually identical performance.
 
@@ -30,7 +30,11 @@ blist
     structure and only needs to move a small portion of items in
     memory, specifically using |theta(log n)| operations.
 
-   .. method:: L + L2
+    Creating a :class:`blist` from another :class:`blist` requires
+    |theta(1)| operations.  Creating a :class:`blist` from any other
+    iterable requires |theta(n)| operations.
+
+   .. method:: L + L2, L2 + L
 
       :type L: blist
       :type L2: list or blist
@@ -38,7 +42,7 @@ blist
       Returns a new blist by concatenating two lists.
 
       If the other list is also a blist, requires |theta(log m + log
-      n)| operations.  If it's a regular :class:`list`, requires
+      n)| operations.  If it's a built-in :class:`list`, requires
       |theta(m + log n)| operations, where *m* is the size of the other
       list and *n* is the size of *L*.
 
@@ -79,7 +83,7 @@ blist
       Returns the element at position *i*.
 
       Requires |theta(log n)| operations in the worst case but only
-      |theta(1)| operations if the list's size has not be changed
+      |theta(1)| operations if the list's size has not been changed
       recently.
 
       :rtype: item
@@ -146,7 +150,7 @@ blist
       Replace the item at index *i* with *value*.
 
       Requires |theta(log n)| operations in the worst case but only
-      |theta(1)| operations if the list's size has not be changed
+      |theta(1)| operations if the list's size has not been changed
       recently.
 
    .. method: L[i:j] = iterable
@@ -187,9 +191,9 @@ blist
 
       Returns the smallest *k* such that :math:`s[k] == x` and
       :math:`i <= k < j`.  Raises ValueError if *value* is not
-      present.  stop defaults to the end of the list.  start defaults
-      to the beginning.  Negative indexes are supported, as for slice
-      indices.
+      present.  *stop* defaults to the end of the list.  *start*
+      defaults to the beginning.  Negative indexes are supported, as
+      for slice indices.
 
       Requires |theta(stop-start)| operations in the worst case.
 

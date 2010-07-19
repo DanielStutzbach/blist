@@ -24,11 +24,11 @@ sortedlist
    a comparison key from each list element: ``key=str.lower``. The
    default value is ``None`` (compare the elements directly).  The
    *key* function must always return the same key for an item or the
-   results are unpredicable.
+   results are unpredictable.
 
    .. method:: x in L
 
-      Returns True if and only if x is an element in the list.
+      Returns True if and only if *x* is an element in the list.
 
       Requires |theta(log**2 n)| total operations or |theta(log n)|
       comparisons.
@@ -64,7 +64,7 @@ sortedlist
       Returns the element at position *i*.
 
       Requires |theta(log n)| operations in the worst case but only
-      |theta(1)| operations if the list's size has not be changed
+      |theta(1)| operations if the list's size has not been changed
       recently.  Requires no comparisons in any case.
 
       :rtype: item
@@ -96,7 +96,7 @@ sortedlist
 
       :rtype: iterator
 
-   .. method: len(L)
+   .. method:: len(L)
 
       Returns the number of elements in the list.
 
@@ -104,7 +104,7 @@ sortedlist
 
       :rtype: :class:`int`
 
-   .. method: L * k or k * L
+   .. method:: L * k or k * L
 
       Returns a new sorted list containing *k* shallow copies of each
       item in L.
@@ -113,7 +113,7 @@ sortedlist
 
       :rtype: :class:`sortedlist`
 
-   .. method: reversed(L)
+   .. method:: reversed(L)
 
       Creates an iterator to traverse the list in reverse.
 
@@ -123,6 +123,21 @@ sortedlist
       list.  Requires no comparisons in any case.
 
       :rtype: iterator
+
+   .. method:: L[i] = x
+
+      Replace the item at position *i* of *L* with *x*.
+
+      Requires |theta(log n)| operations in the worst case but only
+      |theta(1)| operations if the list's size has not been changed
+      recently.  Requires no comparisons in any case.
+
+   .. method:: L[i:j] = iterable
+
+      Replace the items at positions *i* through *j* with the contents
+      of *iterable*.
+
+      Requires |theta(j - i + log n)| operations and no comparisons.
 
    .. _sortedlist.add:
    .. method:: L.add(value)
@@ -154,12 +169,12 @@ sortedlist
 
       Returns the smallest *k* such that :math:`L[k] == x` and
       :math:`i <= k < j`.  Raises ValueError if *value* is not
-      present.  stop defaults to the end of the list.  start defaults
-      to the beginning.  Negative indexes are supported, as for slice
-      indices.
+      present.  *stop* defaults to the end of the list.  *start*
+      defaults to the beginning.  Negative indexes are supported, as
+      for slice indices.
 
-      In the worst case, requires |theta(stop-start)| operations and
-      |theta(stop-start)| comparisons.
+      In the worst case, requires |theta(log**2 m)| operations and
+      |theta(log m)| comparisons, where *m* is *stop* - *start*.
 
       :rtype: :class:`int`
 
