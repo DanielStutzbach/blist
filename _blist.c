@@ -6247,31 +6247,64 @@ py_blist_get_item(PyObject *oself, Py_ssize_t i)
         return _ob(ret);
 }
 
+/* Note: this may be called as __radd__, which means the arguments may
+ * be reversed. */
 BLIST_PYAPI(PyObject *)
-py_blist_concat(PyObject *oself, PyObject *oother)
+py_blist_concat(PyObject *ob1, PyObject *ob2)
 {
-        PyBList *other, *rv, *self;
+        PyBList *rv;
+        int err;
 
-        invariants((PyBList *) oself, VALID_USER|VALID_RW|VALID_DECREF);
+        int is_blist1 = PyRootBList_Check(ob1);
+        int is_blist2 = PyRootBList_Check(ob2);
 
-        self = (PyBList *) oself;
-
-        if (!PyRootBList_Check(oother)) {
-                PyErr_Format(PyExc_TypeError,
-                        "can only concatenate blist (not \"%.200s\") to blist",
-                         Py_TYPE(oother)->tp_name);
-                return _ob(NULL);
+        if ((!is_blist1 && !PyList_Check(ob1))
+            || (!is_blist2 && !PyList_Check(ob2))) {
+                Py_INCREF(Py_NotImplemented);
+                return Py_NotImplemented;
         }
 
-        other = (PyBList *) oother;
+        if (is_blist1 && is_blist2) {
+                PyBList *blist1 = (PyBList *) ob1;
+                PyBList *blist2 = (PyBList *) ob2;
+                if (blist1->n < LIMIT && blist2->n < LIMIT
+                    && blist1->n + blist2->n < LIMIT) {
+                        rv = blist_root_new();
+                        copyref(rv, 0, blist1, 0, blist1->n);
+                        copyref(rv, blist1->n, blist2, 0, blist2->n);
+                        rv->n = rv->num_children = blist1->n + blist2->n;
+                        goto done;
+                }
 
-        rv = blist_root_copy(self);
-        blist_extend_blist(rv, other);
+                rv = blist_root_copy(blist1);
+                blist_extend_blist(rv, blist2);
+                ext_mark(rv, 0, DIRTY);
+                ext_mark_set_dirty_all(blist2);
+                goto done;
+        }
+
+        rv = blist_root_new();
+        err = blist_init_from_seq(rv, ob1);
+        if (err < 0) {
+                decref_later((PyObject *) rv);
+                rv = NULL;
+                goto done;
+        }
+        err = blist_extend(rv, ob2);
+        if (err < 0) {
+                decref_later((PyObject *) rv);
+                rv = NULL;
+                goto done;
+        }
         ext_mark(rv, 0, DIRTY);
-        ext_mark_set_dirty_all(other);
+        if (PyBList_Check(ob1))
+                ext_mark_set_dirty_all((PyBList *) ob1);
+        if (PyBList_Check(ob2))
+                ext_mark_set_dirty_all((PyBList *) ob2);
 
-        decref_flush();
-        return (PyObject *) _blist(rv);
+done:
+        _decref_flush();
+        return (PyObject *) rv;
 }
 
 /* User-visible repr() */
@@ -7051,14 +7084,14 @@ static PyMethodDef blist_internal_methods[] = {
 
 static PySequenceMethods blist_as_sequence = {
         py_blist_length,                   /* sq_length */
-        py_blist_concat,                /* sq_concat */
+        0,                /* sq_concat */
         py_blist_repeat,              /* sq_repeat */
         py_blist_get_item,            /* sq_item */
         py_blist_get_slice,      /* sq_slice */
         py_blist_ass_item,         /* sq_ass_item */
         py_blist_ass_slice,   /* sq_ass_slice */
         py_blist_contains,              /* sq_contains */
-        py_blist_inplace_concat,        /* sq_inplace_concat */
+        0,        /* sq_inplace_concat */
         py_blist_inplace_repeat,      /* sq_inplace_repeat */
 };
 
@@ -7070,6 +7103,44 @@ static PyMappingMethods blist_as_mapping = {
         py_blist_length,
         py_blist_subscript,
         py_blist_ass_subscript
+};
+
+/* All of this, just to get __radd__ to work */
+static PyNumberMethods blist_as_number = {
+        (binaryfunc) py_blist_concat,       /* nb_add */
+        0,                                  /* nb_subtract */
+        0,                                  /* nb_multiply */
+        0,                                  /* nb_remainder */
+        0,                                  /* nb_divmod */
+        0,                                  /* nb_power */
+        0,                                  /* nb_negative */
+        0,                                  /* tp_positive */
+        0,                                  /* tp_absolute */
+        0,                                  /* tp_bool */
+        0,                                  /* nb_invert */
+        0,                                  /* nb_lshift */
+        0,                                  /* nb_rshift */
+        0,                                  /* nb_and */
+        0,                                  /* nb_xor */
+        0,                                  /* nb_or */
+        0,                                  /* nb_int */
+        0,                                  /* nb_reserved */
+        0,                                  /* nb_float */
+        py_blist_inplace_concat,            /* nb_inplace_add */
+        0,                                  /* nb_inplace_subtract */
+        0,                                  /* nb_inplace_multiply */
+        0,                                  /* nb_inplace_remainder */
+        0,                                  /* nb_inplace_power */
+        0,                                  /* nb_inplace_lshift */
+        0,                                  /* nb_inplace_rshift */
+        0,                                  /* nb_inplace_and */
+        0,                                  /* nb_inplace_xor */
+        0,                                  /* nb_inplace_or */
+        0,                                  /* nb_floor_divide */
+        0,                                  /* nb_true_divide */
+        0,                                  /* nb_inplace_floor_divide */
+        0,                                  /* nb_inplace_true_divide */
+        0,                                  /* nb_index */
 };
 
 PyTypeObject PyBList_Type = {
@@ -7134,7 +7205,7 @@ PyTypeObject PyRootBList_Type = {
         0,                                      /* tp_setattr */
         0,                                      /* tp_compare */
         py_blist_repr,                          /* tp_repr */
-        0,                                      /* tp_as_number */
+        &blist_as_number,                       /* tp_as_number */
         &blist_as_sequence,                     /* tp_as_sequence */
         &blist_as_mapping,                      /* tp_as_mapping */
         py_blist_nohash,                        /* tp_hash */
