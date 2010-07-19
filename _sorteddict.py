@@ -80,6 +80,12 @@ class sorteddict(collections.MutableMapping):
             return blist((key, self[key]) for key in self)
         def values(self):
             return blist(self[key] for key in self)
+        def viewkeys(self):
+            return KeysView(self)
+        def viewitems(self):
+            return ItemsView(self)
+        def viewvalues(self):
+            return ValuesView(self)
     else:
         def keys(self):
             return KeysView(self)
