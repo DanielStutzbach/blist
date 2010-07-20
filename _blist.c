@@ -44,31 +44,57 @@
 
 #if PY_MAJOR_VERSION == 2
 
-#if (defined UINT32_MAX || defined uint32_t)
 #ifndef PY_UINT32_T
+#if (defined UINT32_MAX || defined uint32_t)
 #define HAVE_UINT32_T 1
 #define PY_UINT32_T uint32_t
+#elif defined(MS_WINDOWS)
+#if SIZEOF_INT == 4
+#define HAVE_UINT32_T 1
+#define PY_UINT32_T unsigned int
+#elif SIZEOF_LONG == 4
+#define HAVE_UINT32_T 1
+#define PY_UINT32_T unsigned long
+#endif
 #endif
 #endif
 
-#if (defined UINT64_MAX || defined uint64_t)
 #ifndef PY_UINT64_T
+#if (defined UINT64_MAX || defined uint64_t)
 #define HAVE_UINT64_T 1
 #define PY_UINT64_T uint64_t
+#elif defined(MS_WINDOWS)
+#if SIZEOF_LONG_LONG == 8
+#define HAVE_UINT64_T 1
+#define PY_UINT64_T unsigned PY_LONG_LONG
+#endif
 #endif
 #endif
 
-#if (defined INT32_MAX || defined int32_t)
 #ifndef PY_INT32_T
+#if (defined INT32_MAX || defined int32_t)
 #define HAVE_INT32_T 1
 #define PY_INT32_T int32_t
+#elif defined(MS_WINDOWS)
+#if SIZEOF_INT == 4
+#define HAVE_INT32_T 1
+#define PY_INT32_T int
+#elif SIZEOF_LONG == 4
+#define HAVE_INT32_T 1
+#define PY_INT32_T long
+#endif
 #endif
 #endif
 
-#if (defined INT64_MAX || defined int64_t)
 #ifndef PY_INT64_T
+#if (defined INT64_MAX || defined int64_t)
 #define HAVE_INT64_T 1
 #define PY_INT64_T int64_t
+#elif defined(MS_WINDOWS)
+#if SIZEOF_LONG_LONG == 8
+#define HAVE_INT64_T 1
+#define PY_INT64_T PY_LONG_LONG
+#endif
 #endif
 #endif
 
@@ -5332,12 +5358,11 @@ flsl(Py_ssize_t n)
 #define BITS_PER_PASS 8
 #define HISTOGRAM_SIZE (((Py_ssize_t) 1) << BITS_PER_PASS)
 #define MASK (HISTOGRAM_SIZE - 1)
+#define NUM_PASSES (((sizeof(unsigned long)*8-1) / BITS_PER_PASS)+1)
 
 BLIST_LOCAL_INLINE(int)
 sort_ulong(sortwrapperobject *restrict sortarray, Py_ssize_t n)
 {
-        const unsigned NUM_PASSES = ((sizeof(unsigned long)*8-1)
-                                     / BITS_PER_PASS)+1;
         sortwrapperobject *restrict scratch, *from, *to, *tmp;
         Py_ssize_t histograms[HISTOGRAM_SIZE][NUM_PASSES];
         Py_ssize_t i, j, sums[NUM_PASSES], count[NUM_PASSES], tsum;
@@ -5393,14 +5418,17 @@ sort_ulong(sortwrapperobject *restrict sortarray, Py_ssize_t n)
         return 0;
 }
 
+#undef NUM_PASSES
+
 #ifdef BLIST_FLOAT_RADIX_SORT
 #if SIZEOF_LONG == 8
 #define sort_uint64 sort_ulong
 #else
+#define NUM_PASSES (((64-1) / BITS_PER_PASS)+1)
+
 BLIST_LOCAL_INLINE(int)
 sort_uint64(sortwrapperobject *restrict sortarray, Py_ssize_t n)
 {
-        const unsigned NUM_PASSES = ((64-1) / BITS_PER_PASS)+1;
         sortwrapperobject *restrict scratch, *from, *to, *tmp;
         Py_ssize_t histograms[HISTOGRAM_SIZE][NUM_PASSES];
         Py_ssize_t i, j, sums[NUM_PASSES], count[NUM_PASSES], tsum;
@@ -5453,6 +5481,9 @@ sort_uint64(sortwrapperobject *restrict sortarray, Py_ssize_t n)
         PyMem_Free(scratch);
         return 0;
 }
+
+#undef NUM_PASSES
+
 #endif
 #endif
 
