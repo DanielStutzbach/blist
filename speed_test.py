@@ -6,9 +6,9 @@ from math import *
 
 # The tests to run are near the bottom
 
-MIN_REPS = 1
-NUM_POINTS = 1
-MIN_TIME = 0.01
+MIN_REPS = 3
+NUM_POINTS = 9
+MIN_TIME = 0.1
 MAX_TIME = 1.0
 MAX_X = 100000
 
