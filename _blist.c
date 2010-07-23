@@ -5331,6 +5331,7 @@ sub_sort(PyBList **restrict scratch, PyBList **in, PyObject *compare,
         return n;
 }
 
+#if 0
 BLIST_LOCAL_INLINE(void)
 array_disable_GC(PyBList **leafs, Py_ssize_t num_leafs)
 {
@@ -5338,6 +5339,7 @@ array_disable_GC(PyBList **leafs, Py_ssize_t num_leafs)
         for (i = 0; i < num_leafs; i++)
                 PyObject_GC_UnTrack(leafs[i]);
 }
+#endif
 
 BLIST_LOCAL_INLINE(void)
 array_enable_GC(PyBList **leafs, Py_ssize_t num_leafs)
@@ -5345,14 +5347,6 @@ array_enable_GC(PyBList **leafs, Py_ssize_t num_leafs)
         Py_ssize_t i;
         for (i = 0; i < num_leafs; i++)
                 PyObject_GC_Track(leafs[i]);
-}
-
-BLIST_LOCAL_INLINE(int)
-flsl(Py_ssize_t n)
-{
-        int count = 0;
-        while (n >> count) count++;
-        return count;
 }
 
 #define BITS_PER_PASS 8
