@@ -70,7 +70,7 @@ class _sortedbase(collections.Sequence):
         else:
             return value[0]
 
-    def _bisect(self, v):
+    def _bisect(self, v, right=False):
         """Locate the point in the list where v would be inserted.
 
         Returns an (i, value) tuple:
@@ -81,18 +81,22 @@ class _sortedbase(collections.Sequence):
         accept a user-object v and return a user-object value.
         """
 
+        if right:
+            op = operator.le
+        else:
+            op = operator.lt
         key = self._u2key(v)
         lo = 0
         hi = len(self._blist)
         while lo < hi:
             mid = (lo+hi)//2
             v = self._i2key(self._blist[mid])
-            if v < key: lo = mid+1
+            if op(v, key): lo = mid+1
             else: hi = mid
         if lo < len(self._blist):
             return lo, self._i2u(self._blist[lo])
         return lo, None
-
+    
     def add(self, value):
         """Add an element."""
         # Will throw a TypeError when trying to add an object that
@@ -215,7 +219,11 @@ class _sortedbase(collections.Sequence):
         del self._blist[i]
 
 class _weaksortedbase(_sortedbase):
-    def _bisect(self, value):
+    def _bisect(self, value, right=False):
+        if right:
+            op = operator.le
+        else:
+            op = operator.lt
         key = self._u2key(value)
         lo = 0
         hi = len(self._blist)
@@ -225,7 +233,7 @@ class _weaksortedbase(_sortedbase):
             hi -= n
             if n and hi == len(self._blist):
                 continue
-            if self._i2key(self._blist[mid]) < key: lo = mid+1
+            if op(self._i2key(self._blist[mid]), key): lo = mid+1
             else: hi = mid
         n, v = self._squeeze(lo)
         return lo, v
@@ -301,6 +309,14 @@ class _weaksortedbase(_sortedbase):
         return -1
 
 class _listmixin(object):
+    def bisect_left(self, v):
+        return self._bisect(v)[0]
+    
+    bisect = bisect_left
+    
+    def bisect_right(self, v):
+        return self._bisect(v, right=True)[0]
+    
     def remove(self, value):
         """L.remove(value) -- remove first occurrence of value.
 

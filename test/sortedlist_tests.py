@@ -551,6 +551,15 @@ class SortedListMixin:
         u = self.type2test()
         u.update([u])
         self.assertEqual(repr(u), '%s([%s(...)])' % (name, name))
+    
+    def test_bisect(self):
+        items = self.build_items(5)
+        del items[0]
+        del items[2] # We end up with [1, 2, 4]
+        u = self.type2test(items, key=lambda x: -x) # We end up with [4, 2, 1]
+        self.assertEqual(u.bisect_left(3), 1)
+        self.assertEqual(u.bisect(2), 1) # bisect == bisect_left
+        self.assertEqual(u.bisect_right(2), 2)
 
 class SortedSetMixin:
     def test_duplicates(self):
