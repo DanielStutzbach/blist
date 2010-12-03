@@ -4595,7 +4595,6 @@ unwrap_leaf_array(PyBList **leafs, int leafs_n, int n,
 
 #define KEY_ALL_DOUBLE 1
 #define KEY_ALL_LONG 2
-#define KEY_ALL_INT32 4
 
 static int
 wrap_leaf_array(sortwrapperobject *restrict array,
@@ -4606,7 +4605,7 @@ wrap_leaf_array(sortwrapperobject *restrict array,
         int i, j, k;
         int key_flags;
 
-        key_flags = KEY_ALL_DOUBLE | KEY_ALL_LONG | KEY_ALL_INT32;
+        key_flags = KEY_ALL_DOUBLE | KEY_ALL_LONG;
 
         for (k = i = 0; i < leafs_n; i++) {
                 PyBList *restrict leaf = leafs[i];
