@@ -138,6 +138,11 @@ case, just run:
 
        python setup.py install
 
+If you're running Linux and see a bunch of compilation errors from
+GCC, you probably do not have the Python header files installed.
+They're usually located in a package called something like
+"python2.6-dev".
+
 The blist package will be installed in the 'site-packages' directory of
 your Python installation.  (Unless directed elsewhere; see the
 "Installing Python Modules" section of the Python manuals for details
