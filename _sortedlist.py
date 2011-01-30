@@ -70,7 +70,7 @@ class _sortedbase(collections.Sequence):
         else:
             return value[0]
 
-    def _bisect(self, v, right=False):
+    def _bisect_left(self, v):
         """Locate the point in the list where v would be inserted.
 
         Returns an (i, value) tuple:
@@ -81,27 +81,60 @@ class _sortedbase(collections.Sequence):
         accept a user-object v and return a user-object value.
         """
 
-        if right:
-            op = operator.le
-        else:
-            op = operator.lt
         key = self._u2key(v)
         lo = 0
         hi = len(self._blist)
         while lo < hi:
             mid = (lo+hi)//2
             v = self._i2key(self._blist[mid])
-            if op(v, key): lo = mid+1
+            if v < key: lo = mid + 1
             else: hi = mid
         if lo < len(self._blist):
             return lo, self._i2u(self._blist[lo])
         return lo, None
-    
+
+    def _bisect_right(self, v):
+        """Same as _bisect_left, but go to the right of equal values"""
+
+        key = self._u2key(v)
+        lo = 0
+        hi = len(self._blist)
+        while lo < hi:
+            mid = (lo+hi)//2
+            v = self._i2key(self._blist[mid])
+            if key < v: hi = mid
+            else: lo = mid + 1
+        if lo < len(self._blist):
+            return lo, self._i2u(self._blist[lo])
+        return lo, None
+
+    def bisect_left(self, v):
+        """L.bisect_left(v) -> index
+
+        The return value i is such that all e in L[:i] have e < v, and
+        all e in a[i:] have e >= v.  So if v already appears in the
+        list, i points just before the leftmost v already there.
+        """
+        return self._bisect_left(v)[0]
+
+    def bisect_right(self, v):
+        """L.bisect_right(v) -> index
+
+        Return the index where to insert item v in the list.
+
+        The return value i is such that all e in a[:i] have e <= v,
+        and all e in a[i:] have e > v.  So if v already appears in the
+        list, i points just beyond the rightmost v already there.
+        """
+        return self._bisect_right(v)[0]
+
+    bisect = bisect_right
+
     def add(self, value):
         """Add an element."""
         # Will throw a TypeError when trying to add an object that
         # cannot be compared to objects already in the list.
-        i, _ = self._bisect(value)
+        i, _ = self._bisect_right(value)
         self._blist.insert(i, self._u2i(value))
 
     def discard(self, value):
@@ -112,7 +145,7 @@ class _sortedbase(collections.Sequence):
         """
 
         try:
-            i, v = self._bisect(value)
+            i, v = self._bisect_left(value)
         except TypeError:
             # Value cannot be compared with values already in the list.
             # Ergo, value isn't in the list.
@@ -124,7 +157,7 @@ class _sortedbase(collections.Sequence):
     def __contains__(self, value):
         """x.__contains__(y) <==> y in x"""
         try:
-            i, v = self._bisect(value)
+            i, v = self._bisect_left(value)
         except TypeError:
             # Value cannot be compared with values already in the list.
             # Ergo, value isn't in the list.
@@ -172,7 +205,7 @@ class _sortedbase(collections.Sequence):
         """
 
         try:
-            i, v = self._bisect(value)
+            i, v = self._bisect_left(value)
         except TypeError:
             raise ValueError
         i = self._advance(i, value)
@@ -183,7 +216,7 @@ class _sortedbase(collections.Sequence):
     def count(self, value):
         """L.count(value) -> integer -- return number of occurrences of value"""
         try:
-            i, _ = self._bisect(value)
+            i, _ = self._bisect_left(value)
         except TypeError:
             return 0
         key = self._u2key(value)
@@ -219,11 +252,7 @@ class _sortedbase(collections.Sequence):
         del self._blist[i]
 
 class _weaksortedbase(_sortedbase):
-    def _bisect(self, value, right=False):
-        if right:
-            op = operator.le
-        else:
-            op = operator.lt
+    def _bisect_left(self, value):
         key = self._u2key(value)
         lo = 0
         hi = len(self._blist)
@@ -233,10 +262,27 @@ class _weaksortedbase(_sortedbase):
             hi -= n
             if n and hi == len(self._blist):
                 continue
-            if op(self._i2key(self._blist[mid]), key): lo = mid+1
+            if self._i2key(self._blist[mid]) < key: lo = mid+1
             else: hi = mid
         n, v = self._squeeze(lo)
         return lo, v
+
+    def _bisect_right(self, value):
+        key = self._u2key(value)
+        lo = 0
+        hi = len(self._blist)
+        while lo < hi:
+            mid = (lo+hi)//2
+            n, v = self._squeeze(mid)
+            hi -= n
+            if n and hi == len(self._blist):
+                continue
+            if key < self._i2key(self._blist[mid]): hi = mid
+            else: lo = mid+1
+        n, v = self._squeeze(lo)
+        return lo, v
+
+    _bisect = _bisect_right
 
     def _u2i(self, value):
         if self._key is None:
@@ -309,14 +355,6 @@ class _weaksortedbase(_sortedbase):
         return -1
 
 class _listmixin(object):
-    def bisect_left(self, v):
-        return self._bisect(v)[0]
-    
-    bisect = bisect_left
-    
-    def bisect_right(self, v):
-        return self._bisect(v, right=True)[0]
-    
     def remove(self, value):
         """L.remove(value) -- remove first occurrence of value.
 
