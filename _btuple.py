@@ -2,7 +2,6 @@ from _blist import blist
 from ctypes import c_int
 import collections
 class btuple(collections.Sequence):
-    __slots__ = ['_hash', '_blist']
     def __init__(self, seq=None):
         if isinstance(seq, btuple):
             self._blist = seq._blist

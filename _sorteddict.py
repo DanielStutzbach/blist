@@ -49,8 +49,6 @@ class ValuesView(collections.ValuesView, collections.Sequence):
         return self._mapping[key]
 
 class sorteddict(collections.MutableMapping):
-    __slots__ = ['_sortedkeys', '_map']
-
     def __init__(self, *args, **kw):
         if hasattr(self, '__missing__'):
             self._map = missingdict()
