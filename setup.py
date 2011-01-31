@@ -15,7 +15,7 @@ if ctypes.sizeof(ctypes.c_double) == 8:
         define_macros.append(('BLIST_FLOAT_RADIX_SORT', 1))
 
 setup(name='blist',
-      version='1.3.1',
+      version='1.3.2',
       description='a list-like type with better asymptotic performance and similar performance on small lists',
       author='Stutzbach Enterprises, LLC',
       author_email='daniel@stutzbachenterprises.com',
