@@ -17,6 +17,11 @@ class KeysView(collections.KeysView, collections.Sequence):
         return self._mapping.count(key)
     def _from_iterable(cls, it):
         return sortedset(key=self._mapping._sortedkeys.key)
+    def bisect_left(self, key):
+        return self._mapping._sortedkeys.bisect_left(key)
+    def bisect_right(self, key):
+        return self._mapping._sortedkeys.bisect_right(key)
+    bisect = bisect_right
 
 class ItemsView(collections.ItemsView, collections.Sequence):
     def __getitem__(self, index):
