@@ -4633,9 +4633,9 @@ wrap_leaf_array(sortwrapperobject *restrict array,
 #ifdef BLIST_FLOAT_RADIX_SORT
                         if (type == &PyFloat_Type) {
                                 double d = PyFloat_AS_DOUBLE(key);
-                                PY_UINT64_T di;
+                                PY_UINT64_T di, mask;
                                 memcpy(&di, &d, 8);
-                                PY_UINT64_T mask = (-(PY_INT64_T) (di >> 63))
+                                mask = (-(PY_INT64_T) (di >> 63))
                                         | (1ull << 63ull);
                                 pair->fkey.k_uint64 = di ^ mask;
                                 key_flags &= KEY_ALL_DOUBLE;
