@@ -336,6 +336,27 @@ sorteddict
 
       :rtype: :class:`sortedset`
 
+   .. _sortedlist.bisect_left:
+   .. method:: L.bisect_left(value)
+
+      Similarly to the ``bisect`` module in the standard library, this
+      returns an appropriate index to insert *value* in *L*. If *value* is
+      already present in *L*, the insertion point will be before (to the
+      left of) any existing entries.
+
+      Requires |theta(log**2 n)| total operations or |theta(log n)|
+      comparisons.
+
+   .. method:: L.bisect(value)
+
+      Same as :ref:`bisect_left <sortedlist.bisect_right>`.
+
+   .. method:: L.bisect_right(value)
+
+      Same thing as :ref:`bisect_left <sortedlist.bisect_left>`, but if
+      *value* is already present in *L*, the insertion point will be after
+      (to the right of) any existing entries.
+
    .. method:: keysview.count(key)
 
       Returns the number of occurrences of *key* in the set.
