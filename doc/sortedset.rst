@@ -265,7 +265,7 @@ sortedset
 
       :rtype: :class:`bool`
 
-   .. method:: S.issupserset(S2)
+   .. method:: S.issuperset(S2)
               S >= S2
 
       Test whether every element in *S2* is in the set.
