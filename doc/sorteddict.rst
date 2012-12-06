@@ -19,7 +19,9 @@ sorteddict
    e.g. ``sorteddict(str.lower)``.  If no function is specified, the
    default compares the elements directly.  The *key* function must
    always return the same key for an item or the results are
-   unpredictable.
+   unpredictable.  The *key* argument must be provided as a positional
+   argument; if provided as a keyword argument, it will be added to
+   the dictionary instead.
 
    An optional *iterable* provides an initial series of items to
    populate the :class:`sorteddict`.  Each item in the series must
