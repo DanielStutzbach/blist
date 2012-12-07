@@ -162,6 +162,7 @@ sortedlist
 
       Same as :ref:`bisect_left <sortedlist.bisect_right>`.
 
+   .. _sortedlist.bisect_right:
    .. method:: L.bisect_right(value)
 
       Same thing as :ref:`bisect_left <sortedlist.bisect_left>`, but if
