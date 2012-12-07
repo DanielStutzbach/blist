@@ -1,6 +1,6 @@
 from __future__ import print_function
-from . import unittest
-from test import test_support, list_tests
+from blist.test import unittest
+from blist.test import test_support, list_tests
 
 class ListTest(list_tests.CommonTest):
     type2test = list

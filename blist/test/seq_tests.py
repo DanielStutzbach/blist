@@ -5,8 +5,8 @@ from __future__ import print_function
 Tests common to tuple, list and UserList.UserList
 """
 
-from . import unittest
-from test import test_support
+from blist.test import test_support
+from blist.test import unittest
 import sys
 
 # Various iterables

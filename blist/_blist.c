@@ -7217,7 +7217,7 @@ PyTypeObject PyBList_Type = {
 #ifdef BLIST_IN_PYTHON
         "__internal_blist",
 #else
-        "_blist.__internal_blist",
+        "blist._blist.__internal_blist",
 #endif
         sizeof(PyBList),
         0,
@@ -7264,7 +7264,7 @@ PyTypeObject PyRootBList_Type = {
 #ifdef BLIST_IN_PYTHON
         "list",
 #else
-        "_blist.blist",
+        "blist.blist",
 #endif
         sizeof(PyBListRoot),
         0,

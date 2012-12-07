@@ -1,8 +1,9 @@
 # This file taken from Python, licensed under the Python License Agreement
 
 # tests common to dict and UserDict
-import unittest, sys
+import sys
 import collections
+from blist.test import unittest
 try:
     from collections import UserDict # Python 3
 except ImportError:

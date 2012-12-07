@@ -3,7 +3,7 @@
 from __future__ import print_function
 """Supporting definitions for the Python regression tests."""
 
-if __name__ != 'test.test_support':
+if __name__ != 'blist.test.test_support':
     raise ImportError('test_support must be imported from the test package')
 
 import sys

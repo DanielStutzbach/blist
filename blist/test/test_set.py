@@ -2,8 +2,6 @@
 
 from __future__ import print_function
 
-import unittest
-from . import test_support as support
 import gc
 import weakref
 import operator
@@ -13,6 +11,9 @@ from random import randrange, shuffle
 import sys
 import warnings
 import collections
+
+from blist.test import unittest
+from blist.test import test_support as support
 
 from blist import sortedset as set
 

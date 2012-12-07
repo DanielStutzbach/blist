@@ -1,14 +1,12 @@
 # Based on Python's tuple_tests.py, licensed under the Python License
 # Agreement
 
-import unittest
 import sys
-from . import seq_tests
-import blist
 import random
 import gc
-from _btuple import btuple
-import gc
+from blist import btuple
+from blist.test import unittest
+from blist.test import seq_tests
 
 class bTupleTest(seq_tests.CommonTest):
     type2test = btuple

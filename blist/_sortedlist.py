@@ -1,4 +1,4 @@
-from _blist import blist
+from blist._blist import blist
 import collections, bisect, weakref, operator, itertools, sys, threading
 try: # pragma: no cover
     izip = itertools.izip

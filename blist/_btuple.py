@@ -1,4 +1,4 @@
-from _blist import blist
+from blist._blist import blist
 from ctypes import c_int
 import collections
 class btuple(collections.Sequence):

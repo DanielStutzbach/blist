@@ -1,6 +1,6 @@
-from _sortedlist import sortedset
+from blist._sortedlist import sortedset
 import collections, sys
-from _blist import blist
+from blist._blist import blist
 
 class missingdict(dict):
     def __missing__(self, key):

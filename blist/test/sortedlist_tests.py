@@ -1,11 +1,12 @@
 # This file based loosely on Python's list_tests.py.
 
-import unittest, collections, operator
 import sys
-from . import list_tests, seq_tests
-import blist
-import random
+import collections, operator
 import gc
+import random
+import blist
+from blist.test import unittest
+from blist.test import list_tests, seq_tests
 
 def CmpToKey(mycmp):
     'Convert a cmp= function into a key= function'

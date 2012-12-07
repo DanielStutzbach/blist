@@ -8,8 +8,9 @@ Tests common to list and UserList.UserList
 import sys
 import os
 
-from . import unittest
-from test import test_support, seq_tests
+from blist.test import unittest
+from blist.test import test_support
+from blist.test import seq_tests
 
 from decimal import Decimal
 

@@ -22,11 +22,11 @@ setup(name='blist',
       url='http://stutzbachenterprises.com/blist/',
       license = "BSD",
       keywords = "blist list b+tree btree fast copy-on-write sparse array sortedlist sorted sortedset weak weaksortedlist weaksortedset sorteddict btuple",
-      ext_modules=[Extension('_blist', ['_blist.c'],
+      ext_modules=[Extension('blist._blist', ['blist/_blist.c'],
                              define_macros=define_macros,
                              )],
+      packages=['blist'],
       provides = ['blist'],
-      py_modules=['blist', '_sortedlist', '_sorteddict', '_btuple'],
       test_suite = "test_blist.test_suite",
       zip_safe = False, # zips are broken on cygwin for C extension modules
       classifiers = [

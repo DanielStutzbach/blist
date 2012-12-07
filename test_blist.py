@@ -37,10 +37,11 @@ import sys
 import os
 
 import unittest, operator
-import blist, pickle, _blist
+import blist, pickle
+from blist import _blist
 #BList = list
-from test import test_support, list_tests, sortedlist_tests, btuple_tests
-from test import sorteddict_tests, test_set
+from blist.test import test_support, list_tests, sortedlist_tests, btuple_tests
+from blist.test import sorteddict_tests, test_set
 
 limit = _blist._limit
 n = 512//8 * limit

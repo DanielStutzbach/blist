@@ -1,5 +1,5 @@
-from . import mapping_tests
 import blist
+from blist.test import mapping_tests
 
 def CmpToKey(mycmp):
     'Convert a cmp= function into a key= function'
