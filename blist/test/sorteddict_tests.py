@@ -18,6 +18,20 @@ class sorteddict_test(mapping_tests.TestHashMappingProtocol):
         in the object under test."""
         return {1:2, 3:4, 5:6}
 
+    class Collider(object):
+        def __init__(self, x):
+            self.x = x
+        def __repr__(self):
+            return 'Collider(%r)' % self.x
+        def __eq__(self, other):
+            return self.__class__ == other.__class__ and self.x == other.x
+        def __lt__(self, other):
+            if type(self) != type(other):
+                return NotImplemented
+            return self.x < other.x
+        def __hash__(self):
+            return 42
+
     def test_repr(self):
         d = self._empty_mapping()
         self.assertEqual(repr(d), 'sorteddict({})')
@@ -26,6 +40,16 @@ class sorteddict_test(mapping_tests.TestHashMappingProtocol):
         d = self._empty_mapping()
         d[1] = d
         self.assertEqual(repr(d), 'sorteddict({1: sorteddict({...})})')
+        d = self._empty_mapping()
+        d[self.Collider(1)] = 1
+        d[self.Collider(2)] = 2
+        self.assertEqual(repr(d),
+                         'sorteddict({Collider(1): 1, Collider(2): 2})')
+        d = self._empty_mapping()
+        d[self.Collider(2)] = 2
+        d[self.Collider(1)] = 1
+        self.assertEqual(repr(d),
+                         'sorteddict({Collider(1): 1, Collider(2): 2})')
 
         class Exc(Exception): pass
 

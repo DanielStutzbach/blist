@@ -1,4 +1,4 @@
-from blist._sortedlist import sortedset
+from blist._sortedlist import sortedset, ReprRecursion
 import collections, sys
 from blist._blist import blist
 
@@ -134,7 +134,11 @@ class sorteddict(collections.MutableMapping):
         return rv
 
     def __repr__(self):
-        return 'sorteddict(%s)' % repr(self._map)
+        with ReprRecursion(self) as r:
+            if r:
+              return 'sorteddict({...})'
+            return ('sorteddict({%s})' %
+                    ', '.join('%r: %r' % (k, self._map[k]) for k in self))
 
     def __eq__(self, other):
         if not isinstance(other, sorteddict):
