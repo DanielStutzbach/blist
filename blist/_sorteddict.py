@@ -14,9 +14,9 @@ class KeysView(collections.KeysView, collections.Sequence):
     def index(self, key):
         return self._mapping._sortedkeys.index(key)
     def count(self, key):
-        return self._mapping.count(key)
-    def _from_iterable(cls, it):
-        return sortedset(key=self._mapping._sortedkeys.key)
+        return 1 if key in self else 0
+    def _from_iterable(self, it):
+        return sortedset(it, key=self._mapping._sortedkeys._key)
     def bisect_left(self, key):
         return self._mapping._sortedkeys.bisect_left(key)
     def bisect_right(self, key):
@@ -29,7 +29,7 @@ class ItemsView(collections.ItemsView, collections.Sequence):
             keys = self._mapping._sortedkeys[index]
             return self._from_iterable((key, self._mapping[key])
                                        for key in keys)
-        key = self._mapping.sortedkeys[index]
+        key = self._mapping._sortedkeys[index]
         return (key, self._mapping[key])
     def index(self, item):
         key, value = item
@@ -39,18 +39,19 @@ class ItemsView(collections.ItemsView, collections.Sequence):
         raise ValueError
     def count(self, item):
         return 1 if item in self else 0
-    def _from_iterable(cls, it):
-        return sortedset(key=lambda item:
-                             self._mapping._sortedkeys.key(item[0]))
+    def _from_iterable(self, it):
+      keyfunc = self._mapping._sortedkeys._key
+      if keyfunc is None:
+        return sortedset(it)
+      else:
+        return sortedset(it, key=lambda item: keyfunc(item[0]))
 
 class ValuesView(collections.ValuesView, collections.Sequence):
     def __getitem__(self, index):
         if isinstance(index, slice):
             keys = self._mapping._sortedkeys[index]
-            rv = sortedset(key=self._mapping._sortedkeys.key)
-            rv.update(self._mapping[key] for key in keys)
-            return rv
-        key = self._mapping.sortedkeys[index]
+            return [self._mapping[key] for key in keys]
+        key = self._mapping._sortedkeys[index]
         return self._mapping[key]
 
 class sorteddict(collections.MutableMapping):
