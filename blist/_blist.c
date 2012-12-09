@@ -5726,7 +5726,7 @@ py_blist_traverse(PyObject *oself, visitproc visit, void *arg)
 }
 
 BLIST_PYAPI(int)
-py_blist_clear(PyObject *oself)
+py_blist_tp_clear(PyObject *oself)
 {
         PyBList *self;
 
@@ -6806,6 +6806,27 @@ py_blist_pop(PyBList *self, PyObject *args)
 }
 
 BLIST_PYAPI(PyObject *)
+py_blist_clear(PyBList *self)
+{
+        invariants(self, VALID_USER|VALID_RW|VALID_DECREF);
+
+        blist_forget_children(self);
+        self->n = 0;
+        self->leaf = 1;
+        ext_dealloc((PyBListRoot *) self);
+
+        decref_flush();
+        Py_RETURN_NONE;
+}
+
+BLIST_PYAPI(PyObject *)
+py_blist_copy(PyBList *self)
+{
+        invariants(self, VALID_USER);
+        return (PyObject *) _blist(blist_root_copy(self));
+}
+
+BLIST_PYAPI(PyObject *)
 py_blist_insert(PyBList *self, PyObject *args)
 {
         Py_ssize_t i;
@@ -7078,6 +7099,10 @@ PyDoc_STRVAR(reverse_doc,
 PyDoc_STRVAR(sort_doc,
 "L.sort(cmp=None, key=None, reverse=False) -- stable sort *IN PLACE*;\n\
 cmp(x, y) -> -1, 0, 1");
+PyDoc_STRVAR(clear_doc,
+"L.clear() -> None -- remove all items from L");
+PyDoc_STRVAR(copy_doc,
+"L.copy() -> list -- a shallow copy of L");
 
 static PyMethodDef blist_methods[] = {
         {"__getitem__", (PyCFunction)py_blist_subscript, METH_O|METH_COEXIST, getitem_doc},
@@ -7092,6 +7117,9 @@ static PyMethodDef blist_methods[] = {
         {"pop",         (PyCFunction)py_blist_pop,     METH_VARARGS, pop_doc},
         {"remove",      (PyCFunction)py_blist_remove,  METH_O, remove_doc},
         {"index",       (PyCFunction)py_blist_index,   METH_VARARGS, index_doc},
+        {"clear",       (PyCFunction)py_blist_clear,   METH_NOARGS, clear_doc},
+        {"copy",       (PyCFunction)py_blist_copy,   METH_NOARGS, copy_doc},
+
         {"count",       (PyCFunction)py_blist_count,   METH_O, count_doc},
         {"reverse",     (PyCFunction)py_blist_reverse, METH_NOARGS, reverse_doc},
         {"sort",        (PyCFunction)py_blist_sort,    METH_VARARGS | METH_KEYWORDS, sort_doc},
@@ -7299,7 +7327,7 @@ PyTypeObject PyRootBList_Type = {
         ,
         blist_doc,                              /* tp_doc */
         py_blist_traverse,                      /* tp_traverse */
-        py_blist_clear,                         /* tp_clear */
+        py_blist_tp_clear,                      /* tp_clear */
         py_blist_richcompare,                   /* tp_richcompare */
         0,                                      /* tp_weaklistoffset */
         py_blist_iter,                          /* tp_iter */

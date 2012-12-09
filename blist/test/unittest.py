@@ -201,6 +201,13 @@ class TestCase:
             raise ValueError("no such test method in %s: %s" % \
                   (self.__class__, methodName))
 
+    def assertIs(self, expr1, expr2, msg=None):
+        """Just like self.assertTrue(a is b), but with a nicer default message."""
+        if expr1 is not expr2:
+            standardMsg = '%s is not %s' % (safe_repr(expr1),
+                                             safe_repr(expr2))
+            self.fail(self._formatMessage(msg, standardMsg))
+
     def assertIn(self, member, container, msg=None):
         """Just like self.assertTrue(a in b), but with a nicer default message."""
         if member not in container:
