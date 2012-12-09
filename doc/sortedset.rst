@@ -221,8 +221,8 @@ sortedset
       defaults to the beginning.  Negative indexes are supported, as
       for slice indices.
 
-      In the worst case, requires |theta(stop-start)| operations and
-      |theta(stop-start)| comparisons.
+      In the worst case, requires |theta(log**2 m)| operations and
+      |theta(log m)| comparisons, where *m* is *stop* - *start*.
 
       :rtype: :class:`int`
 
