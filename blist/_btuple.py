@@ -42,15 +42,9 @@ class btuple(collections.Sequence):
         return self._hash
 
     def __add__(self, other):
-        rv = self._btuple_or_tuple(other, blist.__add__)
-        if rv is NotImplemented:
-            raise TypeError
-        return rv
+        return self._btuple_or_tuple(other, blist.__add__)
     def __radd__(self, other):
-        rv = self._btuple_or_tuple(other, blist.__radd__)
-        if rv is NotImplemented:
-            raise TypeError
-        return rv
+        return self._btuple_or_tuple(other, blist.__radd__)
     def __contains__(self, item):
         return item in self._blist
     def __eq__(self, other):
