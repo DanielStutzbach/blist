@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 
 import sys
-import distribute_setup
-distribute_setup.use_setuptools()
+import ez_setup
+ez_setup.use_setuptools()
 from setuptools import setup, Extension
+
 
 define_macros = []
 
