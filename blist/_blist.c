@@ -668,7 +668,7 @@ _check_fast_cmp_type(PyObject *ob, int op)
 #endif
 
 /************************************************************************
- * Utility functions for removal items from a BList
+ * Utility functions for removal of items from a BList
  *
  * Objects in Python can execute arbitrary code when garbage
  * collected, which means they may make calls that modify the BList

@@ -24,7 +24,7 @@ blist
         >>> more_items = blist(function_that_returns_a_list())
 
     Python's built-in :class:`list` is a dynamically-sized array; to
-    insert or removal an item from the beginning or middle of the
+    insert or remove an item from the beginning or middle of the
     list, it has to move most of the list in memory, i.e., |theta(n)|
     operations.  The :class:`blist` uses a flexible, hybrid array/tree
     structure and only needs to move a small portion of items in
