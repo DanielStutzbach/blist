@@ -13,7 +13,7 @@ sortedlist
    location are not included (e.g., :ref:`append <blist.append>`,
    :ref:`insert <blist.insert>`).  To add an element to the sortedlist, use
    :ref:`add <sortedlist.add>`.  To add several elements, use
-   :ref:`update <sortedlist.update>`.  To removal an element, use
+   :ref:`update <sortedlist.update>`.  To remove an element, use
    :ref:`discard <sortedlist.discard>`, :ref:`remove <sortedlist.remove>`, or
    :ref:`del L[i] <sortedlist.delitem>`.
 

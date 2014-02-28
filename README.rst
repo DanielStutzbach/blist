@@ -11,7 +11,7 @@ Full documentation is at the link below:
 http://stutzbachenterprises.com/blist-doc/
 
 Python's built-in list is a dynamically-sized array; to insert or
-removal an item from the beginning or middle of the list, it has to
+remove an item from the beginning or middle of the list, it has to
 move most of the list in memory, i.e., O(n) operations.  The blist
 uses a flexible, hybrid array/tree structure and only needs to move a
 small portion of items in memory, specifically using O(log n)
@@ -66,7 +66,7 @@ The blist package provides other data structures based on the blist:
 - sortedlist
 - sortedset
 - weaksortedlist
-- weaksorteset
+- weaksortedset
 - sorteddict
 - btuple
 
