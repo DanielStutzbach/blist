@@ -1,7 +1,7 @@
 blist: a list-like type with better performance
 ===============================================
 
-The ``blist`` is a drop-in replacement for the Python list the provides
+The ``blist`` is a drop-in replacement for the Python list that provides
 better performance when modifying large lists.  The blist package also
 provides ``sortedlist``, ``sortedset``, ``weaksortedlist``,
 ``weaksortedset``, ``sorteddict``, and ``btuple`` types.
