@@ -259,6 +259,7 @@ class TestCase:
 
     def run(self, result=None):
         self.run_(result, False)
+        self.run_(result, False)
         try:
             self.run_(result, True)
         except AttributeError:
