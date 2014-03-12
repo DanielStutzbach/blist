@@ -5355,12 +5355,18 @@ array_enable_GC(PyBList **leafs, Py_ssize_t num_leafs)
 #define MASK (HISTOGRAM_SIZE - 1)
 #define NUM_PASSES (((sizeof(unsigned long)*8-1) / BITS_PER_PASS)+1)
 
+/* The histogram arrays are two-dimension arrays of
+ * [HISTOGRAM_SIZE][NUM_PASSES].  Since that can end up somewhat large (16k on
+ * a 64-bit build), we allocate them on the heap instead of on the stack.
+ */
+typedef Py_ssize_t histogram_array_t[NUM_PASSES];
+
 BLIST_LOCAL_INLINE(int)
 sort_ulong(sortwrapperobject *restrict sortarray, Py_ssize_t n)
 {
         sortwrapperobject *restrict scratch, *from, *to, *tmp;
-        Py_ssize_t histograms[HISTOGRAM_SIZE][NUM_PASSES];
         Py_ssize_t i, j, sums[NUM_PASSES], count[NUM_PASSES], tsum;
+        histogram_array_t *histograms;
 
         memset(sums, 0, sizeof sums);
         memset(count, 0, sizeof count);
@@ -5369,7 +5375,13 @@ sort_ulong(sortwrapperobject *restrict sortarray, Py_ssize_t n)
         if (scratch == NULL)
                 return -1;
 
-        memset(histograms, 0, sizeof histograms);
+        histograms = PyMem_New(histogram_array_t, HISTOGRAM_SIZE);
+        if (histograms == NULL) {
+                PyMem_Free(scratch);
+                return -1;
+        }
+        memset(histograms, 0, sizeof(histogram_array_t) * HISTOGRAM_SIZE);
+
         for (i = 0; i < n; i++) {
                 unsigned long v = sortarray[i].fkey.k_ulong;
                 for (j = 0; j < NUM_PASSES; j++) {
@@ -5409,6 +5421,7 @@ sort_ulong(sortwrapperobject *restrict sortarray, Py_ssize_t n)
                 for (i = 0; i < n; i++)
                         sortarray[i].value = scratch[i].value;
 
+        PyMem_Free(histograms);
         PyMem_Free(scratch);
         return 0;
 }
@@ -5425,8 +5438,8 @@ BLIST_LOCAL_INLINE(int)
 sort_uint64(sortwrapperobject *restrict sortarray, Py_ssize_t n)
 {
         sortwrapperobject *restrict scratch, *from, *to, *tmp;
-        Py_ssize_t histograms[HISTOGRAM_SIZE][NUM_PASSES];
         Py_ssize_t i, j, sums[NUM_PASSES], count[NUM_PASSES], tsum;
+        histogram_array_t *histograms;
 
         memset(sums, 0, sizeof sums);
         memset(count, 0, sizeof count);
@@ -5435,7 +5448,13 @@ sort_uint64(sortwrapperobject *restrict sortarray, Py_ssize_t n)
         if (scratch == NULL)
                 return -1;
 
-        memset(histograms, 0, sizeof histograms);
+        histograms = PyMem_New(histogram_array_t, HISTOGRAM_SIZE);
+        if (histograms == NULL) {
+                PyMem_Free(scratch);
+                return -1;
+        }
+        memset(histograms, 0, sizeof(histogram_array_t) * HISTOGRAM_SIZE);
+
         for (i = 0; i < n; i++) {
                 PY_UINT64_T v = sortarray[i].fkey.k_uint64;
                 for (j = 0; j < NUM_PASSES; j++) {
@@ -5473,6 +5492,7 @@ sort_uint64(sortwrapperobject *restrict sortarray, Py_ssize_t n)
                 for (i = 0; i < n; i++)
                         sortarray[i].value = scratch[i].value;
 
+        PyMem_Free(histograms);
         PyMem_Free(scratch);
         return 0;
 }
