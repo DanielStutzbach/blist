@@ -23,6 +23,9 @@ sortedset
    Unlike a :class:`set`, a :class:`sortedset` does not require items
    to be hashable.
 
+   A :class:`sortedset` can be used as an order statistic tree
+   (Cormen *et al.*, *Introduction to Algorithms*, ch. 14).
+
    .. method:: x in S
 
       Returns True if and only if *x* is an element in the set.
@@ -73,6 +76,8 @@ sortedset
       Requires |theta(log n)| operations in the worst case but only
       |theta(1)| operations if the set's size has not been changed
       recently.  Requires no comparisons in any case.
+
+      (Cormen *et al.* call this operation "SELECT".)
 
       :rtype: item
 
@@ -223,6 +228,8 @@ sortedset
 
       In the worst case, requires |theta(log**2 m)| operations and
       |theta(log m)| comparisons, where *m* is *stop* - *start*.
+
+      (Cormen *et al.* call this operation "RANK".)
 
       :rtype: :class:`int`
 
