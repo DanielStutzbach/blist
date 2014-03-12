@@ -4693,7 +4693,8 @@ wrap_leaf_array(sortwrapperobject *restrict array,
 #define ISLT(X, Y, COMPARE, fast_cmp_type)      \
         ((COMPARE) == NULL ?                    \
          FAST_ISLT(X, Y, fast_cmp_type) :       \
-         islt(X, Y, COMPARE))
+         islt(((sortwrapperobject *)(X))->key, \
+              ((sortwrapperobject *)(Y))->key, COMPARE))
 #else
 #define ISLT(X, Y, COMPARE, fast_cmp_type)              \
         (FAST_ISLT((X), (Y), (fast_cmp_type)))

@@ -598,3 +598,39 @@ class CommonTest(seq_tests.CommonTest):
             def __iter__(self):
                 return Iter()
         self.assertRaises(KeyboardInterrupt, self.type2test, F())
+
+    def test_sort_cmp(self):
+        u = self.type2test([1, 0])
+        u.sort()
+        self.assertEqual(u, [0, 1])
+
+        u = self.type2test([2,1,0,-1,-2])
+        u.sort()
+        self.assertEqual(u, self.type2test([-2,-1,0,1,2]))
+
+        self.assertRaises(TypeError, u.sort, 42, 42)
+
+        if sys.version_info[0] >= 3:
+          return  # Python 3 removed the cmp option for sort.
+
+        def revcmp(a, b):
+            return cmp(b, a)
+        u.sort(revcmp)
+        self.assertEqual(u, self.type2test([2,1,0,-1,-2]))
+
+        # The following dumps core in unpatched Python 1.5:
+        def myComparison(x,y):
+            return cmp(x%3, y%7)
+        z = self.type2test(range(12))
+        z.sort(myComparison)
+
+        self.assertRaises(TypeError, z.sort, 2)
+
+        def selfmodifyingComparison(x,y):
+            z.append(1)
+            return cmp(x, y)
+        self.assertRaises(ValueError, z.sort, selfmodifyingComparison)
+
+        self.assertRaises(TypeError, z.sort, lambda x, y: 's')
+
+        self.assertRaises(TypeError, z.sort, 42, 42, 42, 42)
