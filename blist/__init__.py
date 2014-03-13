@@ -1,4 +1,4 @@
-__version__ = '1.3.5'
+__version__ = '1.3.6'
 from blist._blist import *
 import collections
 if hasattr(collections, 'MutableSet'): # Only supported in Python 2.6+
