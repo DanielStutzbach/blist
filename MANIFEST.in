@@ -9,7 +9,7 @@ include blist/test/*.py
 include README.rst
 include LICENSE
 include prototype/blist.py
-include distribute_setup.py
+include ez_setup.py
 include speed_test.py
 include blist.rst
 include blist/blist.h
