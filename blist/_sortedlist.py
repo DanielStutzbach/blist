@@ -419,8 +419,7 @@ class _setmixin(object):
 
     def __iter__(self):
         it = super(_setmixin, self).__iter__()
-        while True:
-            item = next(it)
+        for item in it:
             n = len(self)
             yield item
             if n != len(self):
