@@ -5987,11 +5987,10 @@ py_blist_ass_subscript(PyObject *oself, PyObject *item, PyObject *value)
                 ext_mark(self, 0, DIRTY);
 
 #if PY_MAJOR_VERSION < 3 || PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION < 2
-                if (PySlice_GetIndicesEx((PySliceObject*)item, self->n,
+                if (PySlice_GetIndicesEx((PySliceObject*)item, self->n, &start, &stop, &step, &slicelength)<0)
 #else
-                if (PySlice_GetIndicesEx(item, self->n,
+                if (PySlice_GetIndicesEx(item, self->n, &start, &stop, &step, &slicelength)<0)
 #endif
-                                         &start, &stop,&step,&slicelength)<0)
                         return _int(-1);
 
                 /* treat L[slice(a,b)] = v _exactly_ like L[a:b] = v */
@@ -6956,11 +6955,10 @@ py_blist_subscript(PyObject *oself, PyObject *item)
                 PyObject* it;
 
 #if PY_MAJOR_VERSION < 3 || PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION < 2
-                if (PySlice_GetIndicesEx((PySliceObject*)item, self->n,
+                if (PySlice_GetIndicesEx((PySliceObject*)item, self->n, &start, &stop, &step, &slicelength)<0) {
 #else
-                if (PySlice_GetIndicesEx(item, self->n,
+                if (PySlice_GetIndicesEx(item, self->n, &start, &stop, &step, &slicelength)<0) {
 #endif
-                                         &start, &stop,&step,&slicelength)<0) {
                         return _ob(NULL);
                 }
 
