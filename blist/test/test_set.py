@@ -10,7 +10,7 @@ import pickle
 from random import randrange, shuffle
 import sys
 import warnings
-import collections
+import collections.abc as collections
 
 from blist.test import unittest
 from blist.test import test_support as support

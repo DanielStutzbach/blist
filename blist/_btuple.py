@@ -1,6 +1,6 @@
 from blist._blist import blist
 from ctypes import c_int
-import collections
+import collections.abc as collections
 class btuple(collections.Sequence):
     def __init__(self, seq=None):
         if isinstance(seq, btuple):

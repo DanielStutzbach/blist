@@ -1,5 +1,5 @@
 from blist._sortedlist import sortedset, ReprRecursion
-import collections, sys
+import collections.abc as collections, sys
 from blist._blist import blist
 
 class missingdict(dict):

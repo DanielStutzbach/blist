@@ -2,7 +2,7 @@
 
 # tests common to dict and UserDict
 import sys
-import collections
+import collections.abc as collections
 from blist.test import unittest
 try:
     from collections import UserDict # Python 3
