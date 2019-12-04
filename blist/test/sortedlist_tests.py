@@ -1,7 +1,7 @@
 # This file based loosely on Python's list_tests.py.
 
 import sys
-import collections, operator
+import collections.abc as collections, operator
 import gc
 import random
 import blist

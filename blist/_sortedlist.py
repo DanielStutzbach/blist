@@ -1,5 +1,5 @@
 from blist._blist import blist
-import collections, bisect, weakref, operator, itertools, sys, threading
+import collections.abc as collections, bisect, weakref, operator, itertools, sys, threading
 try: # pragma: no cover
     izip = itertools.izip
 except AttributeError: # pragma: no cover
