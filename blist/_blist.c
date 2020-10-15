@@ -101,8 +101,8 @@
 /* This macro is defined in Python 3.  We need it since calling
  * PyObject_GC_UnTrack twice is unsafe. */
 /* True if the object is currently tracked by the GC. */
-#define _PyObject_GC_IS_TRACKED(o)              \
-        ((_Py_AS_GC(o))->gc.gc_refs != _PyGC_REFS_UNTRACKED)
+#define PyObject_GC_IsTracked(ob) \
+    (PyObject_IS_GC(ob) && (_Py_AS_GC(ob))->gc.gc_refs != _PyGC_REFS_UNTRACKED)
 
 #if PY_MINOR_VERSION < 6
 /* Backward compatibility with Python 2.5 */
@@ -122,6 +122,12 @@
 #define PyInt_AsLong PyLong_AsLong
 #define PyInt_AsSsize_t PyLong_AsSsize_t
 #define PyInt_FromLong PyLong_FromLong
+
+#if PY_MINOR_VERSION < 9
+#define PyObject_GC_IsTracked(ob) \
+    (PyObject_IS_GC(ob) && _PyObject_GC_IS_TRACKED(ob))
+#endif
+
 #endif
 
 #ifndef BLIST_IN_PYTHON
@@ -4580,7 +4586,7 @@ unwrap_leaf_array(PyBList **leafs, int leafs_n, int n,
 
         for (i = 0; i < leafs_n; i++) {
                 PyBList *leaf = leafs[i];
-                if (leafs_n > 1 && !_PyObject_GC_IS_TRACKED(leafs[i]))
+                if (leafs_n > 1 && !PyObject_GC_IsTracked(leafs[i]))
                         PyObject_GC_Track(leafs[i]);
                 for (j = 0; j < leaf->num_children && k < n; j++, k++) {
                         sortwrapperobject *wrapper;
@@ -5783,7 +5789,7 @@ py_blist_dealloc(PyObject *oself)
         assert(PyBList_Check(oself));
         self = (PyBList *) oself;
 
-        if (_PyObject_GC_IS_TRACKED(self))
+        if (PyObject_GC_IsTracked(self))
                 PyObject_GC_UnTrack(self);
 
         Py_TRASHCAN_SAFE_BEGIN(self)
