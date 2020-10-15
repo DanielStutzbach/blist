@@ -420,11 +420,14 @@ class _setmixin(object):
     def __iter__(self):
         it = super(_setmixin, self).__iter__()
         while True:
-            item = next(it)
-            n = len(self)
-            yield item
-            if n != len(self):
-                raise RuntimeError('Set changed size during iteration')
+            try:
+                item = next(it)
+                n = len(self)
+                yield item
+                if n != len(self):
+                    raise RuntimeError('Set changed size during iteration')
+            except StopIteration:
+                return
 
 def safe_cmp(f):
     def g(self, other):
