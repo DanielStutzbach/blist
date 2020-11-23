@@ -130,14 +130,6 @@ sortedlist
 
       :rtype: iterator
 
-   .. method:: L[i] = x
-
-      Replace the item at position *i* of *L* with *x*.
-
-      Requires |theta(log n)| operations in the worst case but only
-      |theta(1)| operations if the list's size has not been changed
-      recently.  Requires no comparisons in any case.
-
    .. method:: L[i:j] = iterable
 
       Replace the items at positions *i* through *j* with the contents
