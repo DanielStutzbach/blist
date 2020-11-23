@@ -121,7 +121,7 @@ The btuple is a drop-in replacement for the built-in tuple.  Compared
 to the built-in tuple, the btuple offers the following advantages:
 
 - Constructing a btuple from a blist takes O(1) time.
-- Taking a slice of a btuple takes O(n) time, where n is the size of
+- Taking a slice of a btuple takes O(log n) time, where n is the size of
   the original tuple.  The size of the slice does not matter.
 
 >>> from blist import blist, btuple
