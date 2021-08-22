@@ -5,6 +5,14 @@ try: # pragma: no cover
 except AttributeError: # pragma: no cover
     izip = zip
 
+
+_pyvers = sys.version_info.major * 1000 + sys.version_info.minor * 10
+if _pyvers >= 3000:
+    from collections.abc import Set, Sequence
+else:
+    from collections import Set, Sequence
+
+
 __all__ = ['sortedlist', 'weaksortedlist', 'sortedset', 'weaksortedset']
 
 class ReprRecursion(object):
@@ -25,7 +33,7 @@ class ReprRecursion(object):
             del self.local.repr_count[self.ob_id]
         return False
 
-class _sortedbase(collections.Sequence):
+class _sortedbase(Sequence):
     def __init__(self, iterable=(), key=None):
         self._key = key
         if key is not None and not hasattr(key, '__call__'):
@@ -431,7 +439,7 @@ class _setmixin(object):
 
 def safe_cmp(f):
     def g(self, other):
-        if not isinstance(other, collections.Set):
+        if not isinstance(other, Set):
             raise TypeError("can only compare to a set")
         return f(self, other)
     return g
@@ -479,7 +487,7 @@ class _setmixin2(collections.MutableSet):
         return self._from_iterable(other) - self
 
     def _make_set(self, iterable):
-        if isinstance(iterable, collections.Set):
+        if isinstance(iterable, Set):
             return iterable
         return self._from_iterable(iterable)
 
