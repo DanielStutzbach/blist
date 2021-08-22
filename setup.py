@@ -32,7 +32,7 @@ setup(name='blist',
       ext_modules=[Extension('blist._blist', ['blist/_blist.c'],
                              define_macros=define_macros,
                              )],
-      packages=['blist'],
+      packages=['blist', 'blist.test'],
       provides = ['blist'],
       test_suite = "test_blist.test_suite",
       zip_safe = False, # zips are broken on cygwin for C extension modules
