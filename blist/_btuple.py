@@ -1,6 +1,15 @@
 from blist._blist import blist
 from ctypes import c_int
 import collections
+import sys
+
+
+_pyvers = sys.version_info.major * 1000 + sys.version_info.minor * 10
+
+if _pyvers >= 3000:
+    import collections.abc as collections
+
+
 class btuple(collections.Sequence):
     def __init__(self, seq=None):
         if isinstance(seq, btuple):
