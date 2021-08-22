@@ -2,6 +2,13 @@ from blist._sortedlist import sortedset, ReprRecursion
 import collections, sys
 from blist._blist import blist
 
+
+_pyvers = sys.version_info.major * 1000 + sys.version_info.minor * 10
+
+if _pyvers >= 3000:
+    import collections.abc as collections
+
+
 class missingdict(dict):
     def __missing__(self, key):
         return self._missing(key)
