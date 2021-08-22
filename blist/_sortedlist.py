@@ -8,18 +8,18 @@ except AttributeError: # pragma: no cover
 
 _pyvers = sys.version_info.major * 1000 + sys.version_info.minor * 10
 if _pyvers >= 3000:
-    from collections.abc import Set, Sequence
-else:
-    from collections import Set, Sequence
+    from collections import defaultdict
+    import collections.abc as collections
 
 
 __all__ = ['sortedlist', 'weaksortedlist', 'sortedset', 'weaksortedset']
+
 
 class ReprRecursion(object):
     local = threading.local()
     def __init__(self, ob):
         if not hasattr(self.local, 'repr_count'):
-            self.local.repr_count = collections.defaultdict(int)
+            self.local.repr_count = defaultdict(int)
         self.ob_id = id(ob)
         self.value = self.ob_id in self.local.repr_count
 
@@ -33,7 +33,7 @@ class ReprRecursion(object):
             del self.local.repr_count[self.ob_id]
         return False
 
-class _sortedbase(Sequence):
+class _sortedbase(collections.Sequence):
     def __init__(self, iterable=(), key=None):
         self._key = key
         if key is not None and not hasattr(key, '__call__'):
@@ -439,7 +439,7 @@ class _setmixin(object):
 
 def safe_cmp(f):
     def g(self, other):
-        if not isinstance(other, Set):
+        if not isinstance(other, collections.Set):
             raise TypeError("can only compare to a set")
         return f(self, other)
     return g
