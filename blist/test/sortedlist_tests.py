@@ -8,6 +8,15 @@ import blist
 from blist.test import unittest
 from blist.test import list_tests, seq_tests
 
+_pyvers = sys.version_info.major * 1000 + sys.version_info.minor * 10
+
+# Supported only in Python >= 2.6
+if _pyvers >= 3000:
+    from collections.abc import Set
+else:
+    from collections import Set
+
+
 def CmpToKey(mycmp):
     'Convert a cmp= function into a key= function'
     class K(object):
@@ -185,7 +194,7 @@ class SortedBase(object):
     def test_order(self):
         stuff = [self.build_item(random.randrange(1000000))
                  for i in range(1000)]
-        if issubclass(self.type2test, collections.Set):
+        if issubclass(self.type2test, Set):
             stuff = set(stuff)
         sorted_stuff = list(sorted(stuff))
         u = self.type2test

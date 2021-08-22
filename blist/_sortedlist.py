@@ -5,13 +5,21 @@ try: # pragma: no cover
 except AttributeError: # pragma: no cover
     izip = zip
 
+
+_pyvers = sys.version_info.major * 1000 + sys.version_info.minor * 10
+if _pyvers >= 3000:
+    from collections import defaultdict
+    import collections.abc as collections
+
+
 __all__ = ['sortedlist', 'weaksortedlist', 'sortedset', 'weaksortedset']
+
 
 class ReprRecursion(object):
     local = threading.local()
     def __init__(self, ob):
         if not hasattr(self.local, 'repr_count'):
-            self.local.repr_count = collections.defaultdict(int)
+            self.local.repr_count = defaultdict(int)
         self.ob_id = id(ob)
         self.value = self.ob_id in self.local.repr_count
 
@@ -420,11 +428,14 @@ class _setmixin(object):
     def __iter__(self):
         it = super(_setmixin, self).__iter__()
         while True:
-            item = next(it)
-            n = len(self)
-            yield item
-            if n != len(self):
-                raise RuntimeError('Set changed size during iteration')
+            try:
+                item = next(it)
+                n = len(self)
+                yield item
+                if n != len(self):
+                    raise RuntimeError('Set changed size during iteration')
+            except StopIteration:
+                return
 
 def safe_cmp(f):
     def g(self, other):
@@ -476,7 +487,7 @@ class _setmixin2(collections.MutableSet):
         return self._from_iterable(other) - self
 
     def _make_set(self, iterable):
-        if isinstance(iterable, collections.Set):
+        if isinstance(iterable, Set):
             return iterable
         return self._from_iterable(iterable)
 

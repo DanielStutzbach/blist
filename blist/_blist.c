@@ -34,7 +34,6 @@
  *                                                                    *
  **********************************************************************/
 
-
 #include <Python.h>
 #include <stddef.h>
 
@@ -98,7 +97,10 @@
 #endif
 #endif
 
-/* This macro is defined in Python 3.  We need it since calling
+
+/* Patch for Python3.9 via https://github.com/conda-forge/blist-feedstock */
+/*   See: recipe/patches/0004-compatibility-with-PEP-620.patch */
+/* This macro is defined in Python<3.9.  We need it since calling
  * PyObject_GC_UnTrack twice is unsafe. */
 /* True if the object is currently tracked by the GC. */
 #define _PyObject_GC_IS_TRACKED(o)              \
@@ -122,6 +124,12 @@
 #define PyInt_AsLong PyLong_AsLong
 #define PyInt_AsSsize_t PyLong_AsSsize_t
 #define PyInt_FromLong PyLong_FromLong
+#if PY_MINOR_VERSION > 8
+/* _PyObject_GC_IS_TRACKED was removed from Python 3.9, re-add it;
+ * see PEP 620 and https://github.com/pythoncapi/pythoncapi_compat */
+#include "pythoncapi_compat.h"
+#define _PyObject_GC_IS_TRACKED(o) PyObject_GC_IsTracked((PyObject*)(o))
+#endif
 #endif
 
 #ifndef BLIST_IN_PYTHON
@@ -5986,11 +5994,7 @@ py_blist_ass_subscript(PyObject *oself, PyObject *item, PyObject *value)
 
                 ext_mark(self, 0, DIRTY);
 
-#if PY_MAJOR_VERSION < 3 || PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION < 2
-                if (PySlice_GetIndicesEx((PySliceObject*)item, self->n,
-#else
                 if (PySlice_GetIndicesEx(item, self->n,
-#endif
                                          &start, &stop,&step,&slicelength)<0)
                         return _int(-1);
 
@@ -6955,11 +6959,7 @@ py_blist_subscript(PyObject *oself, PyObject *item)
                 PyBList* result;
                 PyObject* it;
 
-#if PY_MAJOR_VERSION < 3 || PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION < 2
-                if (PySlice_GetIndicesEx((PySliceObject*)item, self->n,
-#else
                 if (PySlice_GetIndicesEx(item, self->n,
-#endif
                                          &start, &stop,&step,&slicelength)<0) {
                         return _ob(NULL);
                 }
