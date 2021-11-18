@@ -6589,7 +6589,7 @@ py_blist_sort(PyBListRoot *self, PyObject *args, PyObject *kwds)
         memcpy(&saved.BLIST_FIRST_FIELD, &self->BLIST_FIRST_FIELD,
                sizeof(*self) - offsetof(PyBListRoot, BLIST_FIRST_FIELD));
         Py_TYPE(&saved) = &PyRootBList_Type;
-        Py_REFCNT(&saved) = 1;
+        Py_SET_REFCNT(&saved, 1);
 
         if (extra_list != NULL) {
                 self->children = extra_list;
