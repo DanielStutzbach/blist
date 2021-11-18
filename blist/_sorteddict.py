@@ -6,7 +6,7 @@ class missingdict(dict):
     def __missing__(self, key):
         return self._missing(key)
 
-class KeysView(collections.KeysView, collections.Sequence):
+class KeysView(collections.abc.KeysView, collections.abc.Sequence):
     def __getitem__(self, index):
         return self._mapping._sortedkeys[index]
     def __reversed__(self):
@@ -23,7 +23,7 @@ class KeysView(collections.KeysView, collections.Sequence):
         return self._mapping._sortedkeys.bisect_right(key)
     bisect = bisect_right
 
-class ItemsView(collections.ItemsView, collections.Sequence):
+class ItemsView(collections.abc.ItemsView, collections.abc.Sequence):
     def __getitem__(self, index):
         if isinstance(index, slice):
             keys = self._mapping._sortedkeys[index]
@@ -46,7 +46,7 @@ class ItemsView(collections.ItemsView, collections.Sequence):
       else:
         return sortedset(it, key=lambda item: keyfunc(item[0]))
 
-class ValuesView(collections.ValuesView, collections.Sequence):
+class ValuesView(collections.abc.ValuesView, collections.abc.Sequence):
     def __getitem__(self, index):
         if isinstance(index, slice):
             keys = self._mapping._sortedkeys[index]
@@ -54,7 +54,7 @@ class ValuesView(collections.ValuesView, collections.Sequence):
         key = self._mapping._sortedkeys[index]
         return self._mapping[key]
 
-class sorteddict(collections.MutableMapping):
+class sorteddict(collections.abc.MutableMapping):
     def __init__(self, *args, **kw):
         if hasattr(self, '__missing__'):
             self._map = missingdict()
