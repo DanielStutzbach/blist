@@ -124,6 +124,10 @@
 #define PyInt_FromLong PyLong_FromLong
 #endif
 
+#if PY_VERSION_HEX < 0x030900A4
+#  define Py_SET_REFCNT(obj, refcnt) ((Py_REFCNT(obj) = (refcnt)), (void)0)
+#endif
+
 #ifndef BLIST_IN_PYTHON
 #include "blist.h"
 #endif
