@@ -124,6 +124,10 @@
 #define PyInt_FromLong PyLong_FromLong
 #endif
 
+#if PY_VERSION_HEX < 0x030900A4
+#  define Py_SET_REFCNT(obj, refcnt) ((Py_REFCNT(obj) = (refcnt)), (void)0)
+#endif
+
 #ifndef BLIST_IN_PYTHON
 #include "blist.h"
 #endif
@@ -6589,7 +6593,7 @@ py_blist_sort(PyBListRoot *self, PyObject *args, PyObject *kwds)
         memcpy(&saved.BLIST_FIRST_FIELD, &self->BLIST_FIRST_FIELD,
                sizeof(*self) - offsetof(PyBListRoot, BLIST_FIRST_FIELD));
         Py_TYPE(&saved) = &PyRootBList_Type;
-        Py_REFCNT(&saved) = 1;
+        Py_SET_REFCNT(&saved, 1);
 
         if (extra_list != NULL) {
                 self->children = extra_list;

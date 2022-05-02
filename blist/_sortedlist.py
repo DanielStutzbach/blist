@@ -25,7 +25,7 @@ class ReprRecursion(object):
             del self.local.repr_count[self.ob_id]
         return False
 
-class _sortedbase(collections.Sequence):
+class _sortedbase(collections.abc.Sequence):
     def __init__(self, iterable=(), key=None):
         self._key = key
         if key is not None and not hasattr(key, '__call__'):
@@ -428,23 +428,23 @@ class _setmixin(object):
 
 def safe_cmp(f):
     def g(self, other):
-        if not isinstance(other, collections.Set):
+        if not isinstance(other, collections.abc.Set):
             raise TypeError("can only compare to a set")
         return f(self, other)
     return g
 
-class _setmixin2(collections.MutableSet):
-    "methods that override or supplement the collections.MutableSet methods"
+class _setmixin2(collections.abc.MutableSet):
+    "methods that override or supplement the collections.abc.MutableSet methods"
 
-    __ror__ = collections.MutableSet.__or__
-    __rand__ = collections.MutableSet.__and__
-    __rxor__ = collections.MutableSet.__xor__
+    __ror__ = collections.abc.MutableSet.__or__
+    __rand__ = collections.abc.MutableSet.__and__
+    __rxor__ = collections.abc.MutableSet.__xor__
 
     if sys.version_info[0] < 3: # pragma: no cover
-        __lt__ = safe_cmp(collections.MutableSet.__lt__)
-        __gt__ = safe_cmp(collections.MutableSet.__gt__)
-        __le__ = safe_cmp(collections.MutableSet.__le__)
-        __ge__ = safe_cmp(collections.MutableSet.__ge__)
+        __lt__ = safe_cmp(collections.abc.MutableSet.__lt__)
+        __gt__ = safe_cmp(collections.abc.MutableSet.__gt__)
+        __le__ = safe_cmp(collections.abc.MutableSet.__le__)
+        __ge__ = safe_cmp(collections.abc.MutableSet.__ge__)
 
     def __ior__(self, it):
         if self is it:
@@ -476,7 +476,7 @@ class _setmixin2(collections.MutableSet):
         return self._from_iterable(other) - self
 
     def _make_set(self, iterable):
-        if isinstance(iterable, collections.Set):
+        if isinstance(iterable, collections.abc.Set):
             return iterable
         return self._from_iterable(iterable)
 
