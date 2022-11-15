@@ -128,6 +128,12 @@
 #  define Py_SET_REFCNT(obj, refcnt) ((Py_REFCNT(obj) = (refcnt)), (void)0)
 #endif
 
+#if PY_VERSION_HEX < 0x030900A4 && !defined(Py_SET_TYPE)
+static inline void _Py_SET_TYPE(PyObject *ob, PyTypeObject *type)
+{ ob->ob_type = type; }
+#define Py_SET_TYPE(ob, type) _Py_SET_TYPE((PyObject*)(ob), type)
+#endif
+
 #ifndef BLIST_IN_PYTHON
 #include "blist.h"
 #endif
@@ -6592,7 +6598,7 @@ py_blist_sort(PyBListRoot *self, PyObject *args, PyObject *kwds)
         memset(&saved, 0, offsetof(PyBListRoot, BLIST_FIRST_FIELD));
         memcpy(&saved.BLIST_FIRST_FIELD, &self->BLIST_FIRST_FIELD,
                sizeof(*self) - offsetof(PyBListRoot, BLIST_FIRST_FIELD));
-        Py_TYPE(&saved) = &PyRootBList_Type;
+        Py_SET_TYPE(&saved, &PyRootBList_Type);
         Py_SET_REFCNT(&saved, 1);
 
         if (extra_list != NULL) {
@@ -7379,10 +7385,10 @@ init_blist_types1(void)
         decref_init();
         highest_set_bit_init();
 
-        Py_TYPE(&PyBList_Type) = &PyType_Type;
-        Py_TYPE(&PyRootBList_Type) = &PyType_Type;
-        Py_TYPE(&PyBListIter_Type) = &PyType_Type;
-        Py_TYPE(&PyBListReverseIter_Type) = &PyType_Type;
+        Py_SET_TYPE(&PyBList_Type, &PyType_Type);
+        Py_SET_TYPE(&PyRootBList_Type, &PyType_Type);
+        Py_SET_TYPE(&PyBListIter_Type, &PyType_Type);
+        Py_SET_TYPE(&PyBListReverseIter_Type, &PyType_Type);
 
         Py_INCREF(&PyBList_Type);
         Py_INCREF(&PyRootBList_Type);
