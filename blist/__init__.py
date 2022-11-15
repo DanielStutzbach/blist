@@ -1,6 +1,6 @@
 __version__ = '1.3.6'
 from blist._blist import *
-import collections
+import collections.abc as collections
 if hasattr(collections, 'MutableSet'): # Only supported in Python 2.6+
     from blist._sortedlist import sortedlist, sortedset, weaksortedlist, weaksortedset
     from blist._sorteddict import sorteddict

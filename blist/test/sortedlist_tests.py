@@ -29,7 +29,7 @@ class SortedBase(object):
                          repr(self.type2test()))
 
     def validate_comparison(self, instance):
-        if sys.version_info[0] < 3 and isinstance(instance, collections.Set):
+        if sys.version_info[0] < 3 and isinstance(instance, collections.abc.Set):
             ops = ['ne', 'or', 'and', 'xor', 'sub']
         else:
             ops = ['lt', 'gt', 'le', 'ge', 'ne', 'or', 'and', 'xor', 'sub']
@@ -185,7 +185,7 @@ class SortedBase(object):
     def test_order(self):
         stuff = [self.build_item(random.randrange(1000000))
                  for i in range(1000)]
-        if issubclass(self.type2test, collections.Set):
+        if issubclass(self.type2test, collections.abc.Set):
             stuff = set(stuff)
         sorted_stuff = list(sorted(stuff))
         u = self.type2test
